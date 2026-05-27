@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420" role="img" aria-label="Autody quickstart">
+  <rect width="1100" height="420" fill="#f8fafc"/>
+  <text x="72" y="74" font-family="Arial, 'PingFang SC', sans-serif" font-size="34" font-weight="700" fill="#111827">一条提示，让 agent 开始分析你自己的抖音作品</text>
+  <text x="72" y="116" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" fill="#475569">安装 skill 后，把下面这句话交给 Codex；它会按流程审计、补数据、导出报告。</text>
+  <rect x="72" y="154" width="956" height="92" rx="16" fill="#111827"/>
+  <text x="104" y="196" font-family="Menlo, Consolas, monospace" font-size="20" fill="#e5e7eb">Use $douyin-analysis to analyze my own Douyin works,</text>
+  <text x="104" y="226" font-family="Menlo, Consolas, monospace" font-size="20" fill="#e5e7eb">backfill missing metrics, and export JSON/CSV/Markdown.</text>
+  <g transform="translate(90 298)">
+    <circle cx="26" cy="26" r="26" fill="#2dd4bf"/>
+    <text x="19" y="35" font-family="Arial" font-size="26" font-weight="700" fill="#0f172a">1</text>
+    <text x="72" y="21" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#111827">自己的账号</text>
+    <text x="72" y="49" font-family="Arial, 'PingFang SC', sans-serif" font-size="15" fill="#64748b">只分析你拥有或获授权的数据</text>
+  </g>
+  <g transform="translate(410 298)">
+    <circle cx="26" cy="26" r="26" fill="#ff2f6d"/>
+    <text x="19" y="35" font-family="Arial" font-size="26" font-weight="700" fill="#ffffff">2</text>
+    <text x="72" y="21" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#111827">逐条保存</text>
+    <text x="72" y="49" font-family="Arial, 'PingFang SC', sans-serif" font-size="15" fill="#64748b">每条完成就写入 progress</text>
+  </g>
+  <g transform="translate(720 298)">
+    <circle cx="26" cy="26" r="26" fill="#818cf8"/>
+    <text x="19" y="35" font-family="Arial" font-size="26" font-weight="700" fill="#ffffff">3</text>
+    <text x="72" y="21" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#111827">报告可复用</text>
+    <text x="72" y="49" font-family="Arial, 'PingFang SC', sans-serif" font-size="15" fill="#64748b">JSON、CSV、Markdown 三份输出</text>
+  </g>
+</svg>

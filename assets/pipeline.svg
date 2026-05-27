@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420" role="img" aria-label="Autody pipeline">
+  <rect width="1100" height="420" fill="#ffffff"/>
+  <text x="72" y="68" font-family="Arial, 'PingFang SC', sans-serif" font-size="32" font-weight="700" fill="#111827">Mac + Codex + Chrome 是当前最顺手的路径</text>
+  <text x="72" y="108" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" fill="#475569">agent 读 skill，使用你自己的登录态进入创作者中心；豆包每条单开单关，避免页面变卡。</text>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <g font-family="Arial, 'PingFang SC', sans-serif">
+    <rect x="84" y="168" width="180" height="118" rx="18" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="122" y="213" font-size="22" font-weight="700" fill="#111827">Codex</text>
+    <text x="122" y="246" font-size="15" fill="#64748b">读取 $douyin-analysis</text>
+    <line x1="270" y1="227" x2="370" y2="227" stroke="#94a3b8" stroke-width="4" marker-end="url(#arrow)"/>
+    <rect x="390" y="168" width="180" height="118" rx="18" fill="#ecfeff" stroke="#67e8f9"/>
+    <text x="432" y="213" font-size="22" font-weight="700" fill="#0f172a">Chrome</text>
+    <text x="421" y="246" font-size="15" fill="#0f766e">自己的登录态</text>
+    <line x1="576" y1="227" x2="676" y2="227" stroke="#94a3b8" stroke-width="4" marker-end="url(#arrow)"/>
+    <rect x="696" y="146" width="220" height="162" rx="18" fill="#fff1f2" stroke="#fda4af"/>
+    <text x="744" y="198" font-size="22" font-weight="700" fill="#111827">抖音 + 豆包</text>
+    <text x="734" y="232" font-size="15" fill="#9f1239">创作者数据、Top 评论</text>
+    <text x="734" y="260" font-size="15" fill="#9f1239">逐字稿、图文文字</text>
+    <line x1="806" y1="314" x2="806" y2="360" stroke="#94a3b8" stroke-width="4" marker-end="url(#arrow)"/>
+    <rect x="626" y="360" width="360" height="42" rx="12" fill="#111827"/>
+    <text x="716" y="387" font-size="17" fill="#e5e7eb">保存 progress，失败也能继续</text>
+  </g>
+</svg>

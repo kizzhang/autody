@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420" role="img" aria-label="Autody outputs">
+  <rect width="1100" height="420" fill="#f8fafc"/>
+  <text x="72" y="68" font-family="Arial, 'PingFang SC', sans-serif" font-size="32" font-weight="700" fill="#111827">输出给人看，也给下一轮 agent 继续用</text>
+  <text x="72" y="108" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" fill="#475569">每条作品会合并基础数据、deep metrics、Top 评论和 transcript 来源。</text>
+  <g font-family="Arial, 'PingFang SC', sans-serif">
+    <rect x="84" y="160" width="280" height="170" rx="18" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="122" y="208" font-size="24" font-weight="700" fill="#111827">JSON</text>
+    <text x="122" y="244" font-size="16" fill="#64748b">结构化数据</text>
+    <text x="122" y="274" font-size="16" fill="#64748b">适合继续交给 agent</text>
+    <rect x="410" y="160" width="280" height="170" rx="18" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="448" y="208" font-size="24" font-weight="700" fill="#111827">CSV</text>
+    <text x="448" y="244" font-size="16" fill="#64748b">表格分析</text>
+    <text x="448" y="274" font-size="16" fill="#64748b">播放、完播、评论横向比较</text>
+    <rect x="736" y="160" width="280" height="170" rx="18" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="774" y="208" font-size="24" font-weight="700" fill="#111827">Markdown</text>
+    <text x="774" y="244" font-size="16" fill="#64748b">人类快速浏览</text>
+    <text x="774" y="274" font-size="16" fill="#64748b">链接、评论、逐字稿汇总</text>
+  </g>
+</svg>

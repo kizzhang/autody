@@ -1,0 +1,13 @@
+.DS_Store
+.auth/
+.cheat-cache/
+outputs/
+media/
+cookies*.txt
+*cookie*.txt
+*.log
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+venv/

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Douyin Analysis">
+  <rect width="512" height="512" rx="96" fill="#111827"/>
+  <path d="M150 336c0-58 47-105 105-105 14 0 28 3 40 8v-95h51c6 38 35 69 73 77v51c-27-3-52-13-73-29v93c0 58-47 105-105 105s-91-39-91-105Zm105-48c-27 0-48 21-48 48s21 48 48 48 48-21 48-48-21-48-48-48Z" fill="#ffffff"/>
+  <circle cx="360" cy="166" r="28" fill="#ff2f6d"/>
+  <path d="M94 126h124M94 174h84M94 222h112" stroke="#2dd4bf" stroke-width="26" stroke-linecap="round"/>
+</svg>
