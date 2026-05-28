@@ -1,0 +1,47 @@
+{
+  "name": "autody",
+  "version": "0.0.2",
+  "description": "Codex skill package for analyzing your own Douyin creator data.",
+  "license": "MIT",
+  "author": "Zhiyu Zhang",
+  "homepage": "https://github.com/kizzhang/autody#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kizzhang/autody.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kizzhang/autody/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "codex",
+    "skill",
+    "douyin",
+    "creator",
+    "analytics",
+    "autody"
+  ],
+  "bin": {
+    "autody": "bin/autody.js"
+  },
+  "files": [
+    "AGENTS.md",
+    "LICENSE",
+    "NOTICE.md",
+    "README.md",
+    "RELEASE_NOTES.md",
+    "assets/",
+    "bin/",
+    "skills/"
+  ],
+  "scripts": {
+    "validate": "node bin/autody.js doctor --package-only && node --check skills/douyin-analysis/scripts/audit_content_gaps.cjs && node --check skills/douyin-analysis/scripts/merge_content_outputs.cjs",
+    "pack:dry": "npm pack --dry-run",
+    "test": "npm run validate"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

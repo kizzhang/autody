@@ -9,5 +9,6 @@ cookies*.txt
 __pycache__/
 *.pyc
 node_modules/
+*.tgz
 .venv/
 venv/

@@ -4,6 +4,8 @@ Use this repository only for the user's own Douyin creator account or explicitly
 
 Start with `skills/douyin-analysis/SKILL.md`. Run an audit first, backfill only missing fields, persist after every item, and close every Doubao/transcript page immediately after saving the result.
 
+For npm installs, ask the user to run `npx autody install` or run `autody install` if the package is already installed. The CLI only copies the packaged skill into `$CODEX_HOME/skills` or `~/.codex/skills`; it must not inspect browser storage or account data.
+
 Recommended prompt:
 
 ```text
