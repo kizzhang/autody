@@ -60,6 +60,8 @@ function assertPackageShape() {
     "README.md",
     "NOTICE.md",
     "skills/douyin-analysis/SKILL.md",
+    "skills/douyin-analysis/references/report-design.md",
+    "skills/douyin-analysis/references/douyin-workflow.md",
     "skills/douyin-analysis/scripts/audit_content_gaps.cjs",
     "skills/douyin-analysis/scripts/merge_content_outputs.cjs",
     "skills/douyin-analysis/scripts/douyin-session/backfill.py",

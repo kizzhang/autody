@@ -1,9 +1,9 @@
 interface:
   display_name: "抖音分析"
-  short_description: "分析自己的抖音作品数据与逐字稿"
+  short_description: "分析自己的抖音作品数据、逐字稿和报告"
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
   brand_color: "#111827"
-  default_prompt: "Use $douyin-analysis to analyze my own Douyin creator account and export JSON/CSV/Markdown reports."
+  default_prompt: "Use $douyin-analysis to analyze my own Douyin creator account, backfill missing metrics, extract transcripts, and export JSON/CSV/Markdown/HTML reports."
 policy:
   allow_implicit_invocation: true

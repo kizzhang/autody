@@ -1,7 +1,7 @@
 {
   "name": "autody",
-  "version": "0.0.2",
-  "description": "Codex skill package for analyzing your own Douyin creator data.",
+  "version": "0.0.3",
+  "description": "Codex skill package for analyzing your own Douyin creator data and report dashboards.",
   "license": "MIT",
   "author": "Zhiyu Zhang",
   "homepage": "https://github.com/kizzhang/autody#readme",

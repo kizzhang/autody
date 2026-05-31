@@ -1,6 +1,6 @@
 ---
 name: douyin-analysis
-description: Use when analyzing the user's own Douyin creator account or authorized Douyin videos, collecting creator-center metrics, Top comments, transcripts, retention/follow data, or incrementally backfilling missing fields into JSON/CSV/Markdown reports.
+description: Use when analyzing the user's own Douyin creator account or authorized Douyin videos, collecting creator-center metrics, Top comments, transcripts, retention/follow data, generating creator report dashboards, or incrementally backfilling missing fields into JSON/CSV/Markdown/HTML outputs.
 ---
 
 # Douyin Analysis
@@ -37,6 +37,12 @@ Use this skill only for the user's own Douyin creator account, their own videos,
    - Merge to JSON, CSV, and Markdown with `scripts/merge_content_outputs.cjs`.
    - Validate item count, duplicate IDs, missing URLs, empty transcripts, missing deep metrics, and missing Top comments.
    - Keep `.auth/`, `.cheat-cache/`, cookies, and raw private dumps out of git.
+
+7. Present the report when asked for analysis.
+   - Read `references/report-design.md` before creating HTML dashboards or strategy reports.
+   - Separate hidden/limited works from observed works before explaining why something did or did not get exposure.
+   - Preserve per-video evidence: caption, transcript summary, metrics, factor diagnosis, and next action.
+   - Make charts inspectable: bubbles need hover/click labels with video index, caption, plays, save/share/follow signals, and the reason for the bucket.
 
 ## Commands
 
@@ -92,3 +98,5 @@ node ~/.codex/skills/douyin-analysis/scripts/merge_content_outputs.cjs \
 ## References
 
 Read `references/douyin-workflow.md` when planning a full run, debugging field gaps, or explaining the expected JSON schema.
+
+Read `references/report-design.md` when turning collected data into an HTML report, factor map, sample review, or next-batch content roadmap.
