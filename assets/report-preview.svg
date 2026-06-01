@@ -1,63 +1,69 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-label="Autody HTML report preview">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-label="Autody privacy-safe report preview">
   <defs>
-    <radialGradient id="glow" cx="24%" cy="24%" r="78%">
-      <stop offset="0%" stop-color="#5b160f"/>
-      <stop offset="54%" stop-color="#210305"/>
-      <stop offset="100%" stop-color="#0d0102"/>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#240303"/>
+      <stop offset="56%" stop-color="#3a0707"/>
+      <stop offset="100%" stop-color="#120001"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="18%" cy="16%" r="70%">
+      <stop offset="0%" stop-color="#bd4420" stop-opacity=".62"/>
+      <stop offset="100%" stop-color="#120001" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="card" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0%" stop-color="#37100e"/>
-      <stop offset="100%" stop-color="#180203"/>
+      <stop offset="0%" stop-color="#561915" stop-opacity=".74"/>
+      <stop offset="100%" stop-color="#1a0304" stop-opacity=".92"/>
     </linearGradient>
-    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity=".28"/>
     </filter>
   </defs>
-  <rect width="1200" height="560" fill="url(#glow)"/>
-  <g opacity=".22" stroke="#9c5526" stroke-width="1">
+  <rect width="1200" height="560" fill="url(#bg)"/>
+  <rect width="1200" height="560" fill="url(#halo)"/>
+  <g opacity=".24" stroke="#9b4a25" stroke-width="1">
     <path d="M76 88H1124M76 150H1124M76 212H1124M76 274H1124M76 336H1124M76 398H1124"/>
     <path d="M120 62V470M254 62V470M388 62V470M522 62V470M656 62V470M790 62V470M924 62V470M1058 62V470"/>
   </g>
-  <g font-family="Arial, 'PingFang SC', sans-serif">
+  <g font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
     <g transform="translate(72 54)">
-      <rect width="44" height="44" rx="13" fill="#c8461f"/>
-      <text x="22" y="30" text-anchor="middle" font-size="22" fill="#fff7ea">◇</text>
-      <text x="62" y="19" font-size="16" font-weight="700" letter-spacing="3" fill="#fff7ea">AUTODY REPORT</text>
-      <text x="62" y="46" font-size="17" fill="#c8aaa0">40 videos / 35 observed / 5 isolated</text>
+      <rect width="44" height="44" rx="13" fill="#d84a22"/>
+      <path d="M22 12L32 22L22 32L12 22Z" fill="none" stroke="#fff8ec" stroke-width="2.5"/>
+      <text x="62" y="19" font-size="16" font-weight="800" letter-spacing="3" fill="#fff7ea">AUTODY REPORT</text>
+      <text x="62" y="46" font-size="17" fill="#cdb2a8">demo workspace, no private creator data</text>
     </g>
-    <text x="72" y="172" font-size="60" font-weight="800" fill="#fff7ea">先隔离限流，</text>
-    <text x="72" y="238" font-size="60" font-weight="800" fill="#f6c750">再判断内容因子</text>
-    <text x="76" y="282" font-size="21" fill="#d8bbb0">气泡图看分发，因子地图看机制，样本卡片给下一步。</text>
+    <text x="72" y="172" font-size="56" font-weight="850" fill="#fff7ea">From creator data</text>
+    <text x="72" y="236" font-size="56" font-weight="850" fill="#f4c84c">to next-batch decisions</text>
+    <text x="76" y="282" font-size="21" fill="#dec0b4">Bubble charts show distribution; sample cards explain what to test next.</text>
   </g>
-  <g transform="translate(72 322)" filter="url(#soft)">
-    <rect width="602" height="176" rx="22" fill="#190304" stroke="#7b3c22"/>
-    <g stroke="#7b3c22" opacity=".5">
+  <g transform="translate(72 322)" filter="url(#shadow)">
+    <rect width="602" height="176" rx="22" fill="#190304" fill-opacity=".82"/>
+    <rect x=".5" y=".5" width="601" height="175" rx="21.5" fill="none" stroke="#9a522a" stroke-opacity=".46"/>
+    <g stroke="#8f4626" opacity=".45">
       <path d="M54 26V142M178 26V142M302 26V142M426 26V142M550 26V142"/>
       <path d="M42 44H562M42 88H562M42 132H562"/>
     </g>
-    <text x="462" y="34" font-family="Menlo, Consolas, monospace" font-size="12" fill="#c9a292">RADIUS = PLAYS</text>
-    <circle cx="188" cy="118" r="28" fill="#f6c750" opacity=".88"/>
-    <circle cx="68" cy="48" r="30" fill="#e85b32" opacity=".82"/>
-    <circle cx="524" cy="96" r="28" fill="#6bd6df" opacity=".82"/>
-    <circle cx="96" cy="86" r="18" fill="#e85b32" opacity=".72"/>
-    <circle cx="328" cy="104" r="12" fill="#6bd6df" opacity=".78"/>
-    <circle cx="250" cy="92" r="13" fill="#b8bfd0" opacity=".68"/>
-    <text x="224" y="122" font-family="Menlo, Consolas, monospace" font-size="14" font-weight="700" fill="#fff7ea">#24</text>
-    <text x="103" y="52" font-family="Menlo, Consolas, monospace" font-size="14" font-weight="700" fill="#fff7ea">#39</text>
-    <text x="555" y="100" font-family="Menlo, Consolas, monospace" font-size="14" font-weight="700" fill="#fff7ea">#17</text>
+    <text x="452" y="34" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#c9a292">RADIUS = PLAYS</text>
+    <circle cx="188" cy="118" r="28" fill="#f4c84c" opacity=".9"/>
+    <circle cx="68" cy="48" r="30" fill="#ff7f54" opacity=".84"/>
+    <circle cx="524" cy="96" r="28" fill="#6bdbe2" opacity=".86"/>
+    <circle cx="96" cy="86" r="18" fill="#ff7f54" opacity=".74"/>
+    <circle cx="328" cy="104" r="12" fill="#6bdbe2" opacity=".78"/>
+    <circle cx="250" cy="92" r="13" fill="#b8bfd0" opacity=".72"/>
+    <text x="224" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="800" fill="#fff7ea">A</text>
+    <text x="103" y="52" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="800" fill="#fff7ea">B</text>
+    <text x="555" y="100" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="800" fill="#fff7ea">C</text>
   </g>
-  <g transform="translate(724 128)" font-family="Arial, 'PingFang SC', sans-serif">
-    <rect width="404" height="112" rx="24" fill="url(#card)" stroke="#8b4726"/>
-    <text x="28" y="40" font-size="17" font-weight="700" fill="#f6c750">#24 硬数字重定价</text>
-    <text x="28" y="72" font-size="15" fill="#d8bbb0">播放 456,603 · 收藏 1.34% · 转发 0.57%</text>
-    <text x="28" y="98" font-size="14" fill="#8fe3eb">下一步：系列化一条可复制公式</text>
-    <rect y="136" width="404" height="112" rx="24" fill="url(#card)" stroke="#8b4726"/>
-    <text x="28" y="176" font-size="17" font-weight="700" fill="#ff8e5e">#39 博士团播借势</text>
-    <text x="28" y="208" font-size="15" fill="#d8bbb0">热点格式 + 身份反差，转发高收藏低</text>
-    <text x="28" y="234" font-size="14" fill="#8fe3eb">下一步：把猎奇转成注意力定价</text>
-    <rect y="272" width="404" height="112" rx="24" fill="url(#card)" stroke="#8b4726"/>
-    <text x="28" y="312" font-size="17" font-weight="700" fill="#8fe3eb">#17 三步路线图</text>
-    <text x="28" y="344" font-size="15" fill="#d8bbb0">高收藏样本，路径明确，焦虑可见</text>
-    <text x="28" y="370" font-size="14" fill="#8fe3eb">下一步：补上个人转型证据</text>
+  <g transform="translate(724 118)" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif" filter="url(#shadow)">
+    <rect width="404" height="118" rx="24" fill="url(#card)"/>
+    <text x="28" y="42" font-size="17" font-weight="850" fill="#f4c84c">Sample A: reusable proof</text>
+    <text x="28" y="74" font-size="15" fill="#d8bbb0">Strong save/share behavior after a clear promise.</text>
+    <text x="28" y="100" font-size="14" font-weight="750" fill="#8fe3eb">Next: turn it into a repeatable series.</text>
+    <rect y="146" width="404" height="118" rx="24" fill="url(#card)"/>
+    <text x="28" y="188" font-size="17" font-weight="850" fill="#ff8e5e">Sample B: trend-assisted reach</text>
+    <text x="28" y="220" font-size="15" fill="#d8bbb0">High distribution, weaker collection intent.</text>
+    <text x="28" y="246" font-size="14" font-weight="750" fill="#8fe3eb">Next: connect attention to a concrete use case.</text>
+    <rect y="292" width="404" height="118" rx="24" fill="url(#card)"/>
+    <text x="28" y="334" font-size="17" font-weight="850" fill="#8fe3eb">Sample C: route-map content</text>
+    <text x="28" y="366" font-size="15" fill="#d8bbb0">Clear path, visible audience anxiety.</text>
+    <text x="28" y="392" font-size="14" font-weight="750" fill="#8fe3eb">Next: add personal evidence and before/after proof.</text>
   </g>
 </svg>

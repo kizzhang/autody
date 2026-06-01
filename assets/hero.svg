@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Autody GitHub hero</title>
+  <desc id="desc">Autody is a Codex skill for analyzing your own Douyin creator data, extracting transcripts, and generating reports.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#210203"/>
+      <stop offset="48%" stop-color="#3b0707"/>
+      <stop offset="100%" stop-color="#120001"/>
+    </linearGradient>
+    <radialGradient id="warmGlow" cx="20%" cy="8%" r="70%">
+      <stop offset="0%" stop-color="#c0441e" stop-opacity=".72"/>
+      <stop offset="45%" stop-color="#7e1b12" stop-opacity=".24"/>
+      <stop offset="100%" stop-color="#120001" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cyanGlow" cx="74%" cy="76%" r="44%">
+      <stop offset="0%" stop-color="#55d8df" stop-opacity=".34"/>
+      <stop offset="100%" stop-color="#55d8df" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="panel" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#4d1713" stop-opacity=".68"/>
+      <stop offset="100%" stop-color="#1b0304" stop-opacity=".88"/>
+    </linearGradient>
+    <linearGradient id="terminal" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#fff7ec"/>
+      <stop offset="100%" stop-color="#f4d7a2"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="22" flood-color="#000000" flood-opacity=".32"/>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000000" flood-opacity=".22"/>
+    </filter>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#f4be61" opacity=".22"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="630" rx="28" fill="url(#warmGlow)"/>
+  <rect width="1200" height="630" rx="28" fill="url(#cyanGlow)"/>
+  <rect x="52" y="52" width="1096" height="526" rx="26" fill="url(#dots)" opacity=".62"/>
+
+  <g stroke="#9c4b25" stroke-opacity=".32" stroke-width="1">
+    <path d="M76 138H1124M76 230H1124M76 322H1124M76 414H1124M76 506H1124"/>
+    <path d="M154 76V554M304 76V554M454 76V554M604 76V554M754 76V554M904 76V554M1054 76V554"/>
+  </g>
+
+  <g font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <g transform="translate(78 72)">
+      <rect width="58" height="58" rx="17" fill="#d84a22"/>
+      <path d="M29 17L41 29L29 41L17 29Z" fill="none" stroke="#fff8ec" stroke-width="3" stroke-linejoin="round"/>
+      <text x="78" y="25" font-size="23" font-weight="800" letter-spacing="5" fill="#fff8ec">AUTODY</text>
+      <text x="78" y="54" font-size="18" font-weight="600" fill="#e4b9aa">Codex skill for your own Douyin creator analytics</text>
+    </g>
+
+    <text x="78" y="232" font-size="67" font-weight="850" letter-spacing="-2" fill="#fff8ec">Analyze your own</text>
+    <text x="78" y="304" font-size="67" font-weight="850" letter-spacing="-2" fill="#f4c84c">Douyin data</text>
+    <text x="78" y="352" font-size="23" font-weight="650" fill="#e9c6b8">Backfill metrics. Extract transcripts. Generate reports.</text>
+    <text x="78" y="384" font-size="20" font-weight="600" fill="#9fe6eb">只分析自己的账号或获授权数据。</text>
+
+    <g transform="translate(78 426)" filter="url(#softShadow)">
+      <rect width="500" height="72" rx="18" fill="#fff6df"/>
+      <circle cx="34" cy="36" r="8" fill="#d84a22"/>
+      <circle cx="58" cy="36" r="8" fill="#f4c84c"/>
+      <circle cx="82" cy="36" r="8" fill="#6bdbe2"/>
+      <text x="116" y="44" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="800" fill="#210203">$ npx autody@latest install</text>
+    </g>
+
+    <g transform="translate(78 526)">
+      <rect width="164" height="34" rx="17" fill="#fff1d2" fill-opacity=".18"/>
+      <text x="20" y="23" font-size="15" font-weight="750" fill="#fff1d2">First-party only</text>
+      <rect x="178" width="128" height="34" rx="17" fill="#fff1d2" fill-opacity=".18"/>
+      <text x="198" y="23" font-size="15" font-weight="750" fill="#fff1d2">Local auth</text>
+      <rect x="320" width="160" height="34" rx="17" fill="#fff1d2" fill-opacity=".18"/>
+      <text x="340" y="23" font-size="15" font-weight="750" fill="#fff1d2">Incremental runs</text>
+    </g>
+  </g>
+
+  <g transform="translate(638 92)" filter="url(#shadow)" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <rect width="482" height="438" rx="30" fill="url(#panel)"/>
+    <rect x="1" y="1" width="480" height="436" rx="29" fill="none" stroke="#ffb05a" stroke-opacity=".28"/>
+    <rect x="36" y="34" width="410" height="74" rx="18" fill="#fff7e8" fill-opacity=".9"/>
+    <text x="62" y="64" font-size="15" font-weight="850" letter-spacing="2" fill="#2b0705">OWN ACCOUNT</text>
+    <text x="62" y="92" font-size="21" font-weight="800" fill="#2b0705">Local metrics, transcripts, reports</text>
+
+    <g transform="translate(38 142)">
+      <rect width="408" height="122" rx="22" fill="#170203" fill-opacity=".62"/>
+      <g stroke="#b85b2d" stroke-opacity=".32" stroke-width="1">
+        <path d="M30 30H376M30 64H376M30 98H376"/>
+        <path d="M76 18V106M172 18V106M268 18V106M348 18V106"/>
+      </g>
+      <circle cx="78" cy="82" r="20" fill="#ff7f54" fill-opacity=".9"/>
+      <circle cx="150" cy="72" r="30" fill="#f4c84c" fill-opacity=".92"/>
+      <circle cx="256" cy="58" r="15" fill="#bcc5d6" fill-opacity=".78"/>
+      <circle cx="340" cy="74" r="26" fill="#6bdbe2" fill-opacity=".9"/>
+      <circle cx="214" cy="90" r="11" fill="#6bdbe2" fill-opacity=".72"/>
+      <text x="276" y="30" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="800" fill="#e8c2b5">RADIUS = PLAYS</text>
+    </g>
+
+    <g transform="translate(38 292)">
+      <g>
+        <rect width="120" height="92" rx="20" fill="#fff7e8" fill-opacity=".12"/>
+        <text x="22" y="35" font-size="14" font-weight="800" fill="#ffd971">Collect</text>
+        <text x="22" y="64" font-size="26" font-weight="850" fill="#fff8ec">Metrics</text>
+      </g>
+      <path d="M138 46H168" stroke="#fff1d2" stroke-width="3" stroke-linecap="round" opacity=".45"/>
+      <path d="M158 37L168 46L158 55" stroke="#fff1d2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".45"/>
+      <g transform="translate(184 0)">
+        <rect width="120" height="92" rx="20" fill="#fff7e8" fill-opacity=".12"/>
+        <text x="22" y="35" font-size="14" font-weight="800" fill="#7fe1e8">Extract</text>
+        <text x="22" y="64" font-size="26" font-weight="850" fill="#fff8ec">Text</text>
+      </g>
+      <path d="M322 46H352" stroke="#fff1d2" stroke-width="3" stroke-linecap="round" opacity=".45"/>
+      <path d="M342 37L352 46L342 55" stroke="#fff1d2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".45"/>
+      <g transform="translate(368 0)">
+        <rect width="40" height="92" rx="20" fill="#d84a22" fill-opacity=".9"/>
+        <path d="M20 33L31 46L20 59L9 46Z" fill="none" stroke="#fff8ec" stroke-width="2"/>
+      </g>
+    </g>
+  </g>
+</svg>
