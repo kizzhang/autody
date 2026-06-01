@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
-  <title id="title">Autody GitHub hero</title>
-  <desc id="desc">Autody is a Codex skill for analyzing your own Douyin creator data, extracting transcripts, and generating reports.</desc>
+  <title id="title">Autody GitHub 顶图</title>
+  <desc id="desc">Autody 是给 Codex 用的抖音创作者分析技能包，用来分析自己的抖音数据、提取逐字稿并生成报告。</desc>
   <defs>
     <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
       <stop offset="0%" stop-color="#210203"/>
@@ -50,12 +50,12 @@
       <rect width="58" height="58" rx="17" fill="#d84a22"/>
       <path d="M29 17L41 29L29 41L17 29Z" fill="none" stroke="#fff8ec" stroke-width="3" stroke-linejoin="round"/>
       <text x="78" y="25" font-size="23" font-weight="800" letter-spacing="5" fill="#fff8ec">AUTODY</text>
-      <text x="78" y="54" font-size="18" font-weight="600" fill="#e4b9aa">Codex skill for your own Douyin creator analytics</text>
+      <text x="78" y="54" font-size="18" font-weight="600" fill="#e4b9aa">给 Codex 用的抖音创作者分析技能包</text>
     </g>
 
-    <text x="78" y="232" font-size="67" font-weight="850" letter-spacing="-2" fill="#fff8ec">Analyze your own</text>
-    <text x="78" y="304" font-size="67" font-weight="850" letter-spacing="-2" fill="#f4c84c">Douyin data</text>
-    <text x="78" y="352" font-size="23" font-weight="650" fill="#e9c6b8">Backfill metrics. Extract transcripts. Generate reports.</text>
+    <text x="78" y="232" font-size="67" font-weight="850" letter-spacing="-2" fill="#fff8ec">分析你自己的</text>
+    <text x="78" y="304" font-size="67" font-weight="850" letter-spacing="-2" fill="#f4c84c">抖音数据</text>
+    <text x="78" y="352" font-size="23" font-weight="650" fill="#e9c6b8">补齐指标，提取逐字稿，生成创作者报告。</text>
     <text x="78" y="384" font-size="20" font-weight="600" fill="#9fe6eb">只分析自己的账号或获授权数据。</text>
 
     <g transform="translate(78 426)" filter="url(#softShadow)">
@@ -68,11 +68,11 @@
 
     <g transform="translate(78 526)">
       <rect width="164" height="34" rx="17" fill="#fff1d2" fill-opacity=".18"/>
-      <text x="20" y="23" font-size="15" font-weight="750" fill="#fff1d2">First-party only</text>
+      <text x="24" y="23" font-size="15" font-weight="750" fill="#fff1d2">只分析自己</text>
       <rect x="178" width="128" height="34" rx="17" fill="#fff1d2" fill-opacity=".18"/>
-      <text x="198" y="23" font-size="15" font-weight="750" fill="#fff1d2">Local auth</text>
+      <text x="198" y="23" font-size="15" font-weight="750" fill="#fff1d2">本机登录态</text>
       <rect x="320" width="160" height="34" rx="17" fill="#fff1d2" fill-opacity=".18"/>
-      <text x="340" y="23" font-size="15" font-weight="750" fill="#fff1d2">Incremental runs</text>
+      <text x="344" y="23" font-size="15" font-weight="750" fill="#fff1d2">可断点续跑</text>
     </g>
   </g>
 
@@ -80,8 +80,8 @@
     <rect width="482" height="438" rx="30" fill="url(#panel)"/>
     <rect x="1" y="1" width="480" height="436" rx="29" fill="none" stroke="#ffb05a" stroke-opacity=".28"/>
     <rect x="36" y="34" width="410" height="74" rx="18" fill="#fff7e8" fill-opacity=".9"/>
-    <text x="62" y="64" font-size="15" font-weight="850" letter-spacing="2" fill="#2b0705">OWN ACCOUNT</text>
-    <text x="62" y="92" font-size="21" font-weight="800" fill="#2b0705">Local metrics, transcripts, reports</text>
+    <text x="241" y="64" text-anchor="middle" font-size="15" font-weight="850" letter-spacing="2" fill="#2b0705">自己的账号</text>
+    <text x="241" y="92" text-anchor="middle" font-size="21" font-weight="800" fill="#2b0705">指标、逐字稿、报告都留在本机</text>
 
     <g transform="translate(38 142)">
       <rect width="408" height="122" rx="22" fill="#170203" fill-opacity=".62"/>
@@ -94,21 +94,21 @@
       <circle cx="256" cy="58" r="15" fill="#bcc5d6" fill-opacity=".78"/>
       <circle cx="340" cy="74" r="26" fill="#6bdbe2" fill-opacity=".9"/>
       <circle cx="214" cy="90" r="11" fill="#6bdbe2" fill-opacity=".72"/>
-      <text x="276" y="30" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="800" fill="#e8c2b5">RADIUS = PLAYS</text>
+      <text x="298" y="30" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="800" fill="#e8c2b5">半径 = 播放</text>
     </g>
 
     <g transform="translate(38 292)">
       <g>
         <rect width="120" height="92" rx="20" fill="#fff7e8" fill-opacity=".12"/>
-        <text x="22" y="35" font-size="14" font-weight="800" fill="#ffd971">Collect</text>
-        <text x="22" y="64" font-size="26" font-weight="850" fill="#fff8ec">Metrics</text>
+        <text x="60" y="35" text-anchor="middle" font-size="14" font-weight="800" fill="#ffd971">采集</text>
+        <text x="60" y="64" text-anchor="middle" font-size="26" font-weight="850" fill="#fff8ec">指标</text>
       </g>
       <path d="M138 46H168" stroke="#fff1d2" stroke-width="3" stroke-linecap="round" opacity=".45"/>
       <path d="M158 37L168 46L158 55" stroke="#fff1d2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".45"/>
       <g transform="translate(184 0)">
         <rect width="120" height="92" rx="20" fill="#fff7e8" fill-opacity=".12"/>
-        <text x="22" y="35" font-size="14" font-weight="800" fill="#7fe1e8">Extract</text>
-        <text x="22" y="64" font-size="26" font-weight="850" fill="#fff8ec">Text</text>
+        <text x="60" y="35" text-anchor="middle" font-size="14" font-weight="800" fill="#7fe1e8">提取</text>
+        <text x="60" y="64" text-anchor="middle" font-size="26" font-weight="850" fill="#fff8ec">文本</text>
       </g>
       <path d="M322 46H352" stroke="#fff1d2" stroke-width="3" stroke-linecap="round" opacity=".45"/>
       <path d="M342 37L352 46L342 55" stroke="#fff1d2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".45"/>
