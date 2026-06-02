@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Autody logo" width="220">
+</p>
+
 # Autody: 抖音分析
 
 Autody 是一个给 Codex 用的抖音创作者分析 skill。它让 agent 用你的本机登录态分析你自己的抖音作品，补齐逐字稿、深度指标、Top 评论，并生成 JSON、CSV、Markdown 和 HTML 报告。
 
-![Autody 顶图](assets/hero.svg)
+![Autody 顶图](assets/hero.png)
 
 ## 只分析自己的账号
 
