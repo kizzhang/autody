@@ -1,3 +1,12 @@
+# unreleased
+
+Chrome Extension-only collector guidance.
+
+- Changes `douyin-analysis` to prefer the Codex Chrome Extension / Chrome plugin for creator-center collection.
+- Adds `references/chrome-extension-workflow.md` with tab claiming, works list, video analytics, Top comments, safety, provenance, and fallback boundaries.
+- Removes the separate Python browser collector from the packaged skill.
+- Updates README and AGENTS prompts so agents use the user's existing Chrome session only.
+
 # release0.0.3
 
 Report-readiness release.
@@ -23,6 +32,6 @@ Initial open release of Autody / 抖音分析.
 
 - Adds the `douyin-analysis` Codex skill.
 - Adds incremental gap audit and merge scripts.
-- Adds Playwright-based Douyin creator-center deep metrics backfill.
+- Adds browser-based Douyin creator-center deep metrics backfill.
 - Documents first-party-only acceptable use and browser-session safety.
 - Provides simple visual guidance for humans and agent-readable workflow docs.

@@ -1,5 +1,7 @@
 # Douyin Workflow Reference
 
+Default browser path: Chrome Extension collection path. Use the user's existing Chrome session through the Codex Chrome Extension / Chrome plugin for creator-center pages. If a field is not visible or exportable through Chrome, record a `dataGap` note instead of using a second browser collector.
+
 ## Output Files
 
 Use one output folder per run:
@@ -92,6 +94,17 @@ deep metrics: avgWatchTime, completionRate, short retention metric, and follow/l
 
 For Douyin creator center, current detail pages often expose 5-second retention as `completion_rate_5s` rather than a literal 3-second retention field.
 
+## Browser Collection Order
+
+1. Chrome Extension: claim or open `https://creator.douyin.com/creator-micro/content/manage`.
+2. Chrome Extension: collect visible works list fields or official creator-center exports.
+3. Chrome Extension: open each `https://creator.douyin.com/creator-micro/data/stats/video/<aweme_id>` analytics page and read visible deep metrics.
+4. Chrome Extension: collect Top comments from creator-center comment management or the public video page.
+5. Audit gaps.
+6. Keep unavailable fields in `dataGap` with source notes so later runs can retry through Chrome.
+
+When mixing sources, preserve provenance with values such as `chrome-extension`, `doubao`, `public_page_text`, or `local_asr`.
+
 ## Doubao Prompts
 
 First send only the public URL. Then send one of:
@@ -108,4 +121,4 @@ Close that Doubao page/chat after each saved item.
 
 ## Safety
 
-Do not analyze unauthorized accounts or private data. Do not inspect, export, or commit `.auth/`, `.cheat-cache/`, cookies, browser storage, or private raw dumps.
+Do not analyze unauthorized accounts or private data. Do not inspect, export, or commit `.cheat-cache/`, cookies, browser storage, or private raw dumps.

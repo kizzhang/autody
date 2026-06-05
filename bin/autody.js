@@ -3,7 +3,6 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
 
 const packageRoot = path.resolve(__dirname, "..");
 const skillName = "douyin-analysis";
@@ -60,22 +59,16 @@ function assertPackageShape() {
     "README.md",
     "NOTICE.md",
     "skills/douyin-analysis/SKILL.md",
+    "skills/douyin-analysis/references/chrome-extension-workflow.md",
     "skills/douyin-analysis/references/report-design.md",
     "skills/douyin-analysis/references/douyin-workflow.md",
     "skills/douyin-analysis/scripts/audit_content_gaps.cjs",
     "skills/douyin-analysis/scripts/merge_content_outputs.cjs",
-    "skills/douyin-analysis/scripts/douyin-session/backfill.py",
-    "skills/douyin-analysis/scripts/douyin-session/crawler.py",
   ];
   const missing = required.filter((file) => !fs.existsSync(path.join(packageRoot, file)));
   if (missing.length) {
     throw new Error(`Package is missing required files:\n${missing.map((file) => `- ${file}`).join("\n")}`);
   }
-}
-
-function commandExists(command) {
-  const probe = spawnSync("sh", ["-lc", `command -v ${command}`], { encoding: "utf8" });
-  return probe.status === 0;
 }
 
 function install(opts) {
@@ -92,23 +85,18 @@ function install(opts) {
   }
   fs.cpSync(skillSource, dest, { recursive: true });
   console.log(`Installed ${skillName} to ${dest}`);
-  console.log("Ask Codex: Use $douyin-analysis to analyze my own Douyin creator account.");
+  console.log("Ask Codex: Use $douyin-analysis with the Chrome Extension-first workflow to analyze my own Douyin creator account.");
 }
 
 function doctor(opts) {
   assertPackageShape();
   const checks = [
     ["node", true],
-    ["python3", commandExists("python3")],
-    ["uv", commandExists("uv")],
   ];
   console.log("Package files: ok");
   if (opts.packageOnly) return;
   for (const [name, ok] of checks) {
     console.log(`${name}: ${ok ? "ok" : "missing"}`);
-  }
-  if (!commandExists("uv")) {
-    console.log("Hint: install uv before running the Playwright-based Douyin collector.");
   }
 }
 

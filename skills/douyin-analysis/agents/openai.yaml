@@ -4,6 +4,6 @@ interface:
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
   brand_color: "#111827"
-  default_prompt: "Use $douyin-analysis to analyze my own Douyin creator account, backfill missing metrics, extract transcripts, and export JSON/CSV/Markdown/HTML reports."
+  default_prompt: "Use $douyin-analysis with the Chrome Extension-first workflow to analyze my own Douyin creator account, backfill missing metrics, extract transcripts, and export JSON/CSV/Markdown/HTML reports."
 policy:
   allow_implicit_invocation: true
