@@ -12,8 +12,9 @@ Autody should feel like a creator workflow inside Codex, not a prompt that the u
 - `/buchong`: targeted backfill for known gaps.
 - `/tijian`: data quality audit.
 - `/baogao`: report generation from an existing baseline.
+- `/html`: Lumina HTML rendering from existing baseline/report data.
 
-Version 1 implements `/kaishi` only. The other four names are reserved in docs and package structure so the workflow can grow without renaming the product later.
+Version 1 implements `/kaishi` and `/html`. The other four names are reserved in docs and package structure so the workflow can grow without renaming the product later.
 
 ## Product Decision
 
@@ -21,11 +22,19 @@ Use Codex skills as the command surface. Codex app exposes enabled skills in the
 
 The existing `douyin-analysis` skill remains the shared base layer. It owns safety rules, Chrome Extension collection details, output schemas, references, and deterministic scripts. The new command-like skills are thin intent wrappers that choose the right workflow without asking the user to remember a long prompt.
 
+HTML output should not expose a three-template picker. Use the existing Lumina visual system only. The historical Lumina source files found during design are:
+
+- `/Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-05-30/superdesign_lumina_dashboard_2026-05-31.html`
+- `/Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-05-30/build_superdesign_hero_variants_2026-05-31.cjs`
+- `/Users/kaneki/Projects/fun/content/outputs/competitor_ai_research_2026-06-05/build_autody_lumina_competitor_report_2026-06-05.cjs`
+
 ## Scope
 
 V1 is Douyin-only. It analyzes only the user's own account or explicitly authorized creator data.
 
 `/kaishi` creates a baseline dataset. It does not generate strategy reports, content advice, or retrospective analysis. Reports belong to `/baogao`.
+
+`/html` renders an existing baseline or report payload into Lumina HTML. It does not collect browser data and does not choose between multiple visual templates.
 
 `/kaishi` uses the Codex Chrome Extension / Chrome plugin for all Douyin creator-center browser work. It must not use Playwright, a second browser profile, cookie inspection, localStorage inspection, password/session-store inspection, or raw private browser dumps.
 
@@ -90,12 +99,35 @@ Purpose: turn an existing complete or near-complete baseline into analysis outpu
 
 Reserved for v2.
 
+### `/html`
+
+Display name: `HTML`
+
+Purpose: render an existing Autody baseline or report payload into the Lumina HTML template.
+
+Required outcome:
+
+- Locate the target run folder, normally `outputs/douyin_analysis_YYYY-MM-DD/`.
+- Prefer `douyin_deep_works_final.json` as the data input.
+- Use the packaged Lumina template/workflow reference, derived from the existing `superdesign_lumina_dashboard_2026-05-31.html` and related build scripts.
+- Write `report_lumina.html` or another explicit Lumina HTML file into the run folder.
+- Keep the source JSON next to the HTML.
+- Report the output path and any data quality caveats.
+
+Out of scope:
+
+- Browser collection.
+- Transcript or metric backfill.
+- Three-template selection.
+- Strategic conclusions that are not supported by the input data.
+
 ## Architecture
 
 The package should contain:
 
 - `skills/douyin-analysis/`: shared base skill and references.
 - `skills/kaishi/`: command-like skill for first-time baseline.
+- `skills/html/`: command-like skill for Lumina HTML rendering.
 - Future `skills/gengxin/`, `skills/buchong/`, `skills/tijian/`, and `skills/baogao/`.
 - `bin/autody.js`: installation, doctor checks, and package utilities.
 - `scripts/validate_chrome_extension_policy.cjs`: policy guard against removed browser collectors and forbidden browser-state access.
@@ -111,6 +143,15 @@ The package should contain:
 - Stop at baseline outputs.
 
 `skills/kaishi/agents/openai.yaml` should provide a Chinese display name, short description, icon, brand color, and default prompt.
+
+`skills/html/SKILL.md` should be small. It should:
+
+- State when `/html` is used.
+- Require reading `../douyin-analysis/references/report-design.md`.
+- Require reading the Lumina template/workflow reference.
+- Use only the Lumina visual system.
+- Stop if no usable baseline/report data exists.
+- Avoid browser collection and backfill.
 
 ## Data Flow
 
@@ -144,9 +185,10 @@ The implementation should verify:
 - `npm test` passes.
 - `npm run pack:dry` includes the new skill files and excludes deleted browser collectors.
 - `autody doctor --package-only` passes.
-- A tarball install copies `douyin-analysis` and `kaishi` into a temporary Codex home.
+- A tarball install copies `douyin-analysis`, `kaishi`, and `html` into a temporary Codex home.
 - The installed skill scan contains no Playwright, `douyin-session`, cookie, localStorage, `.auth/`, or deleted Python collector references.
 - `/kaishi` docs do not promise report generation.
+- `/html` docs promise Lumina only and do not mention a three-template picker.
 - `validate_chrome_extension_policy.cjs` checks every new command skill that can touch Douyin data.
 
 Manual QA for the browser workflow should run on the user's own Douyin account and confirm that a resumed `/kaishi` run does not duplicate records or overwrite existing good transcripts.
@@ -157,8 +199,8 @@ The current PR branch already removed the old Playwright collector and installed
 
 README and AGENTS should move the recommended user entry from a long prompt to `/kaishi`, while still documenting `$douyin-analysis` as the underlying shared skill.
 
-The CLI install output should mention `/kaishi` as the recommended Codex entry after install.
+The CLI install output should mention `/kaishi` for first baseline and `/html` for Lumina HTML rendering after install.
 
 ## Open Questions
 
-No unresolved product questions remain for v1. The command names are fixed as `/kaishi`, `/gengxin`, `/buchong`, `/tijian`, and `/baogao`; v1 implements `/kaishi`.
+No unresolved product questions remain for v1. The command names are fixed as `/kaishi`, `/gengxin`, `/buchong`, `/tijian`, `/baogao`, and `/html`; v1 implements `/kaishi` and `/html`. `/html` uses Lumina only.
