@@ -1,7 +1,7 @@
 # Autody Command Skills Design
 
 Date: 2026-06-06
-Status: Proposed for user review
+Status: Implemented
 
 ## Goal
 
@@ -14,7 +14,7 @@ Autody should feel like a creator workflow inside Codex, not a prompt that the u
 - `/baogao`: report generation from an existing baseline.
 - `/html`: Lumina HTML rendering from existing baseline/report data.
 
-Version 1 implements `/kaishi` and `/html`. The other four names are reserved in docs and package structure so the workflow can grow without renaming the product later.
+Version 1 implements all six command-like skills. `/kaishi`, `/tijian`, and `/html` have deterministic local-script pieces where possible. `/gengxin`, `/buchong`, and `/baogao` are workflow entries backed by the shared Chrome Extension-first `douyin-analysis` base skill and existing scripts.
 
 ## Product Decision
 
@@ -75,7 +75,20 @@ Display name: `更新`
 
 Purpose: later incremental update. It should find new works and refresh stale public metrics without rebuilding already complete records.
 
-Reserved for v2.
+Required outcome:
+
+- Audit the current run folder before collecting.
+- Use Chrome Extension-first creator-center collection.
+- Find newly published works since the existing baseline.
+- Refresh stale visible metrics for recent or explicitly requested works.
+- Preserve existing good transcripts and deep metrics unless newer Chrome-visible data is collected.
+- Run audit and merge after updates.
+- Report new item count, refreshed item count, output paths, and remaining `dataGap` items.
+
+Out of scope:
+
+- Full account rebuild unless the user asks for `/kaishi`.
+- HTML rendering unless the user asks for `/html`.
 
 ### `/buchong`
 
@@ -83,7 +96,20 @@ Display name: `补充`
 
 Purpose: targeted gap backfill from a `content_gap_audit*.json` file. It should focus on missing transcripts, comments, or deep metrics.
 
-Reserved for v2.
+Required outcome:
+
+- Read the latest or user-specified `content_gap_audit*.json`.
+- Backfill only listed gaps.
+- Use Chrome Extension for creator-center metrics and visible comments.
+- Use one fresh Doubao page/chat per transcript item, then close it.
+- Preserve existing good fields.
+- Rerun audit and merge after backfill.
+- Report resolved and unresolved gaps.
+
+Out of scope:
+
+- New-video discovery unless the user asks for `/gengxin`.
+- HTML rendering unless the user asks for `/html`.
 
 ### `/tijian`
 
@@ -91,7 +117,18 @@ Display name: `体检`
 
 Purpose: local-only data quality check. It should run deterministic audit scripts and summarize duplicate IDs, empty transcripts, missing comments, missing URLs, and missing deep metrics.
 
-Reserved for v2.
+Required outcome:
+
+- Locate the target run folder.
+- Run `audit_content_gaps.cjs` against works and deep metrics.
+- Summarize missing transcripts, comments, URLs, deep metrics, stale metrics, metric conflicts, and warnings.
+- Write or update `content_gap_audit.json`.
+- Do not collect browser data.
+
+Out of scope:
+
+- Backfill. Use `/buchong` after `/tijian` finds gaps.
+- Report generation or HTML rendering.
 
 ### `/baogao`
 
@@ -99,7 +136,18 @@ Display name: `报告`
 
 Purpose: turn an existing complete or near-complete baseline into analysis outputs such as HTML reports, sample reviews, factor maps, and next-batch suggestions.
 
-Reserved for v2.
+Required outcome:
+
+- Read the latest baseline data and audit status.
+- Recompute report analysis from the current source data every run.
+- Separate observed works from hidden/limited or data-gap works.
+- Produce report analysis JSON/Markdown with summary, sample review, factor diagnosis, and next-batch suggestions.
+- Mark conclusions provisional when audit gaps or metric conflicts remain.
+
+Out of scope:
+
+- Browser collection or transcript backfill.
+- HTML rendering unless the user also asks for `/html`.
 
 ### `/html`
 
@@ -131,8 +179,11 @@ The package should contain:
 
 - `skills/douyin-analysis/`: shared base skill and references.
 - `skills/kaishi/`: command-like skill for first-time baseline.
+- `skills/gengxin/`: command-like skill for incremental updates.
+- `skills/buchong/`: command-like skill for targeted gap backfill.
+- `skills/tijian/`: command-like skill for audit-only checks.
+- `skills/baogao/`: command-like skill for fresh report analysis.
 - `skills/html/`: command-like skill for Lumina HTML rendering.
-- Future `skills/gengxin/`, `skills/buchong/`, `skills/tijian/`, and `skills/baogao/`.
 - `bin/autody.js`: installation, doctor checks, and package utilities.
 - `scripts/validate_chrome_extension_policy.cjs`: policy guard against removed browser collectors and forbidden browser-state access.
 - Existing deterministic scripts under `skills/douyin-analysis/scripts/`.
@@ -158,6 +209,13 @@ The package should contain:
 - Regenerate report analysis from the latest data every run.
 - Stop if no usable baseline/report data exists.
 - Avoid browser collection and backfill.
+
+The other command skills should also stay small:
+
+- `gengxin`: incremental update only.
+- `buchong`: audit-driven backfill only.
+- `tijian`: deterministic audit only.
+- `baogao`: fresh analysis only; it may prepare inputs for `/html`, but should not render HTML itself.
 
 ## Data Flow
 
@@ -191,7 +249,7 @@ The implementation should verify:
 - `npm test` passes.
 - `npm run pack:dry` includes the new skill files and excludes deleted browser collectors.
 - `autody doctor --package-only` passes.
-- A tarball install copies `douyin-analysis`, `kaishi`, and `html` into a temporary Codex home.
+- A tarball install copies `douyin-analysis`, `kaishi`, `gengxin`, `buchong`, `tijian`, `baogao`, and `html` into a temporary Codex home.
 - The installed skill scan contains no Playwright, `douyin-session`, cookie, localStorage, `.auth/`, or deleted Python collector references.
 - `/kaishi` docs do not promise report generation.
 - `/html` docs promise Lumina only and do not mention a three-template picker.
@@ -205,8 +263,8 @@ The current PR branch already removed the old Playwright collector and installed
 
 README and AGENTS should move the recommended user entry from a long prompt to `/kaishi`, while still documenting `$douyin-analysis` as the underlying shared skill.
 
-The CLI install output should mention `/kaishi` for first baseline and `/html` for Lumina HTML rendering after install.
+The CLI install output should mention the six command entries after install.
 
 ## Open Questions
 
-No unresolved product questions remain for v1. The command names are fixed as `/kaishi`, `/gengxin`, `/buchong`, `/tijian`, `/baogao`, and `/html`; v1 implements `/kaishi` and `/html`. `/html` uses Lumina only.
+No unresolved product questions remain for v1. The command names are fixed as `/kaishi`, `/gengxin`, `/buchong`, `/tijian`, `/baogao`, and `/html`; v1 implements all six. `/html` uses Lumina only and every report-facing command must analyze current data rather than reuse stale conclusions.

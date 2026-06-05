@@ -1,0 +1,9 @@
+interface:
+  display_name: "补充"
+  short_description: "按体检缺口补逐字稿、评论和深度指标"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  brand_color: "#7563de"
+  default_prompt: "Run /buchong to backfill missing Autody Douyin fields from the latest content gap audit."
+policy:
+  allow_implicit_invocation: true

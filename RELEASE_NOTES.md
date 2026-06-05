@@ -6,6 +6,10 @@ Chrome Extension-only collector guidance.
 - Adds `references/chrome-extension-workflow.md` with tab claiming, works list, video analytics, Top comments, safety, provenance, and fallback boundaries.
 - Removes the separate Python browser collector from the packaged skill.
 - Updates README and AGENTS prompts so agents use the user's existing Chrome session only.
+- Adds command-like Codex skill entries: `/kaishi`, `/gengxin`, `/buchong`, `/tijian`, `/baogao`, and `/html`.
+- Keeps `douyin-analysis` as the shared base layer for safety rules, schemas, Chrome Extension workflow, and deterministic scripts.
+- Adds Lumina-only HTML rendering with a fresh `report_lumina_payload.json` generated from current source data every run.
+- Updates the CLI installer so one install copies all Autody skills.
 
 # release0.0.3
 

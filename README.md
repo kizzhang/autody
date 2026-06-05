@@ -4,7 +4,7 @@
 
 # Autody: 抖音分析
 
-Autody 是一个给 Codex 用的抖音创作者分析 skill。它让 agent 通过 Codex Chrome Extension 使用你已经登录的 Chrome 会话分析你自己的抖音作品，补齐逐字稿、深度指标、Top 评论，并生成 JSON、CSV、Markdown 和 HTML 报告。
+Autody 是一组给 Codex 用的抖音创作者分析 skills。它让 agent 通过 Codex Chrome Extension 使用你已经登录的 Chrome 会话分析你自己的抖音作品，补齐逐字稿、深度指标、Top 评论，并生成 JSON、CSV、Markdown 和 Lumina HTML 报告。
 
 ![Autody 顶图](assets/hero.png)
 
@@ -28,7 +28,7 @@ node bin/autody.js install --force
 
 ```bash
 mkdir -p ~/.codex/skills
-cp -R autody/skills/douyin-analysis ~/.codex/skills/
+cp -R skills/{douyin-analysis,kaishi,gengxin,buchong,tijian,baogao,html} ~/.codex/skills/
 ```
 
 如果 npm 包已经发布到你的环境，也可以使用：
@@ -39,15 +39,26 @@ npx autody@latest install --force
 
 ![Autody quickstart](assets/quickstart.svg)
 
-## 给 Codex 的一句话
+## Codex 命令入口
 
 ```text
-Use $douyin-analysis with the Chrome Extension-first workflow to analyze my own Douyin creator account, backfill missing metrics, extract transcripts one by one, and export JSON/CSV/Markdown/HTML reports.
+/kaishi
+/gengxin
+/buchong
+/tijian
+/baogao
+/html
 ```
 
 Autody 会要求 agent：
 
 - 优先用 Codex Chrome Extension 接管你已经登录的 `creator.douyin.com` Chrome tab。
+- `/kaishi` 做第一次全量建档，只产底账和审计，不顺手生成报告。
+- `/gengxin` 找新作品并刷新过期指标。
+- `/buchong` 按 `content_gap_audit*.json` 只补缺口。
+- `/tijian` 只做本地数据体检，不打开浏览器。
+- `/baogao` 每次基于最新数据重新分析，输出新报告结论。
+- `/html` 只用 Lumina 视觉系统，把最新数据/报告渲染成 HTML；旧 HTML 只当视觉参考，不复用旧结论。
 - 先审计缺口，再只补缺失或过期字段。
 - 每条作品完成后立刻写入 progress，断了可以继续。
 - 发给豆包提取 transcript 时一条视频开一个页面，用完就关，避免页面越来越卡。
@@ -84,15 +95,24 @@ douyin_deep_works_final.json
 douyin_deep_works_final.csv
 douyin_deep_transcripts_final.md
 report.html
+report_lumina_payload.json
+report_lumina.html
 ```
 
 ![Outputs](assets/outputs.svg)
 
 ## Agent 入口
 
-- Agent 主入口：[skills/douyin-analysis/SKILL.md](skills/douyin-analysis/SKILL.md)
+- `/kaishi` 开始建档：[skills/kaishi/SKILL.md](skills/kaishi/SKILL.md)
+- `/gengxin` 更新：[skills/gengxin/SKILL.md](skills/gengxin/SKILL.md)
+- `/buchong` 补充：[skills/buchong/SKILL.md](skills/buchong/SKILL.md)
+- `/tijian` 体检：[skills/tijian/SKILL.md](skills/tijian/SKILL.md)
+- `/baogao` 报告：[skills/baogao/SKILL.md](skills/baogao/SKILL.md)
+- `/html` Lumina HTML：[skills/html/SKILL.md](skills/html/SKILL.md)
+- 共享底层 skill：[skills/douyin-analysis/SKILL.md](skills/douyin-analysis/SKILL.md)
 - Chrome Extension 工作流：[skills/douyin-analysis/references/chrome-extension-workflow.md](skills/douyin-analysis/references/chrome-extension-workflow.md)
 - 报告设计规则：[skills/douyin-analysis/references/report-design.md](skills/douyin-analysis/references/report-design.md)
+- Lumina HTML 工作流：[skills/douyin-analysis/references/lumina-html-workflow.md](skills/douyin-analysis/references/lumina-html-workflow.md)
 - 数据流程参考：[skills/douyin-analysis/references/douyin-workflow.md](skills/douyin-analysis/references/douyin-workflow.md)
 - 人类快速提示：[AGENTS.md](AGENTS.md)
 
@@ -101,7 +121,7 @@ CLI 只负责安装和检查 skill：
 ```bash
 autody install --force
 autody doctor
-autody skill-path
+autody skill-path [skill]
 ```
 
 ## 安全与合规

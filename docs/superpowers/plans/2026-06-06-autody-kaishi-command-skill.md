@@ -1,10 +1,12 @@
-# Autody Kaishi And HTML Command Skills Implementation Plan
+# Autody Command Skills Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `/kaishi` for first-time Douyin baseline creation and `/html` for Lumina-only HTML rendering.
+**Goal:** Add the six Autody command-like Codex skills: `/kaishi`, `/gengxin`, `/buchong`, `/tijian`, `/baogao`, and `/html`.
 
-**Architecture:** Keep `douyin-analysis` as the shared base skill with safety rules, Chrome Extension workflow references, deterministic scripts, and Lumina references. Add thin `kaishi` and `html` skills that fix user intent to "start full baseline" and "render Lumina HTML". For `/html`, follow the Guizang pattern: preserve the visual system, but rebuild the report model and conclusions from the latest input data every run. Update packaging so `autody install` installs `douyin-analysis`, `kaishi`, and `html`; add validator checks so the package cannot drift back to old browser collectors, report generation in `/kaishi`, stale analysis reuse in `/html`, or multi-template HTML selection.
+**Status:** Implemented on `codex/chrome-extension-only-collector` with local install QA, tarball install QA, and Lumina renderer smoke tests.
+
+**Architecture:** Keep `douyin-analysis` as the shared base skill with safety rules, Chrome Extension workflow references, deterministic scripts, and Lumina references. Add thin command skills that fix user intent: first baseline, incremental update, gap backfill, audit-only check, fresh report analysis, and Lumina HTML rendering. For `/html`, follow the Guizang pattern: preserve the visual system, but rebuild the report model and conclusions from the latest input data every run. Update packaging so `autody install` installs all command skills plus `douyin-analysis`; add validator checks so the package cannot drift back to old browser collectors, report generation in `/kaishi`, stale analysis reuse in report commands, or multi-template HTML selection.
 
 **Tech Stack:** Node.js 18+, Codex skills, YAML skill metadata, Markdown docs, existing `npm test` validation pipeline.
 
@@ -33,6 +35,18 @@ Do not stage or revert those files unless the user explicitly asks. Each commit 
 - Create `skills/kaishi/SKILL.md`: command-like skill instructions for `/kaishi`.
 - Create `skills/kaishi/agents/openai.yaml`: Codex app display metadata for the command-like skill.
 - Create `skills/kaishi/assets/icon.svg`: local icon used by the skill metadata.
+- Create `skills/gengxin/SKILL.md`: command-like skill instructions for incremental updates.
+- Create `skills/gengxin/agents/openai.yaml`: Codex app display metadata for `/gengxin`.
+- Create `skills/gengxin/assets/icon.svg`: local icon used by the skill metadata.
+- Create `skills/buchong/SKILL.md`: command-like skill instructions for audit-driven backfill.
+- Create `skills/buchong/agents/openai.yaml`: Codex app display metadata for `/buchong`.
+- Create `skills/buchong/assets/icon.svg`: local icon used by the skill metadata.
+- Create `skills/tijian/SKILL.md`: command-like skill instructions for local audit-only checks.
+- Create `skills/tijian/agents/openai.yaml`: Codex app display metadata for `/tijian`.
+- Create `skills/tijian/assets/icon.svg`: local icon used by the skill metadata.
+- Create `skills/baogao/SKILL.md`: command-like skill instructions for fresh report analysis.
+- Create `skills/baogao/agents/openai.yaml`: Codex app display metadata for `/baogao`.
+- Create `skills/baogao/assets/icon.svg`: local icon used by the skill metadata.
 - Create `skills/html/SKILL.md`: command-like skill instructions for `/html`.
 - Create `skills/html/agents/openai.yaml`: Codex app display metadata for the Lumina HTML command.
 - Create `skills/html/assets/icon.svg`: local icon used by the skill metadata.
@@ -47,12 +61,24 @@ Do not stage or revert those files unless the user explicitly asks. Each commit 
 - Modify `RELEASE_NOTES.md`: document the new command-like skill entry.
 - Modify `package.json`: syntax-check the Lumina renderer in `npm test`.
 
-## Task 1: Add `/kaishi`, `/html`, Lumina References, And Policy Guard
+## Task 1: Add Command Skills, Lumina References, And Policy Guard
 
 **Files:**
 - Create: `skills/kaishi/SKILL.md`
 - Create: `skills/kaishi/agents/openai.yaml`
 - Create: `skills/kaishi/assets/icon.svg`
+- Create: `skills/gengxin/SKILL.md`
+- Create: `skills/gengxin/agents/openai.yaml`
+- Create: `skills/gengxin/assets/icon.svg`
+- Create: `skills/buchong/SKILL.md`
+- Create: `skills/buchong/agents/openai.yaml`
+- Create: `skills/buchong/assets/icon.svg`
+- Create: `skills/tijian/SKILL.md`
+- Create: `skills/tijian/agents/openai.yaml`
+- Create: `skills/tijian/assets/icon.svg`
+- Create: `skills/baogao/SKILL.md`
+- Create: `skills/baogao/agents/openai.yaml`
+- Create: `skills/baogao/assets/icon.svg`
 - Create: `skills/html/SKILL.md`
 - Create: `skills/html/agents/openai.yaml`
 - Create: `skills/html/assets/icon.svg`
@@ -70,6 +96,10 @@ Edit `scripts/validate_chrome_extension_policy.cjs` to add the new `assertInclud
 assertIncludes("skills/kaishi/SKILL.md", "Chrome Extension-first");
 assertIncludes("skills/kaishi/SKILL.md", "Do not create HTML dashboards");
 assertIncludes("skills/kaishi/agents/openai.yaml", "开始建档");
+assertIncludes("skills/gengxin/SKILL.md", "incremental update");
+assertIncludes("skills/buchong/SKILL.md", "audit-driven backfill");
+assertIncludes("skills/tijian/SKILL.md", "audit-only");
+assertIncludes("skills/baogao/SKILL.md", "Regenerate report analysis from the latest data every run.");
 assertIncludes("skills/html/SKILL.md", "Lumina");
 assertIncludes("skills/html/SKILL.md", "Do not offer a three-template picker");
 assertIncludes("skills/html/SKILL.md", "Regenerate the report analysis from the latest data every run.");
@@ -85,6 +115,14 @@ Add the new checked files to `checkedFiles`:
 ```js
   "skills/kaishi/SKILL.md",
   "skills/kaishi/agents/openai.yaml",
+  "skills/gengxin/SKILL.md",
+  "skills/gengxin/agents/openai.yaml",
+  "skills/buchong/SKILL.md",
+  "skills/buchong/agents/openai.yaml",
+  "skills/tijian/SKILL.md",
+  "skills/tijian/agents/openai.yaml",
+  "skills/baogao/SKILL.md",
+  "skills/baogao/agents/openai.yaml",
   "skills/html/SKILL.md",
   "skills/html/agents/openai.yaml",
   "skills/douyin-analysis/references/lumina-html-workflow.md",
@@ -99,7 +137,7 @@ Run:
 npm test
 ```
 
-Expected: FAIL because `skills/kaishi/SKILL.md` and `skills/html/SKILL.md` do not exist yet.
+Expected: FAIL because the command skill files do not exist yet.
 
 - [ ] **Step 3: Create `skills/kaishi/SKILL.md`**
 
