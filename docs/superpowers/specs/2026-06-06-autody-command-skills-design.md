@@ -28,13 +28,15 @@ HTML output should not expose a three-template picker. Use the existing Lumina v
 - `/Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-05-30/build_superdesign_hero_variants_2026-05-31.cjs`
 - `/Users/kaneki/Projects/fun/content/outputs/competitor_ai_research_2026-06-05/build_autody_lumina_competitor_report_2026-06-05.cjs`
 
+Guizang report variants are the reuse model for `/html`: keep the visual grammar stable, but rebuild the view model from current data every run. The useful source is `/Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-05-30/build_taste_guizang_variants_2026-05-31.cjs`. It separates `loadModel()` from `renderPage()`, which is the right shape for Autody reuse.
+
 ## Scope
 
 V1 is Douyin-only. It analyzes only the user's own account or explicitly authorized creator data.
 
 `/kaishi` creates a baseline dataset. It does not generate strategy reports, content advice, or retrospective analysis. Reports belong to `/baogao`.
 
-`/html` renders an existing baseline or report payload into Lumina HTML. It does not collect browser data and does not choose between multiple visual templates.
+`/html` renders an existing baseline or report payload into Lumina HTML. It does not collect browser data and does not choose between multiple visual templates. Every `/html` run must rebuild its analysis/view payload from the latest input data; it must not reuse stale conclusions from an older report just because the visual template is reused.
 
 `/kaishi` uses the Codex Chrome Extension / Chrome plugin for all Douyin creator-center browser work. It must not use Playwright, a second browser profile, cookie inspection, localStorage inspection, password/session-store inspection, or raw private browser dumps.
 
@@ -109,7 +111,8 @@ Required outcome:
 
 - Locate the target run folder, normally `outputs/douyin_analysis_YYYY-MM-DD/`.
 - Prefer `douyin_deep_works_final.json` as the data input.
-- Use the packaged Lumina template/workflow reference, derived from the existing `superdesign_lumina_dashboard_2026-05-31.html` and related build scripts.
+- Rebuild a fresh `report_lumina_payload.json` from current input data before writing HTML.
+- Use the packaged Lumina visual system/workflow reference, derived from the existing Lumina and Guizang build scripts.
 - Write `report_lumina.html` or another explicit Lumina HTML file into the run folder.
 - Keep the source JSON next to the HTML.
 - Report the output path and any data quality caveats.
@@ -119,7 +122,8 @@ Out of scope:
 - Browser collection.
 - Transcript or metric backfill.
 - Three-template selection.
-- Strategic conclusions that are not supported by the input data.
+- Reusing old strategic conclusions without rechecking them against the current input data.
+- Strategic conclusions that are not supported by the current input data.
 
 ## Architecture
 
@@ -132,6 +136,7 @@ The package should contain:
 - `bin/autody.js`: installation, doctor checks, and package utilities.
 - `scripts/validate_chrome_extension_policy.cjs`: policy guard against removed browser collectors and forbidden browser-state access.
 - Existing deterministic scripts under `skills/douyin-analysis/scripts/`.
+- `skills/douyin-analysis/scripts/render_lumina_report.cjs`: deterministic Lumina renderer. It should read current run data, render the stable Lumina visual system, and embed a freshly generated payload. Any higher-level narrative supplied by the agent must be regenerated for the same source data before render.
 
 `skills/kaishi/SKILL.md` should be small. It should:
 
@@ -150,6 +155,7 @@ The package should contain:
 - Require reading `../douyin-analysis/references/report-design.md`.
 - Require reading the Lumina template/workflow reference.
 - Use only the Lumina visual system.
+- Regenerate report analysis from the latest data every run.
 - Stop if no usable baseline/report data exists.
 - Avoid browser collection and backfill.
 

@@ -4,7 +4,7 @@
 
 **Goal:** Add `/kaishi` for first-time Douyin baseline creation and `/html` for Lumina-only HTML rendering.
 
-**Architecture:** Keep `douyin-analysis` as the shared base skill with safety rules, Chrome Extension workflow references, deterministic scripts, and Lumina references. Add thin `kaishi` and `html` skills that fix user intent to "start full baseline" and "render Lumina HTML". Update packaging so `autody install` installs `douyin-analysis`, `kaishi`, and `html`; add validator checks so the package cannot drift back to old browser collectors, report generation in `/kaishi`, or multi-template HTML selection.
+**Architecture:** Keep `douyin-analysis` as the shared base skill with safety rules, Chrome Extension workflow references, deterministic scripts, and Lumina references. Add thin `kaishi` and `html` skills that fix user intent to "start full baseline" and "render Lumina HTML". For `/html`, follow the Guizang pattern: preserve the visual system, but rebuild the report model and conclusions from the latest input data every run. Update packaging so `autody install` installs `douyin-analysis`, `kaishi`, and `html`; add validator checks so the package cannot drift back to old browser collectors, report generation in `/kaishi`, stale analysis reuse in `/html`, or multi-template HTML selection.
 
 **Tech Stack:** Node.js 18+, Codex skills, YAML skill metadata, Markdown docs, existing `npm test` validation pipeline.
 
@@ -38,12 +38,14 @@ Do not stage or revert those files unless the user explicitly asks. Each commit 
 - Create `skills/html/assets/icon.svg`: local icon used by the skill metadata.
 - Create `skills/douyin-analysis/references/lumina-html-workflow.md`: Lumina-only rendering workflow and source provenance.
 - Create `skills/douyin-analysis/references/lumina-template.html`: packaged Lumina HTML template copied from the existing finished template.
+- Create `skills/douyin-analysis/scripts/render_lumina_report.cjs`: deterministic renderer that rebuilds a fresh Lumina payload from current input data before writing HTML.
 - Modify `scripts/validate_chrome_extension_policy.cjs`: require the new skill files and scan them for forbidden old collector/browser-state references.
 - Modify `bin/autody.js`: install multiple packaged skills and expose `skill-path [skill]`.
 - Modify `README.md`: make `/kaishi` the recommended Codex entry.
 - Modify `AGENTS.md`: make `/kaishi` the recommended agent prompt.
 - Modify `skills/douyin-analysis/agents/openai.yaml`: keep the base skill metadata, but point first-time users toward `/kaishi`.
 - Modify `RELEASE_NOTES.md`: document the new command-like skill entry.
+- Modify `package.json`: syntax-check the Lumina renderer in `npm test`.
 
 ## Task 1: Add `/kaishi`, `/html`, Lumina References, And Policy Guard
 
@@ -56,7 +58,9 @@ Do not stage or revert those files unless the user explicitly asks. Each commit 
 - Create: `skills/html/assets/icon.svg`
 - Create: `skills/douyin-analysis/references/lumina-html-workflow.md`
 - Create: `skills/douyin-analysis/references/lumina-template.html`
+- Create: `skills/douyin-analysis/scripts/render_lumina_report.cjs`
 - Modify: `scripts/validate_chrome_extension_policy.cjs`
+- Modify: `package.json`
 
 - [ ] **Step 1: Extend validator before the files exist**
 
@@ -68,9 +72,12 @@ assertIncludes("skills/kaishi/SKILL.md", "Do not create HTML dashboards");
 assertIncludes("skills/kaishi/agents/openai.yaml", "开始建档");
 assertIncludes("skills/html/SKILL.md", "Lumina");
 assertIncludes("skills/html/SKILL.md", "Do not offer a three-template picker");
+assertIncludes("skills/html/SKILL.md", "Regenerate the report analysis from the latest data every run.");
 assertIncludes("skills/html/agents/openai.yaml", "Lumina HTML");
 assertIncludes("skills/douyin-analysis/references/lumina-html-workflow.md", "Lumina only");
+assertIncludes("skills/douyin-analysis/references/lumina-html-workflow.md", "fresh report payload");
 assertIncludes("skills/douyin-analysis/references/lumina-template.html", "sdv-lumina");
+assertIncludes("skills/douyin-analysis/scripts/render_lumina_report.cjs", "report_lumina_payload.json");
 ```
 
 Add the new checked files to `checkedFiles`:
@@ -81,6 +88,7 @@ Add the new checked files to `checkedFiles`:
   "skills/html/SKILL.md",
   "skills/html/agents/openai.yaml",
   "skills/douyin-analysis/references/lumina-html-workflow.md",
+  "skills/douyin-analysis/scripts/render_lumina_report.cjs",
 ```
 
 - [ ] **Step 2: Run validation and confirm the red state**
@@ -212,7 +220,7 @@ description: Use when the user invokes /html or asks to render an existing Autod
 
 Use this command-like skill for `/html` / `Lumina HTML`.
 
-`/html` turns an existing Autody run folder into a Lumina HTML page. It is a rendering workflow, not a collection workflow.
+`/html` turns an existing Autody run folder into a Lumina HTML page. It is a rendering workflow, not a collection workflow. Regenerate the report analysis from the latest data every run.
 
 Do not use Chrome, Doubao, creator center, or public Douyin pages from this command. If data is missing, ask the user to run `/kaishi`, `/gengxin`, `/buchong`, or `/tijian` first.
 
@@ -224,6 +232,8 @@ Before rendering, read:
 2. `../douyin-analysis/references/lumina-html-workflow.md`
 
 Use Lumina only. Do not offer a three-template picker and do not mention unused template families.
+
+Use the Guizang reuse pattern: keep visual elements stable, but rebuild the view model and conclusions from current data. Old Lumina or Guizang HTML files are visual references only; never copy their old conclusions into a new report.
 
 ## Inputs
 
@@ -245,13 +255,14 @@ If the analysis JSON is absent, render a data-first Lumina dashboard from `douyi
 
 ## Output
 
-Write a Lumina HTML file into the run folder:
+Write a fresh payload and Lumina HTML file into the run folder:
 
 ```text
+report_lumina_payload.json
 report_lumina.html
 ```
 
-Keep source JSON files next to the HTML. Report the output path and any data quality caveats.
+Keep source JSON files next to the HTML. The payload must include `generatedAt`, `sourceFiles`, `summary`, and `items`. Report the output path and any data quality caveats.
 
 ## Boundaries
 
@@ -260,6 +271,7 @@ Keep source JSON files next to the HTML. Report the output path and any data qua
 - Do not inspect cookies, localStorage, passwords, session stores, or browser profile files.
 - Do not offer a three-template picker.
 - Do not invent strategic conclusions when the input data does not support them.
+- Do not reuse stale report conclusions. Reanalyze against the current source files before rendering.
 ```
 
 - [ ] **Step 7: Create `skills/html/agents/openai.yaml`**
@@ -298,11 +310,16 @@ Create `skills/douyin-analysis/references/lumina-html-workflow.md` with this exa
 
 Use this reference when `/html` renders an Autody run folder into HTML.
 
-Lumina only: do not offer a three-template picker. The historical Lumina sources used to package this workflow are:
+Lumina only: do not offer a three-template picker. Preserve visual elements, but regenerate the analysis every run.
+
+The Guizang variants show the correct reuse pattern: separate `loadModel()` from `renderPage()`. Autody should keep that pattern. Historical HTML is a visual source, not a source of current conclusions.
+
+Historical sources used to package this workflow:
 
 - `/Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-05-30/superdesign_lumina_dashboard_2026-05-31.html`
 - `/Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-05-30/build_superdesign_hero_variants_2026-05-31.cjs`
 - `/Users/kaneki/Projects/fun/content/outputs/competitor_ai_research_2026-06-05/build_autody_lumina_competitor_report_2026-06-05.cjs`
+- `/Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-05-30/build_taste_guizang_variants_2026-05-31.cjs`
 
 ## Inputs
 
@@ -322,17 +339,43 @@ content_gap_audit.json
 
 Use `douyin_deep_works_final.json` as the source of truth for item-level metrics, transcripts, comments, and provenance. Use analysis JSON only for conclusions that are explicitly present.
 
+## Fresh Analysis Rule
+
+Every `/html` run must create a fresh report payload from the current source files:
+
+```text
+report_lumina_payload.json
+```
+
+The payload must include:
+
+```json
+{
+  "generatedAt": "ISO timestamp",
+  "sourceFiles": {
+    "works": "douyin_deep_works_final.json",
+    "analysis": "optional analysis json",
+    "audit": "optional audit json"
+  },
+  "summary": {},
+  "items": []
+}
+```
+
+If old HTML exists, use it only as a visual reference. Do not copy old hero claims, sample rankings, diagnoses, next actions, or strategic conclusions unless the same conclusion is regenerated from the current source files.
+
 ## Rendering Contract
 
 - Use `lumina-template.html` as the visual source.
 - Preserve the Lumina visual system: yellow hero, dark proof strip, explicit content bands, data plaque, bubble map, case cards, factor map, searchable table, and responsive mobile layout.
+- Recompute summary statistics, buckets, selected examples, caveats, and table rows from the current payload.
 - Write `report_lumina.html` into the run folder unless the user names another output file.
 - Keep all source JSON next to the HTML.
 - Include data quality caveats when audit gaps exist.
 
 ## Boundaries
 
-`/html` does not collect browser data, backfill metrics, create transcripts, or choose among multiple templates. If the data is incomplete, render only supported sections and report the missing inputs.
+`/html` does not collect browser data, backfill metrics, create transcripts, choose among multiple templates, or reuse stale conclusions. If the data is incomplete, render only supported sections and report the missing inputs.
 ```
 
 - [ ] **Step 10: Package the existing Lumina template**
@@ -344,7 +387,45 @@ cp /Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-05-30/superde
   skills/douyin-analysis/references/lumina-template.html
 ```
 
-- [ ] **Step 11: Run validation and confirm green state for Task 1**
+- [ ] **Step 11: Create the fresh-data Lumina renderer**
+
+Create `skills/douyin-analysis/scripts/render_lumina_report.cjs`.
+
+Required behavior:
+
+- Accept `--works <path>` and `--out <dir>`.
+- Optionally accept `--analysis <path>`, `--audit <path>`, and `--html <filename>`.
+- Read the current works JSON every run.
+- Build `report_lumina_payload.json` with `generatedAt`, `sourceFiles`, `summary`, and `items`.
+- Recompute summary statistics and item ordering from the current works JSON.
+- Write `report_lumina.html` using Lumina visual classes including `sdv-lumina`.
+- Never read old HTML as a source of conclusions.
+
+Minimum smoke command:
+
+```bash
+node skills/douyin-analysis/scripts/render_lumina_report.cjs \
+  --works outputs/douyin_analysis_2026-06-05/douyin_deep_works_final.json \
+  --out /tmp/autody-lumina-smoke
+test -f /tmp/autody-lumina-smoke/report_lumina_payload.json
+test -f /tmp/autody-lumina-smoke/report_lumina.html
+rg -q 'sdv-lumina' /tmp/autody-lumina-smoke/report_lumina.html
+rg -q 'sourceFiles' /tmp/autody-lumina-smoke/report_lumina_payload.json
+```
+
+Expected: PASS.
+
+- [ ] **Step 12: Add Lumina renderer syntax check to `package.json`**
+
+Update the `validate` script in `package.json` so it also runs:
+
+```bash
+node --check skills/douyin-analysis/scripts/render_lumina_report.cjs
+```
+
+The final `validate` script should still run `doctor --package-only`, both existing script syntax checks, and `scripts/validate_chrome_extension_policy.cjs`.
+
+- [ ] **Step 13: Run validation and confirm green state for Task 1**
 
 Run:
 
@@ -360,12 +441,12 @@ Chrome Extension-only policy: ok
 ```
 
 - [ ] **Step 7: Commit Task 1**
-- [ ] **Step 12: Commit Task 1**
+- [ ] **Step 14: Commit Task 1**
 
 Run:
 
 ```bash
-git add scripts/validate_chrome_extension_policy.cjs skills/kaishi/SKILL.md skills/kaishi/agents/openai.yaml skills/kaishi/assets/icon.svg skills/html/SKILL.md skills/html/agents/openai.yaml skills/html/assets/icon.svg skills/douyin-analysis/references/lumina-html-workflow.md skills/douyin-analysis/references/lumina-template.html
+git add package.json scripts/validate_chrome_extension_policy.cjs skills/kaishi/SKILL.md skills/kaishi/agents/openai.yaml skills/kaishi/assets/icon.svg skills/html/SKILL.md skills/html/agents/openai.yaml skills/html/assets/icon.svg skills/douyin-analysis/references/lumina-html-workflow.md skills/douyin-analysis/references/lumina-template.html skills/douyin-analysis/scripts/render_lumina_report.cjs
 git commit -m "Add kaishi and html command skills"
 ```
 
@@ -472,6 +553,7 @@ function assertPackageShape() {
     "skills/douyin-analysis/references/lumina-template.html",
     "skills/douyin-analysis/scripts/audit_content_gaps.cjs",
     "skills/douyin-analysis/scripts/merge_content_outputs.cjs",
+    "skills/douyin-analysis/scripts/render_lumina_report.cjs",
     "skills/kaishi/SKILL.md",
     "skills/kaishi/agents/openai.yaml",
     "skills/kaishi/assets/icon.svg",
@@ -766,6 +848,7 @@ package/skills/html/agents/openai.yaml
 package/skills/html/assets/icon.svg
 package/skills/douyin-analysis/references/lumina-html-workflow.md
 package/skills/douyin-analysis/references/lumina-template.html
+package/skills/douyin-analysis/scripts/render_lumina_report.cjs
 ```
 
 Expected tarball file list must not include:
@@ -791,6 +874,12 @@ test -f "$tmp/codex/skills/douyin-analysis/SKILL.md"
 test -f "$tmp/codex/skills/kaishi/SKILL.md"
 test -f "$tmp/codex/skills/html/SKILL.md"
 test -f "$tmp/codex/skills/douyin-analysis/references/lumina-template.html"
+test -f "$tmp/codex/skills/douyin-analysis/scripts/render_lumina_report.cjs"
+node "$tmp/codex/skills/douyin-analysis/scripts/render_lumina_report.cjs" \
+  --works /Users/kaneki/Projects/fun/content/outputs/douyin_analysis_2026-06-05/douyin_deep_works_final.json \
+  --out "$tmp/lumina-smoke"
+test -f "$tmp/lumina-smoke/report_lumina_payload.json"
+test -f "$tmp/lumina-smoke/report_lumina.html"
 rg -n 'douyin-session|crawler\.py|backfill\.py|requirements\.txt|uv run|\.auth/' "$tmp/codex/skills" && exit 1 || true
 ```
 
@@ -806,6 +895,7 @@ test -f "$HOME/.codex/skills/douyin-analysis/SKILL.md"
 test -f "$HOME/.codex/skills/kaishi/SKILL.md"
 test -f "$HOME/.codex/skills/html/SKILL.md"
 test -f "$HOME/.codex/skills/douyin-analysis/references/lumina-template.html"
+test -f "$HOME/.codex/skills/douyin-analysis/scripts/render_lumina_report.cjs"
 rg -n 'douyin-session|crawler\.py|backfill\.py|requirements\.txt|uv run|\.auth/' "$HOME/.codex/skills/douyin-analysis" "$HOME/.codex/skills/kaishi" "$HOME/.codex/skills/html" && exit 1 || true
 ```
 
@@ -901,6 +991,8 @@ Spec coverage:
 
 - `/kaishi` command-like skill: Task 1.
 - `/html` command-like skill and Lumina-only reference: Task 1.
+- Fresh `/html` report payload from current data: Task 1 renderer and Task 4 smoke QA.
+- Guizang-style separation of data model and visual renderer: Task 1 workflow reference and renderer.
 - `douyin-analysis` as shared base: Task 1 skill instructions.
 - Chrome Extension-only browser path: Task 1 validator and skill text.
 - No report generation in `/kaishi`: Task 1 validator and skill text.
@@ -923,5 +1015,7 @@ Type and name consistency:
 - HTML skill directory is `skills/html`.
 - HTML skill name is `html`.
 - User-facing HTML command is `/html`.
+- Lumina renderer is `skills/douyin-analysis/scripts/render_lumina_report.cjs`.
+- Fresh payload output is `report_lumina_payload.json`.
 - Shared base skill remains `douyin-analysis`.
 - Installed skill names are `douyin-analysis`, `kaishi`, and `html`.
