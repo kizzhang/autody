@@ -16,8 +16,9 @@ Regenerate report analysis from the latest data every run. Do not reuse stale co
 Before analyzing, read:
 
 1. `../douyin-analysis/SKILL.md`
-2. `../douyin-analysis/references/report-design.md`
-3. `../douyin-analysis/references/douyin-workflow.md`
+2. `../douyin-analysis/references/report-agent.md`
+3. `../douyin-analysis/references/report-design.md`
+4. `../douyin-analysis/references/douyin-workflow.md`
 
 ## Completion Boundary
 
@@ -26,7 +27,8 @@ Before analyzing, read:
 1. Located the target run folder and latest baseline files.
 2. Read audit status and marked conclusions provisional when gaps or conflicts remain.
 3. Recomputed summary statistics, observed versus hidden/limited groups, strongest samples, weakest samples, factor diagnosis, and next-batch suggestions from current data.
-4. Written fresh report analysis JSON and Markdown in the run folder.
-5. Reported source files, output paths, and data caveats.
+4. Blind-scored new videos with an isolated subagent before using their observed metrics, or marked `blind_score_blocked` when no isolated subagent is available.
+5. Written fresh report analysis JSON and Markdown in the run folder.
+6. Reported source files, output paths, blind-scoring status, and data caveats.
 
 Do not render HTML in `/baogao`; call `/html` next for Lumina rendering.

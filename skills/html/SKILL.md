@@ -16,7 +16,8 @@ Do not use Chrome, Doubao, creator center, or public Douyin pages from this comm
 Before rendering, read:
 
 1. `../douyin-analysis/references/report-design.md`
-2. `../douyin-analysis/references/lumina-html-workflow.md`
+2. `../douyin-analysis/references/report-agent.md`
+3. `../douyin-analysis/references/lumina-html-workflow.md`
 
 Use Lumina only. Do not offer a three-template picker and do not mention unused template families.
 
@@ -56,6 +57,8 @@ node ~/.codex/skills/douyin-analysis/scripts/render_lumina_report.cjs \
 ```
 
 The payload must include `generatedAt`, `sourceFiles`, `summary`, and `items`. Report the HTML path and any data quality caveats.
+
+If the payload includes new videos, carry through the blind prediction, observed result, delta, calibration, and `blind_score_blocked` state from the report analysis. Do not create retrospective blind scores during rendering.
 
 ## Boundaries
 
