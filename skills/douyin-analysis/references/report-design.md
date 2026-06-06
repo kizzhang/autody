@@ -44,4 +44,4 @@ Do not collapse everything into prose. Use structured sections, charts, cards, a
 
 - Save HTML in the run folder, for example `outputs/douyin_analysis_YYYY-MM-DD/report.html`.
 - Keep the source JSON next to the report so future runs can regenerate it.
-- If you create screenshots for documentation, store them under a public `assets/` or report-local media folder, never inside `.auth/` or `.cheat-cache/`.
+- If you create screenshots for documentation, store them under a public `assets/` or report-local media folder, never inside `.cheat-cache/`.

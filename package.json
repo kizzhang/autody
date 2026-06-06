@@ -34,10 +34,11 @@
     "RELEASE_NOTES.md",
     "assets/",
     "bin/",
+    "scripts/",
     "skills/"
   ],
   "scripts": {
-    "validate": "node bin/autody.js doctor --package-only && node --check skills/douyin-analysis/scripts/audit_content_gaps.cjs && node --check skills/douyin-analysis/scripts/merge_content_outputs.cjs",
+    "validate": "node bin/autody.js doctor --package-only && node --check skills/douyin-analysis/scripts/audit_content_gaps.cjs && node --check skills/douyin-analysis/scripts/merge_content_outputs.cjs && node --check skills/douyin-analysis/scripts/render_lumina_report.cjs && node scripts/validate_chrome_extension_policy.cjs",
     "pack:dry": "npm pack --dry-run",
     "test": "npm run validate"
   },

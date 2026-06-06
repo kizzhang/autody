@@ -1,0 +1,9 @@
+interface:
+  display_name: "更新"
+  short_description: "更新已有抖音底账，抓新作品并刷新过期指标"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  brand_color: "#2399a5"
+  default_prompt: "Run /gengxin to update my existing Autody Douyin baseline with new works and refreshed Chrome-visible metrics."
+policy:
+  allow_implicit_invocation: true

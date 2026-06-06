@@ -7,6 +7,10 @@ description: Use when analyzing the user's own Douyin creator account or authori
 
 Use this skill only for the user's own Douyin creator account, their own videos, or creator data they are explicitly authorized to manage. If the task involves another person's account, private dashboard, or unauthorized data, do not proceed.
 
+This skill is Chrome Extension-first. Use the Codex Chrome Extension / Chrome plugin to work inside the user's already logged-in Chrome session. Do not start a separate browser profile or use a second browser collector. If Chrome pages do not expose a required field, record a `dataGap` note instead of guessing.
+
+Do not inspect browser cookies, localStorage, passwords, or session stores. The Chrome Extension path should claim or open normal Chrome tabs, read visible creator-center pages, use official in-page exports when available, and save only creator metrics/transcripts/comments that the user is authorized to analyze.
+
 ## Workflow
 
 1. Define scope and output folder.
@@ -15,6 +19,9 @@ Use this skill only for the user's own Douyin creator account, their own videos,
    - Persist progress after every item.
 
 2. Collect or load works data.
+   - Preferred: use Chrome Extension collection path from `references/chrome-extension-workflow.md`.
+   - Claim an existing Chrome tab on `creator.douyin.com` when present; otherwise open creator center in Chrome and let the user log in if needed.
+   - Read visible creator-center tables/cards or use official page exports/downloads when available.
    - Required fields: `index`, `mid`, `publicUrl`, `publishedAt`, `caption`, `itemType`, `plays`, `likes`, `comments`, `shares`, `favorites`, `finalTranscript`.
    - Deep fields: average watch time, completion rate, 3s/5s retention, new followers, lost followers, follow rate, profile visits, cover click rate, Top comments.
 
@@ -29,14 +36,14 @@ Use this skill only for the user's own Douyin creator account, their own videos,
    - Later runs should fetch only missing or stale fields.
 
 5. Backfill deep metrics.
-   - Use `scripts/douyin-session/backfill.py` for creator-center detail metrics and Top comments.
-   - Use the user's own login in a local Playwright profile under the project `.auth/`.
-   - Never inspect, export, or commit cookies, passwords, localStorage, or browser session stores.
+   - Preferred: use Chrome Extension to open each creator-center video analytics page in the user's Chrome session, read visible metrics, and persist each item.
+   - Use the public video page in Chrome for Top comments when creator-center comment pages do not expose enough comments.
+   - If a required deep metric is not visible in Chrome, add it to `dataGap` and keep going.
 
 6. Export and validate.
    - Merge to JSON, CSV, and Markdown with `scripts/merge_content_outputs.cjs`.
    - Validate item count, duplicate IDs, missing URLs, empty transcripts, missing deep metrics, and missing Top comments.
-   - Keep `.auth/`, `.cheat-cache/`, cookies, and raw private dumps out of git.
+   - Keep `.cheat-cache/`, cookies, browser storage, and raw private dumps out of git.
 
 7. Present the report when asked for analysis.
    - Read `references/report-design.md` before creating HTML dashboards or strategy reports.
@@ -46,6 +53,12 @@ Use this skill only for the user's own Douyin creator account, their own videos,
 
 ## Commands
 
+Chrome Extension-first collection:
+
+```text
+Use the Chrome plugin / Codex Chrome Extension to claim or open creator.douyin.com, collect my own Douyin works and video-analysis pages, save progress after each item, and mark fields Chrome cannot expose as dataGap.
+```
+
 Audit gaps:
 
 ```bash
@@ -53,36 +66,6 @@ node ~/.codex/skills/douyin-analysis/scripts/audit_content_gaps.cjs \
   --works outputs/douyin_analysis_YYYY-MM-DD/douyin_works_final.json \
   --deep outputs/douyin_analysis_YYYY-MM-DD/deep_metrics_progress.json \
   --out outputs/douyin_analysis_YYYY-MM-DD/content_gap_audit.json
-```
-
-Login or refresh creator-center auth:
-
-```bash
-CHEAT_PROJECT_ROOT="$PWD" \
-uv run --python 3.11 --with playwright \
-python ~/.codex/skills/douyin-analysis/scripts/douyin-session/crawler.py
-```
-
-Backfill missing deep metrics and comments:
-
-```bash
-CHEAT_PROJECT_ROOT="$PWD" \
-uv run --python 3.11 --with playwright \
-python ~/.codex/skills/douyin-analysis/scripts/douyin-session/backfill.py \
-  --works outputs/douyin_analysis_YYYY-MM-DD/douyin_works_final.json \
-  --out outputs/douyin_analysis_YYYY-MM-DD/deep_metrics_progress.json \
-  --comment-limit 20
-```
-
-Backfill selected indexes:
-
-```bash
-CHEAT_PROJECT_ROOT="$PWD" \
-uv run --python 3.11 --with playwright \
-python ~/.codex/skills/douyin-analysis/scripts/douyin-session/backfill.py \
-  --works outputs/douyin_analysis_YYYY-MM-DD/douyin_works_final.json \
-  --out outputs/douyin_analysis_YYYY-MM-DD/deep_metrics_progress.json \
-  --indexes 4,29,31
 ```
 
 Merge final outputs:
@@ -98,5 +81,7 @@ node ~/.codex/skills/douyin-analysis/scripts/merge_content_outputs.cjs \
 ## References
 
 Read `references/douyin-workflow.md` when planning a full run, debugging field gaps, or explaining the expected JSON schema.
+
+Read `references/chrome-extension-workflow.md` before collecting creator-center data. It is the primary browser path.
 
 Read `references/report-design.md` when turning collected data into an HTML report, factor map, sample review, or next-batch content roadmap.

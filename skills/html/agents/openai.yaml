@@ -1,0 +1,9 @@
+interface:
+  display_name: "Lumina HTML"
+  short_description: "把已有 Autody 数据渲染成 Lumina HTML 页面"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  brand_color: "#f8cf3f"
+  default_prompt: "Run /html to render the current Autody Douyin baseline as a Lumina HTML report. Use Lumina only and do not collect browser data."
+policy:
+  allow_implicit_invocation: true
