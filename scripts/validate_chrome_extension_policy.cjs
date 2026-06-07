@@ -49,6 +49,9 @@ assertIncludes("skills/douyin-analysis/references/lumina-html-workflow.md", "Lum
 assertIncludes("skills/douyin-analysis/references/lumina-html-workflow.md", "fresh report payload");
 assertIncludes("skills/douyin-analysis/references/lumina-template.html", "sdv-lumina");
 assertIncludes("skills/douyin-analysis/scripts/render_lumina_report.cjs", "report_lumina_payload.json");
+assertIncludes("skills/douyin-analysis/scripts/build_report_analysis.cjs", "blind_score_blocked");
+assertIncludes("skills/douyin-analysis/scripts/build_report_analysis.cjs", "adversarialAudit");
+assertIncludes("skills/douyin-analysis/scripts/build_report_analysis.cjs", "douyin_incremental_analysis_");
 
 const deletedCollectorDir = ["douyin", "session"].join("-");
 const deletedCollectorName = "Play" + "wright";
@@ -83,6 +86,8 @@ const checkedFiles = [
   "skills/douyin-analysis/references/lumina-html-workflow.md",
   "skills/douyin-analysis/references/lumina-template.html",
   "skills/douyin-analysis/scripts/render_lumina_report.cjs",
+  "skills/douyin-analysis/scripts/build_report_analysis.cjs",
+  "skills/douyin-analysis/scripts/build_report_analysis.test.cjs",
   "skills/kaishi/SKILL.md",
   "skills/kaishi/agents/openai.yaml",
   "skills/gengxin/SKILL.md",
