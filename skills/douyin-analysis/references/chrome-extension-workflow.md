@@ -12,13 +12,25 @@ Use Chrome Extension collection for all browser work. It works in the user's rea
 - Do not inspect browser cookies, localStorage, passwords, session stores, or Chrome profile files.
 - Do not export raw private browser state.
 - Save only creator works, public URLs, transcripts, metrics, Top comments, provenance notes, and report artifacts.
-- If Chrome asks for login, CAPTCHA, QR scan, permission, or another account-side action, hand off to the user.
+- If Chrome asks for login, CAPTCHA, QR scan, permission, or another account-side action and the current run is authorized, complete the visible check through the normal page UI. Do not bypass the check, read credentials, or use hidden browser state.
+
+## Human-Paced Operation
+
+Handle Douyin creator center and Doubao as a human assistant, not as a batch crawler.
+
+- Keep one active target item at a time.
+- Claim existing tabs before opening new ones.
+- Wait for visible page stability before reading, clicking, typing, or saving.
+- Avoid parallel tab bursts, rapid refresh loops, and repeated mechanical coordinate clicks.
+- Save progress after each item before moving to the next item.
+- When a visible login, QR, CAPTCHA, or permission step appears during an authorized run, complete it through the normal UI and record `manualVerificationStatus`.
+- If the page asks for a password, OTP, account switch, payment, or another sensitive action not already authorized, pause before entering or changing that sensitive value.
 
 ## Chrome Tab Flow
 
 1. List open Chrome tabs and claim an existing tab whose URL starts with `https://creator.douyin.com/` when available.
 2. If no creator tab is open, open `https://creator.douyin.com/creator-micro/content/manage` in Chrome.
-3. Confirm the visible page is logged in. If it is not, ask the user to finish login in Chrome and continue after the page reaches creator center.
+3. Confirm the visible page is logged in. If it is not and the run is authorized, complete visible login, QR, CAPTCHA, or permission checks through the normal page UI, then continue after the page reaches creator center.
 4. Create or reuse `outputs/douyin_analysis_YYYY-MM-DD/`.
 5. Keep one progress file per stage and write after every item so the run can resume.
 

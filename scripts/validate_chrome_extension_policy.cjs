@@ -16,9 +16,14 @@ assertIncludes("skills/douyin-analysis/SKILL.md", "Chrome Extension-first");
 assertIncludes("skills/douyin-analysis/SKILL.md", "Do not inspect browser cookies, localStorage, passwords, or session stores.");
 assertIncludes("skills/douyin-analysis/SKILL.md", "references/douyin-native-tabs.md");
 assertIncludes("skills/douyin-analysis/SKILL.md", "rawDouyinTabs");
+assertIncludes("skills/douyin-analysis/SKILL.md", "Operate like a human assistant");
+assertIncludes("skills/douyin-analysis/SKILL.md", "complete the visible check through the normal page UI");
 assertIncludes("skills/douyin-analysis/references/douyin-workflow.md", "Chrome Extension collection path");
 assertIncludes("skills/douyin-analysis/references/chrome-extension-workflow.md", "official in-page export first");
+assertIncludes("skills/douyin-analysis/references/chrome-extension-workflow.md", "Human-Paced Operation");
+assertIncludes("skills/douyin-analysis/references/chrome-extension-workflow.md", "manualVerificationStatus");
 assertIncludes("skills/douyin-analysis/references/douyin-workflow.md", "rawDouyinTabs");
+assertIncludes("skills/douyin-analysis/references/douyin-workflow.md", "Reuse one normal Doubao conversation");
 assertIncludes("skills/douyin-analysis/references/report-agent.md", "build_report_analysis.cjs");
 assertIncludes("skills/douyin-analysis/references/report-design.md", "fresh analysis payload");
 assertIncludes("skills/douyin-analysis/references/lumina-html-workflow.md", "--analysis");
@@ -43,10 +48,12 @@ assertIncludes("AGENTS.md", "/html");
 assertIncludes("skills/kaishi/SKILL.md", "Chrome Extension-first");
 assertIncludes("skills/kaishi/SKILL.md", "Do not create HTML dashboards");
 assertIncludes("skills/kaishi/SKILL.md", "all visible/exportable native Douyin tabs");
+assertIncludes("skills/kaishi/SKILL.md", "human pace");
 assertIncludes("skills/kaishi/agents/openai.yaml", "开始建档");
 assertIncludes("skills/gengxin/SKILL.md", "incremental update");
 assertIncludes("skills/gengxin/SKILL.md", "new and stale native Douyin tab data");
 assertIncludes("skills/buchong/SKILL.md", "audit-driven backfill");
+assertIncludes("skills/buchong/SKILL.md", "human pace");
 assertIncludes("skills/tijian/SKILL.md", "native Douyin tab completeness");
 assertIncludes("skills/tijian/SKILL.md", "audit-only");
 assertIncludes("skills/buchong/SKILL.md", "Start from the latest /tijian or audit output");
@@ -115,11 +122,23 @@ const checkedFiles = [
   "skills/html/agents/openai.yaml",
 ];
 
+const forbiddenHumanPaceRegressions = [
+  ["hand", "off", "to", "the", "user"].join(" "),
+  ["one", "fresh", "Doubao", "page/chat", "per", "item"].join(" "),
+  ["Close", "that", "Doubao", "page/chat", "after", "each", "saved", "item"].join(" "),
+  ["Stop", "and", "ask", "the", "user", "to", "act", "in", "Chrome", "when", "Douyin", "requires", "login"].join(" "),
+];
+
 for (const file of checkedFiles) {
   const text = read(file);
   for (const needle of forbidden) {
     if (text.includes(needle)) {
       throw new Error(`${file} must not include deleted collector reference: ${needle}`);
+    }
+  }
+  for (const needle of forbiddenHumanPaceRegressions) {
+    if (text.includes(needle)) {
+      throw new Error(`${file} must not include mechanical/handoff workflow reference: ${needle}`);
     }
   }
 }

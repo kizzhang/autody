@@ -13,7 +13,7 @@ Start with a command skill when the user names one:
 
 Use `skills/douyin-analysis/SKILL.md` as the shared base layer. Collection is Chrome Extension-first: use the Codex Chrome Extension / Chrome plugin to claim or open the user's existing Chrome creator-center tab, read visible Douyin creator data, and save progress after every item. Read `skills/douyin-analysis/references/chrome-extension-workflow.md` before collecting account data.
 
-Run an audit first, backfill only missing fields, persist after every item, and close every Doubao/transcript page immediately after saving the result. `/kaishi` must stop at baseline outputs and should not create strategy reports or HTML. `/baogao` must recompute analysis from the latest data every run. `/html` must use Lumina only, rebuild a fresh payload from current source files, and treat older HTML as visual reference only.
+Run an audit first, backfill only missing fields, persist after every item, and handle Douyin/Doubao pages at human pace: one active item, wait for visible stability, save, then continue. `/kaishi` must stop at baseline outputs and should not create strategy reports or HTML. `/baogao` must recompute analysis from the latest data every run. `/html` must use Lumina only, rebuild a fresh payload from current source files, and treat older HTML as visual reference only.
 
 For installs, prefer `node bin/autody.js install --force` from a GitHub checkout, or `npx autody@latest install --force` only when the npm package is available. The CLI only copies the packaged skill into `$CODEX_HOME/skills` or `~/.codex/skills`; it must not inspect browser storage or account data.
 
