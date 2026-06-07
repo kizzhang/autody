@@ -22,7 +22,7 @@ Read `../douyin-analysis/references/douyin-workflow.md` for expected file names 
 3. Found `deep_metrics_progress.json` when present.
 4. Run `audit_content_gaps.cjs`.
 5. Written `content_gap_audit.json` or a user-named audit output.
-6. Summarized missing transcripts, URLs, comments, deep metrics, stale metrics, metric conflicts, warnings, and duplicate IDs when available.
+6. Summarized native Douyin tab completeness, missing transcripts, URLs, comments, deep metrics, stale metrics, metric conflicts, warnings, and duplicate IDs when available.
 
 ## Command
 

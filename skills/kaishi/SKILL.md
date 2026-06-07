@@ -30,11 +30,12 @@ Follow those shared safety, provenance, schema, and resume rules. If a field is 
 3. Collected the full published works list from Douyin creator center.
 4. Saved `douyin_works_final.json` with visible works fields.
 5. Opened each creator-center analytics page through Chrome and saved visible deep metrics.
-6. Opened one fresh Doubao page/chat per item for transcript or image-text extraction, saved the result, then closed that page.
-7. Collected Top comments where visible.
-8. Persisted progress after every item so the run can resume.
-9. Ran audit and merge scripts.
-10. Reported item counts, output paths, and remaining `dataGap` items.
+6. Collected all visible/exportable native Douyin tabs for every work: overview, trafficAnalysis, audienceAnalysis, commentHotWords.
+7. Opened one fresh Doubao page/chat per item for transcript or image-text extraction, saved the result, then closed that page.
+8. Collected Top comments where visible.
+9. Persisted progress after every item so the run can resume.
+10. Ran audit and merge scripts.
+11. Reported item counts, output paths, and remaining `dataGap` items.
 
 Do not create HTML dashboards, strategy reports, topic roadmaps, or next-batch recommendations in `/kaishi`. Use `/baogao` for report analysis and `/html` for Lumina HTML rendering after a baseline exists.
 

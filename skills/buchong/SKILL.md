@@ -9,6 +9,8 @@ Use this command-like skill for `/buchong` / `补充`.
 
 `/buchong` is audit-driven backfill. It reads the latest or user-specified `content_gap_audit*.json`, fixes only listed gaps, then reruns audit and merge.
 
+Start from the latest /tijian or audit output. The audit names missing native tab sections, stale metrics, transcript gaps, comment gaps, and metric conflicts so `/buchong` can collect only what is missing.
+
 Use Chrome Extension-first browser work for creator-center metrics and visible comments. Use one fresh Doubao page/chat per transcript item, save the result, then close that page. Do not inspect cookies, localStorage, passwords, session stores, or Chrome profile files.
 
 ## Required Context

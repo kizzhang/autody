@@ -32,3 +32,15 @@ Before analyzing, read:
 6. Reported source files, output paths, blind-scoring status, and data caveats.
 
 Do not render HTML in `/baogao`; call `/html` next for Lumina rendering.
+
+## Command
+
+```bash
+node ~/.codex/skills/douyin-analysis/scripts/build_report_analysis.cjs \
+  --works outputs/douyin_analysis_YYYY-MM-DD/douyin_deep_works_final.json \
+  --audit outputs/douyin_analysis_YYYY-MM-DD/content_gap_audit.json \
+  --blind outputs/douyin_analysis_YYYY-MM-DD/blind_predictions.json \
+  --new-after YYYY-MM-DD \
+  --out outputs/douyin_analysis_YYYY-MM-DD \
+  --date YYYY-MM-DD
+```

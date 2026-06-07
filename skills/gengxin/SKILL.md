@@ -28,9 +28,10 @@ Before collecting data, read:
 3. Claimed or opened creator center through Chrome Extension.
 4. Checked for newly published works since the baseline.
 5. Added new works and refreshed stale visible metrics for requested or recent works.
-6. Preserved existing good transcripts, comments, and deep metrics unless newer visible data is collected.
-7. Persisted progress after every changed item.
-8. Reran audit and merge scripts.
-9. Reported new item count, refreshed item count, output paths, and remaining `dataGap` items.
+6. Refreshed new and stale native Douyin tab data when the audit or freshness window requires it.
+7. Preserved existing good transcripts, comments, and deep metrics unless newer visible data is collected.
+8. Persisted progress after every changed item.
+9. Reran audit and merge scripts.
+10. Reported new item count, refreshed item count, output paths, and remaining `dataGap` items.
 
 Do not rebuild the whole account unless the user asks for `/kaishi`. Do not render HTML; use `/html` after update.

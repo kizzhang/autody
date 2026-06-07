@@ -65,6 +65,19 @@ Recommended progress file:
 outputs/douyin_analysis_YYYY-MM-DD/deep_metrics_progress.json
 ```
 
+## Native Detail Tabs
+
+Use official in-page export first when Douyin provides export/download controls. If export is not available, capture visible DOM text, visible table rows, chart labels, ranked words, and section labels from the normal creator-center page.
+
+For each work-detail page, inspect and persist:
+
+- `总览` as `rawDouyinTabs.overview`
+- `流量分析` as `rawDouyinTabs.trafficAnalysis`
+- `观众分析` as `rawDouyinTabs.audienceAnalysis`
+- `评论热词` as `rawDouyinTabs.commentHotWords`
+
+Do not stop at the top-line work list metrics. If a tab exists but a chart does not expose numeric values, save the visible labels and a `dataGap` entry instead of guessing.
+
 ## Comment Collection
 
 Collect Top comments through Chrome in this order:

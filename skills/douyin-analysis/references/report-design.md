@@ -4,6 +4,8 @@ Use this when the user asks for an HTML report, dashboard, factor map, sample re
 
 Read `report-agent.md` before writing report analysis or rendering a Lumina payload. This file defines the visual/report contract; `report-agent.md` defines the analysis contract, including blind prediction for new videos.
 
+Lumina should consume the fresh analysis payload from `douyin_incremental_analysis_YYYY-MM-DD.json`. Visual elements can stay stable, but conclusions, sample labels, caveats, blind-score status, and next-batch recommendations come from the current payload.
+
 ## Report Contract
 
 The report should help the creator answer four questions quickly:

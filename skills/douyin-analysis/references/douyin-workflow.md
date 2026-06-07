@@ -80,6 +80,32 @@ douyin_deep_transcripts_final.md
 }
 ```
 
+## Native Tab Schema
+
+Persist raw tab evidence and normalized report signals on each work when Douyin exposes them:
+
+```json
+{
+  "rawDouyinTabs": {
+    "overview": {},
+    "trafficAnalysis": {},
+    "audienceAnalysis": {},
+    "commentHotWords": {}
+  },
+  "nativeTabCompleteness": {},
+  "retentionSignals": {},
+  "interactionSignals": {},
+  "trafficSources": [],
+  "searchIntent": {},
+  "audienceAsset": {},
+  "commentIntent": {},
+  "negativeSignals": {},
+  "trendOrPlatformBoost": {}
+}
+```
+
+`rawDouyinTabs` is evidence. The normalized fields are derived signals for audit, report, and HTML.
+
 ## Completion Rules
 
 A published work is complete when it has:

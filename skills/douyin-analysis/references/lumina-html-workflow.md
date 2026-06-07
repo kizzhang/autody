@@ -31,6 +31,16 @@ content_gap_audit.json
 
 Use `douyin_deep_works_final.json` as the source of truth for item-level metrics, transcripts, comments, and provenance. Use analysis JSON only for conclusions that are explicitly present.
 
+## Render Command
+
+```bash
+node ~/.codex/skills/douyin-analysis/scripts/render_lumina_report.cjs \
+  --works outputs/douyin_analysis_YYYY-MM-DD/douyin_deep_works_final.json \
+  --analysis outputs/douyin_analysis_YYYY-MM-DD/douyin_incremental_analysis_YYYY-MM-DD.json \
+  --audit outputs/douyin_analysis_YYYY-MM-DD/content_gap_audit.json \
+  --out outputs/douyin_analysis_YYYY-MM-DD
+```
+
 ## Fresh Analysis Rule
 
 Every `/html` run must create a fresh report payload from the current source files:
@@ -55,6 +65,8 @@ The payload must include:
 ```
 
 If old HTML exists, use it only as a visual reference. Do not copy old hero claims, sample rankings, diagnoses, next actions, or strategic conclusions unless the same conclusion is regenerated from the current source files.
+
+The renderer carries `blindScoreStatus`, `blindPrediction`, `observedResult`, `calibration`, `dataStatus`, and native tab caveats through to `report_lumina_payload.json`. Rendering must not create retrospective blind scores.
 
 ## Rendering Contract
 

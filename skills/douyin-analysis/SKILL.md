@@ -22,7 +22,9 @@ Do not inspect browser cookies, localStorage, passwords, or session stores. The 
    - Preferred: use Chrome Extension collection path from `references/chrome-extension-workflow.md`.
    - Claim an existing Chrome tab on `creator.douyin.com` when present; otherwise open creator center in Chrome and let the user log in if needed.
    - Read visible creator-center tables/cards or use official page exports/downloads when available.
-   - Required fields: `index`, `mid`, `publicUrl`, `publishedAt`, `caption`, `itemType`, `plays`, `likes`, `comments`, `shares`, `favorites`, `finalTranscript`.
+   - Required bottom-ledger fields for every work: `index`, `mid`, `publicUrl`, `publishedAt`, `status`, `itemType`, `durationSeconds`, `caption`, cover/title text when visible, `plays`, `likes`, `comments`, `shares`, `favorites`, `finalTranscript`, `finalTranscriptStatus`, `dataSource`, and `fetchedAt`.
+   - Native creator-detail tabs must be saved raw-first under `rawDouyinTabs`: `overview`, `trafficAnalysis`, `audienceAnalysis`, and `commentHotWords`.
+   - For each tab, collect all visible/exportable metrics, tables, ranked words, search terms, traffic-source rows, audience distributions, retention labels, follow metrics, and comparison labels. If Douyin does not expose the value through export or visible DOM, record `dataGap` with the section name.
    - Deep fields: average watch time, completion rate, 3s/5s retention, new followers, lost followers, follow rate, profile visits, cover click rate, Top comments.
 
 3. Extract transcripts one item at a time.

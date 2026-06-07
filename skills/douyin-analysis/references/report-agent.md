@@ -24,6 +24,22 @@ Prefer these files from one run folder:
 
 If files come from different dates or sources, mark the report provisional and do not write confident strategic conclusions until conflicts are resolved.
 
+## Local Report Builder
+
+Use the local builder to create fresh analysis before writing report prose or rendering Lumina:
+
+```bash
+node ~/.codex/skills/douyin-analysis/scripts/build_report_analysis.cjs \
+  --works outputs/douyin_analysis_YYYY-MM-DD/douyin_deep_works_final.json \
+  --audit outputs/douyin_analysis_YYYY-MM-DD/content_gap_audit.json \
+  --blind outputs/douyin_analysis_YYYY-MM-DD/blind_predictions.json \
+  --new-after YYYY-MM-DD \
+  --out outputs/douyin_analysis_YYYY-MM-DD \
+  --date YYYY-MM-DD
+```
+
+The script creates the fresh analysis payload. The report writer must not replace `blindPrediction`, `blindScoreStatus`, observed metrics, data gate, or adversarial audit with stale conclusions from older reports.
+
 ## Data Gate
 
 Classify each work before judging performance:
