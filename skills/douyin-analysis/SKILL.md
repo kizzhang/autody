@@ -84,4 +84,6 @@ Read `references/douyin-workflow.md` when planning a full run, debugging field g
 
 Read `references/chrome-extension-workflow.md` before collecting creator-center data. It is the primary browser path.
 
+Read `references/douyin-native-tabs.md` before collecting, auditing, merging, or explaining native Douyin creator-detail tab data.
+
 Read `references/report-design.md` when turning collected data into an HTML report, factor map, sample review, or next-batch content roadmap.

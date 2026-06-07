@@ -14,12 +14,16 @@ function assertIncludes(file, needle) {
 
 assertIncludes("skills/douyin-analysis/SKILL.md", "Chrome Extension-first");
 assertIncludes("skills/douyin-analysis/SKILL.md", "Do not inspect browser cookies, localStorage, passwords, or session stores.");
+assertIncludes("skills/douyin-analysis/SKILL.md", "references/douyin-native-tabs.md");
 assertIncludes("skills/douyin-analysis/references/douyin-workflow.md", "Chrome Extension collection path");
 assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "rawDouyinTabs");
 assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "overview");
 assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "trafficAnalysis");
 assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "audienceAnalysis");
 assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "commentHotWords");
+assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "coreMetrics");
+assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "dataGaps");
+assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "Do not inspect cookies");
 assertIncludes("skills/douyin-analysis/agents/openai.yaml", "Chrome Extension-first");
 assertIncludes("README.md", "Chrome Extension-first");
 assertIncludes("AGENTS.md", "Chrome Extension-first");

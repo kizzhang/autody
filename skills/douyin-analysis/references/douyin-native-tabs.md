@@ -26,6 +26,8 @@ Forbidden browser-state access:
 - Chrome profile files
 - hidden or private network payloads that are not exposed through normal visible page controls
 
+Do not inspect cookies, localStorage, passwords, session stores, Chrome profile files, or hidden private payloads to fill this contract.
+
 ## Raw Storage
 
 Store native tab data under `rawDouyinTabs`, with one namespace per visible tab. Preserve raw labels, units, date ranges, visible table rows, rank order, export provenance, and `dataGap` notes before deriving normalized analysis fields.
@@ -60,6 +62,33 @@ Store native tab data under `rawDouyinTabs`, with one namespace per visible tab.
     },
     "commentHotWords": {
       "words": []
+    }
+  }
+}
+```
+
+## Provenance And Data Gaps
+
+Store capture provenance and unreadable-field gaps inside each `rawDouyinTabs.<tabName>` namespace. Use `capturedAt` for the tab capture time, `source` for the collection surface, and `dataGaps` for fields checked but not readable through visible page controls or official exports.
+
+```json
+{
+  "rawDouyinTabs": {
+    "overview": {
+      "capturedAt": "2026-06-07T10:30:00+08:00",
+      "source": {
+        "kind": "visible_dom",
+        "tabLabel": "总览",
+        "url": "https://creator.douyin.com/..."
+      },
+      "dataGaps": [
+        {
+          "section": "retentionAnalysis",
+          "field": "chartPointValue",
+          "reason": "Chart label is visible but the numeric point value is not exposed through normal page controls.",
+          "checkedAt": "2026-06-07T10:31:00+08:00"
+        }
+      ]
     }
   }
 }
