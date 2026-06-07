@@ -87,10 +87,104 @@ test("reports complete native tab data", () => {
 test("flags missing required native tab sections", () => {
   const completeness = nativeTabCompleteness({ overview: { coreMetrics: {} } });
   assert.equal(completeness.status, "incomplete");
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.overview.watchTrend"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.overview.retentionAnalysis"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.overview.bounceAnalysis"));
   assert.ok(completeness.missingFields.includes("rawDouyinTabs.overview.interactionMetrics"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.overview.danmakuAnalysis"));
   assert.ok(completeness.missingFields.includes("rawDouyinTabs.trafficAnalysis.douyinAppSourceShare"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.trafficAnalysis.otherAppSourceShare"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.trafficAnalysis.extraTraffic"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.trafficAnalysis.platformBoostTraffic"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.trafficAnalysis.searchTermsBefore"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.trafficAnalysis.searchTermsAfter"));
   assert.ok(completeness.missingFields.includes("rawDouyinTabs.audienceAnalysis.followMetrics"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.audienceAnalysis.followTrend"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.audienceAnalysis.genderDistribution"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.audienceAnalysis.ageDistribution"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.audienceAnalysis.regionDistribution"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.audienceAnalysis.interestDistribution"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.audienceAnalysis.followHotWords"));
   assert.ok(completeness.missingFields.includes("rawDouyinTabs.commentHotWords.words"));
+});
+
+test("treats empty placeholder native tab values as missing", () => {
+  const completeness = nativeTabCompleteness({
+    overview: {
+      coreMetrics: { completionRate: "" },
+      watchTrend: [{}],
+      retentionAnalysis: [{ retention: "" }],
+      bounceAnalysis: [{}],
+      interactionMetrics: { likeRate: "" },
+      danmakuAnalysis: [{}],
+    },
+    trafficAnalysis: {
+      douyinAppSourceShare: [{}],
+      otherAppSourceShare: [{}],
+      extraTraffic: "",
+      platformBoostTraffic: null,
+      searchTermsBefore: [{ term: "" }],
+      searchTermsAfter: [{}],
+    },
+    audienceAnalysis: {
+      followMetrics: { newFollowers: "" },
+      followTrend: [{}],
+      genderDistribution: [{ share: "" }],
+      ageDistribution: [{}],
+      regionDistribution: [{}],
+      interestDistribution: [{}],
+      followHotWords: [{}],
+    },
+    commentHotWords: { words: [{}] },
+  });
+
+  assert.equal(completeness.status, "incomplete");
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.overview.coreMetrics"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.overview.watchTrend"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.trafficAnalysis.extraTraffic"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.audienceAnalysis.followHotWords"));
+  assert.ok(completeness.missingFields.includes("rawDouyinTabs.commentHotWords.words"));
+});
+
+test("normalizes singleton object arrays and ignores malformed list values", () => {
+  const rawDouyinTabs = {
+    overview: {
+      coreMetrics: { completionRate: "10%" },
+      watchTrend: { label: "第1小时", plays: "1k" },
+      retentionAnalysis: "bad",
+      bounceAnalysis: { second: 2, bounceRate: "5%" },
+      interactionMetrics: { danmakuCount: "2" },
+      danmakuAnalysis: { text: "有用", likes: "3" },
+    },
+    trafficAnalysis: {
+      douyinAppSourceShare: { source: "搜索", share: "12%" },
+      otherAppSourceShare: "bad",
+      searchTermsBefore: { rank: 1, term: "AI", share: "6%" },
+    },
+    audienceAnalysis: {
+      followMetrics: { newFollowers: "1" },
+      followTrend: { label: "新增", value: "1" },
+      genderDistribution: "bad",
+      ageDistribution: { label: "24-30", share: "20%" },
+      followHotWords: { word: "AI", hotness: "88" },
+    },
+    commentHotWords: { words: { rank: 1, word: "干货", hotness: "99" } },
+  };
+
+  const normalized = normalizeDouyinTabs({ rawDouyinTabs });
+
+  assert.equal(normalized.retentionSignals.watchTrend[0].plays, 1000);
+  assert.deepEqual(normalized.retentionSignals.retentionAnalysis, []);
+  assert.equal(normalized.retentionSignals.bounceAnalysis[0].bounceRate, 0.05);
+  assert.equal(normalized.interactionSignals.danmakuAnalysis[0].likes, 3);
+  assert.equal(normalized.trafficSources.length, 1);
+  assert.equal(normalized.searchIntent.before[0].share, 0.06);
+  assert.deepEqual(normalized.audienceAsset.genderDistribution, []);
+  assert.equal(normalized.audienceAsset.ageDistribution[0].share, 0.2);
+  assert.equal(normalized.commentIntent.words[0].word, "干货");
+  assert.ok(normalized.nativeTabCompleteness.missingFields.includes("rawDouyinTabs.overview.retentionAnalysis"));
+  assert.ok(normalized.nativeTabCompleteness.missingFields.includes("rawDouyinTabs.trafficAnalysis.otherAppSourceShare"));
+  assert.ok(normalized.nativeTabCompleteness.missingFields.includes("rawDouyinTabs.audienceAnalysis.genderDistribution"));
 });
 
 test("normalizes native tab signals for report reuse", () => {

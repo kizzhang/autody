@@ -3,9 +3,24 @@
 const fs = require("node:fs");
 
 function present(value) {
-  if (Array.isArray(value)) return value.length > 0;
-  if (value && typeof value === "object") return Object.keys(value).length > 0;
-  return value !== null && value !== undefined && value !== "";
+  if (Array.isArray(value)) return value.some((item) => present(item));
+  if (value && typeof value === "object") return Object.values(value).some((item) => present(item));
+  if (typeof value === "string") return value.trim() !== "";
+  return value !== null && value !== undefined;
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value.filter((item) => present(item));
+  if (value && typeof value === "object" && present(value)) return [value];
+  return [];
+}
+
+function presentObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && present(value);
+}
+
+function presentArrayLike(value) {
+  return asArray(value).length > 0;
 }
 
 function finiteOrNull(value) {
@@ -73,24 +88,32 @@ function nativeTabCompleteness(rawTabs) {
   const audience = tabs.audienceAnalysis || {};
   const commentHotWords = tabs.commentHotWords || {};
   const missingFields = [];
+  const requiredFields = [
+    ["rawDouyinTabs.overview.coreMetrics", overview.coreMetrics, presentObject],
+    ["rawDouyinTabs.overview.watchTrend", overview.watchTrend, presentArrayLike],
+    ["rawDouyinTabs.overview.retentionAnalysis", overview.retentionAnalysis, presentArrayLike],
+    ["rawDouyinTabs.overview.bounceAnalysis", overview.bounceAnalysis, presentArrayLike],
+    ["rawDouyinTabs.overview.interactionMetrics", overview.interactionMetrics, presentObject],
+    ["rawDouyinTabs.overview.danmakuAnalysis", overview.danmakuAnalysis, presentArrayLike],
+    ["rawDouyinTabs.trafficAnalysis.douyinAppSourceShare", traffic.douyinAppSourceShare, presentArrayLike],
+    ["rawDouyinTabs.trafficAnalysis.otherAppSourceShare", traffic.otherAppSourceShare, presentArrayLike],
+    ["rawDouyinTabs.trafficAnalysis.extraTraffic", traffic.extraTraffic, present],
+    ["rawDouyinTabs.trafficAnalysis.platformBoostTraffic", traffic.platformBoostTraffic, present],
+    ["rawDouyinTabs.trafficAnalysis.searchTermsBefore", traffic.searchTermsBefore, presentArrayLike],
+    ["rawDouyinTabs.trafficAnalysis.searchTermsAfter", traffic.searchTermsAfter, presentArrayLike],
+    ["rawDouyinTabs.audienceAnalysis.followMetrics", audience.followMetrics, presentObject],
+    ["rawDouyinTabs.audienceAnalysis.followTrend", audience.followTrend, presentArrayLike],
+    ["rawDouyinTabs.audienceAnalysis.genderDistribution", audience.genderDistribution, presentArrayLike],
+    ["rawDouyinTabs.audienceAnalysis.ageDistribution", audience.ageDistribution, presentArrayLike],
+    ["rawDouyinTabs.audienceAnalysis.regionDistribution", audience.regionDistribution, presentArrayLike],
+    ["rawDouyinTabs.audienceAnalysis.interestDistribution", audience.interestDistribution, presentArrayLike],
+    ["rawDouyinTabs.audienceAnalysis.followHotWords", audience.followHotWords, presentArrayLike],
+    ["rawDouyinTabs.commentHotWords.words", commentHotWords.words, presentArrayLike],
+  ];
 
-  if (!present(overview.coreMetrics)) missingFields.push("rawDouyinTabs.overview.coreMetrics");
-  if (!present(overview.interactionMetrics)) missingFields.push("rawDouyinTabs.overview.interactionMetrics");
-  if (!present(overview.retentionAnalysis) && !present(overview.watchTrend)) {
-    missingFields.push("rawDouyinTabs.overview.retentionAnalysis");
+  for (const [path, value, hasEvidence] of requiredFields) {
+    if (!hasEvidence(value)) missingFields.push(path);
   }
-
-  if (!present(traffic.douyinAppSourceShare)) missingFields.push("rawDouyinTabs.trafficAnalysis.douyinAppSourceShare");
-  if (!present(traffic.searchTermsBefore) && !present(traffic.searchTermsAfter) && !present(traffic.searchTerms)) {
-    missingFields.push("rawDouyinTabs.trafficAnalysis.searchTerms");
-  }
-
-  if (!present(audience.followMetrics)) missingFields.push("rawDouyinTabs.audienceAnalysis.followMetrics");
-  if (!present(audience.genderDistribution) && !present(audience.ageDistribution) && !present(audience.regionDistribution)) {
-    missingFields.push("rawDouyinTabs.audienceAnalysis.demographics");
-  }
-
-  if (!present(commentHotWords.words)) missingFields.push("rawDouyinTabs.commentHotWords.words");
 
   return {
     status: missingFields.length === 0 ? "complete" : "incomplete",
@@ -152,9 +175,9 @@ function normalizeDouyinTabs(row) {
       twoSecondBounceRate: normalizeRate(coreMetrics.twoSecondBounceRate),
       fiveSecondCompletionRate: normalizeRate(coreMetrics.fiveSecondCompletionRate),
       avgPlayRatio: normalizeRate(coreMetrics.avgPlayRatio),
-      watchTrend: (overview.watchTrend || []).map((point) => normalizeCountField(point, "plays")),
-      retentionAnalysis: (overview.retentionAnalysis || []).map((point) => normalizeRateField(point, "retention")),
-      bounceAnalysis: (overview.bounceAnalysis || []).map((point) => normalizeRateField(point, "bounceRate")),
+      watchTrend: asArray(overview.watchTrend).map((point) => normalizeCountField(point, "plays")),
+      retentionAnalysis: asArray(overview.retentionAnalysis).map((point) => normalizeRateField(point, "retention")),
+      bounceAnalysis: asArray(overview.bounceAnalysis).map((point) => normalizeRateField(point, "bounceRate")),
     },
     interactionSignals: {
       capturedAt: overview.capturedAt || "",
@@ -163,15 +186,15 @@ function normalizeDouyinTabs(row) {
       shareRate: normalizeRate(interactionMetrics.shareRate),
       favoriteRate: normalizeRate(interactionMetrics.favoriteRate),
       danmakuCount: parseChineseCount(interactionMetrics.danmakuCount),
-      danmakuAnalysis: (overview.danmakuAnalysis || []).map((item) => normalizeCountField(item, "likes")),
+      danmakuAnalysis: asArray(overview.danmakuAnalysis).map((item) => normalizeCountField(item, "likes")),
     },
     trafficSources: [
-      ...(traffic.douyinAppSourceShare || []).map(normalizeTrafficSource),
-      ...(traffic.otherAppSourceShare || []).map(normalizeTrafficSource),
+      ...asArray(traffic.douyinAppSourceShare).map(normalizeTrafficSource),
+      ...asArray(traffic.otherAppSourceShare).map(normalizeTrafficSource),
     ],
     searchIntent: {
-      before: (traffic.searchTermsBefore || traffic.searchTerms || []).map(normalizeSearchTerm),
-      after: (traffic.searchTermsAfter || []).map(normalizeSearchTerm),
+      before: asArray(traffic.searchTermsBefore || traffic.searchTerms).map(normalizeSearchTerm),
+      after: asArray(traffic.searchTermsAfter).map(normalizeSearchTerm),
     },
     audienceAsset: {
       capturedAt: audience.capturedAt || "",
@@ -179,16 +202,16 @@ function normalizeDouyinTabs(row) {
       followRate: normalizeRate(followMetrics.followRate),
       lostFollowers: parseChineseCount(followMetrics.lostFollowers),
       lostFollowerRate: normalizeRate(followMetrics.lostFollowerRate),
-      followTrend: (audience.followTrend || []).map((point) => normalizeCountField(point, "value")),
-      genderDistribution: (audience.genderDistribution || []).map(normalizeDistribution),
-      ageDistribution: (audience.ageDistribution || []).map(normalizeDistribution),
-      regionDistribution: (audience.regionDistribution || []).map(normalizeDistribution),
-      interestDistribution: (audience.interestDistribution || []).map(normalizeDistribution),
-      followHotWords: (audience.followHotWords || []).map(normalizeHotWord),
+      followTrend: asArray(audience.followTrend).map((point) => normalizeCountField(point, "value")),
+      genderDistribution: asArray(audience.genderDistribution).map(normalizeDistribution),
+      ageDistribution: asArray(audience.ageDistribution).map(normalizeDistribution),
+      regionDistribution: asArray(audience.regionDistribution).map(normalizeDistribution),
+      interestDistribution: asArray(audience.interestDistribution).map(normalizeDistribution),
+      followHotWords: asArray(audience.followHotWords).map(normalizeHotWord),
     },
     commentIntent: {
       capturedAt: commentHotWords.capturedAt || "",
-      words: (commentHotWords.words || []).map(normalizeHotWord),
+      words: asArray(commentHotWords.words).map(normalizeHotWord),
     },
     negativeSignals: {
       twoSecondBounceRate: normalizeRate(coreMetrics.twoSecondBounceRate),
@@ -202,7 +225,7 @@ function normalizeDouyinTabs(row) {
       capturedAt: traffic.capturedAt || "",
       extraTraffic: parseChineseCount(traffic.extraTraffic),
       platformBoostTraffic: parseChineseCount(traffic.platformBoostTraffic),
-      watchTrend: (overview.watchTrend || []).map((point) => normalizeCountField(point, "plays")),
+      watchTrend: asArray(overview.watchTrend).map((point) => normalizeCountField(point, "plays")),
     },
   };
 }
