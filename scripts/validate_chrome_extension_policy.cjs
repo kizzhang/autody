@@ -94,6 +94,7 @@ const checkedFiles = [
   "skills/douyin-analysis/references/chrome-extension-workflow.md",
   "skills/douyin-analysis/references/douyin-workflow.md",
   "skills/douyin-analysis/references/douyin-native-tabs.md",
+  "skills/douyin-analysis/references/report-agent.md",
   "skills/douyin-analysis/references/report-design.md",
   "skills/douyin-analysis/references/lumina-html-workflow.md",
   "skills/douyin-analysis/references/lumina-template.html",
