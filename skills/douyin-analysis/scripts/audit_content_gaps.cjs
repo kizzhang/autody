@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require("fs");
 const path = require("path");
+const { nativeTabCompleteness } = require("./normalize_douyin_tabs.cjs");
 
 function parseArgs(argv) {
   const args = {};
@@ -29,6 +30,13 @@ function asArray(data, keys) {
 
 function present(value) {
   if (Array.isArray(value)) return value.length > 0;
+  if (value === 0 || value === false) return true;
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function hasNativeTabEvidence(value) {
+  if (Array.isArray(value)) return value.some((item) => hasNativeTabEvidence(item));
+  if (value && typeof value === "object") return Object.values(value).some((item) => hasNativeTabEvidence(item));
   if (value === 0 || value === false) return true;
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
@@ -105,6 +113,9 @@ function main() {
       if (!hasRateMetric(deep, ["completionRateText", "finishRateText"], ["completionRate", "finishRate"])) missing.push("completionRate");
       if (!hasRateMetric(deep, ["threeSecondRetentionText", "threeSecRetentionText", "fiveSecondRetentionText"], ["threeSecondRetention", "threeSecRetention", "fiveSecondRetention"])) missing.push("shortRetentionMetric");
       if (!hasRateMetric(deep, ["followRateText"], ["followRate"]) && !hasDeepMetric(deep, ["newFollowers", "newFollowerCount", "lostFollowers", "unsubscribeCount", "unsubscribe_count"])) missing.push("followMetric");
+      const rawDouyinTabs = hasNativeTabEvidence(deep && deep.rawDouyinTabs) ? deep.rawDouyinTabs : work.rawDouyinTabs || {};
+      const nativeTabs = nativeTabCompleteness(rawDouyinTabs);
+      for (const field of nativeTabs.missingFields) missing.push(field);
     } else {
       if (!present(work.avgImageViews) && !hasDeepMetric(deep, ["avgImageViews", "avgImageViewsText"])) missing.push("avgImageViews");
       if (!present(work.copyExpandRate) && !hasDeepMetric(deep, ["copyExpandRate", "copyExpandRateText"])) missing.push("copyExpandRate");
