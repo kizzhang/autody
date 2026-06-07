@@ -6,6 +6,7 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
 const scriptPath = path.join(__dirname, "build_report_analysis.cjs");
+const luminaScriptPath = path.join(__dirname, "render_lumina_report.cjs");
 
 const completeRawDouyinTabs = {
   overview: {
@@ -129,6 +130,17 @@ test("uses audit caveats keyed by workKey to mark provisional rows", () => {
   assert.deepEqual(report.items[0].observedResult.caveats, ["topComments"]);
 });
 
+test("treats metric conflicts from audit as provisional caveats", () => {
+  const report = runReport({
+    works: { publishedWorks: [baseWork()] },
+    audit: { items: [{ mid: "m1", conflicts: [{ field: "plays", workValue: 1000, deepValue: 2000 }] }] },
+  });
+
+  assert.equal(report.items[0].dataStatus, "provisional");
+  assert.ok(report.items[0].observedResult.caveats.includes("metric_conflict:plays"));
+  assert.equal(report.dataGate.status, "provisional_data");
+});
+
 test("marks complete native tab rows with missing transcript status as provisional", () => {
   const report = runReport({
     works: { items: [baseWork({ finalTranscriptStatus: "missing", finalTranscript: "" })] },
@@ -249,4 +261,22 @@ test("lumina payload can carry report analysis fields by work index", () => {
   assert.equal(matched.observedResult.bucket, "strong_observed");
   assert.equal(matched.calibration.status, "ready_for_retro");
   assert.equal(payload.sourceSummary.analysisGeneratedAt, "2026-06-07T00:00:00.000Z");
+});
+
+test("lumina renderer requires a fresh analysis payload", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "autody-lumina-analysis-"));
+  const worksFile = path.join(tmp, "works.json");
+  const outDir = path.join(tmp, "out");
+  writeJson(worksFile, { publishedWorks: [baseWork()] });
+
+  const result = require("node:child_process").spawnSync(process.execPath, [
+    luminaScriptPath,
+    "--works",
+    worksFile,
+    "--out",
+    outDir,
+  ], { encoding: "utf8" });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /--analysis/);
 });

@@ -175,6 +175,22 @@ function observedSignal(work, nativeSignals) {
   };
 }
 
+function auditIssueLabel(issue) {
+  if (!issue) return "";
+  if (typeof issue === "string") return issue;
+  if (typeof issue !== "object") return String(issue);
+  const field = String(issue.field || issue.metric || issue.section || issue.name || "").trim();
+  if (issue.workValue !== undefined || issue.deepValue !== undefined || issue.delta !== undefined) {
+    return `metric_conflict:${field || "unknown"}`;
+  }
+  const type = String(issue.type || issue.kind || issue.category || "").trim();
+  if (type && field) return `${type}:${field}`;
+  if (field) return field;
+  if (issue.reason) return String(issue.reason);
+  if (issue.message) return String(issue.message);
+  return JSON.stringify(issue);
+}
+
 function auditGaps(auditRow) {
   if (!auditRow) return [];
   return [
@@ -183,7 +199,8 @@ function auditGaps(auditRow) {
     ...asArray(auditRow.dataGaps, ["items"]),
     ...asArray(auditRow.caveats, ["items"]),
     ...asArray(auditRow.warnings, ["items"]),
-  ].filter(Boolean);
+    ...asArray(auditRow.conflicts, ["items"]),
+  ].map(auditIssueLabel).filter(Boolean);
 }
 
 function transcriptCaveats(work) {

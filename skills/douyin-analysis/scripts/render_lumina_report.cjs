@@ -176,9 +176,21 @@ function inferTopic(work) {
   return "其他";
 }
 
+function readAnalysisFile(analysisFile) {
+  if (!analysisFile) {
+    throw new Error("Missing --analysis: run /baogao first and pass the fresh douyin_incremental_analysis_YYYY-MM-DD.json payload.");
+  }
+  const analysisData = readJson(analysisFile);
+  const rows = asArray(analysisData, ["items", "works"]);
+  if (!rows.length) {
+    throw new Error("Invalid --analysis: expected fresh report analysis items from /baogao.");
+  }
+  return analysisData;
+}
+
 function buildPayload({ worksFile, analysisFile, auditFile }) {
   const worksData = readJson(worksFile);
-  const analysisData = readJson(analysisFile);
+  const analysisData = readAnalysisFile(analysisFile);
   const auditData = readJson(auditFile);
   const rawWorks = asArray(worksData, ["publishedWorks", "works", "items"]);
   const normalized = rawWorks.map(normalizeWork);
@@ -400,18 +412,23 @@ q.addEventListener('input',filter);role.addEventListener('change',filter);
 
 function main() {
   const args = parseArgs(process.argv);
-  if (!args.works || !args.out) {
-    console.error("Usage: render_lumina_report.cjs --works works.json --out output_dir [--analysis analysis.json] [--audit audit.json] [--html report_lumina.html]");
+  if (!args.works || !args.out || !args.analysis) {
+    console.error("Usage: render_lumina_report.cjs --works works.json --analysis analysis.json --out output_dir [--audit audit.json] [--html report_lumina.html]");
     process.exit(2);
   }
   const outDir = path.resolve(args.out);
   fs.mkdirSync(outDir, { recursive: true });
-  const payload = buildPayload({ worksFile: args.works, analysisFile: args.analysis, auditFile: args.audit });
-  const payloadPath = path.join(outDir, "report_lumina_payload.json");
-  const htmlPath = path.join(outDir, args.html || "report_lumina.html");
-  fs.writeFileSync(payloadPath, JSON.stringify(payload, null, 2), "utf8");
-  fs.writeFileSync(htmlPath, renderHtml(payload), "utf8");
-  console.log(JSON.stringify({ payload: payloadPath, html: htmlPath, items: payload.items.length }, null, 2));
+  try {
+    const payload = buildPayload({ worksFile: args.works, analysisFile: args.analysis, auditFile: args.audit });
+    const payloadPath = path.join(outDir, "report_lumina_payload.json");
+    const htmlPath = path.join(outDir, args.html || "report_lumina.html");
+    fs.writeFileSync(payloadPath, JSON.stringify(payload, null, 2), "utf8");
+    fs.writeFileSync(htmlPath, renderHtml(payload), "utf8");
+    console.log(JSON.stringify({ payload: payloadPath, html: htmlPath, items: payload.items.length }, null, 2));
+  } catch (error) {
+    console.error(error.message);
+    process.exit(2);
+  }
 }
 
 if (require.main === module) {
