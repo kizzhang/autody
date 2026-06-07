@@ -54,8 +54,10 @@ function present(value) {
 }
 
 function hasNativeTabEvidence(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  return Object.values(value).some((section) => present(section));
+  if (Array.isArray(value)) return value.some((item) => hasNativeTabEvidence(item));
+  if (value && typeof value === "object") return Object.values(value).some((item) => hasNativeTabEvidence(item));
+  if (value === 0 || value === false) return true;
+  return value !== undefined && value !== null && String(value).trim() !== "";
 }
 
 function firstPresent(obj, names) {

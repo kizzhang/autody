@@ -123,10 +123,17 @@ test("merge writes structured native signal arrays as JSON in CSV", () => {
   assert.match(csv, /\[\{""source"":""推荐页""/);
 });
 
-test("merge uses work-level raw tabs when deep raw tabs are empty", () => {
+test("merge uses work-level raw tabs when deep raw tabs are placeholder namespaces", () => {
   const { merged } = runMerge({
     workOverrides: { rawDouyinTabs },
-    deepOverrides: { rawDouyinTabs: {} },
+    deepOverrides: {
+      rawDouyinTabs: {
+        overview: {},
+        trafficAnalysis: {},
+        audienceAnalysis: {},
+        commentHotWords: {},
+      },
+    },
   });
   const work = merged.publishedWorks[0];
 
