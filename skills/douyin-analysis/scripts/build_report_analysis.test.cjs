@@ -207,11 +207,16 @@ test("lumina payload can carry report analysis fields by work index", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "autody-lumina-analysis-"));
   const worksFile = path.join(tmp, "works.json");
   const analysisFile = path.join(tmp, "analysis.json");
-  writeJson(worksFile, { publishedWorks: [baseWork()] });
+  writeJson(worksFile, {
+    publishedWorks: [
+      baseWork({ index: 1, mid: "m1" }),
+      baseWork({ index: 2, mid: "m2", publicUrl: "https://www.douyin.com/video/m2" }),
+    ],
+  });
   writeJson(analysisFile, {
     generatedAt: "2026-06-07T00:00:00.000Z",
     items: [{
-      index: 1,
+      index: 2,
       dataStatus: "observed",
       contentType: "knowledge",
       nanaGeneralizedClass: "follow_asset",
@@ -220,15 +225,28 @@ test("lumina payload can carry report analysis fields by work index", () => {
       actualSignal: "high favorite rate, follow signal",
       observedResult: { bucket: "strong_observed" },
       calibration: { status: "ready_for_retro" },
+    }, {
+      index: 1,
+      dataStatus: "provisional",
+      contentType: "trend",
+      nanaGeneralizedClass: "awareness_asset",
+      blindScoreStatus: "blind_score_blocked",
+      expectedWinningMetrics: ["share_rate"],
+      actualSignal: "distractor row",
+      observedResult: { bucket: "weak_observed" },
+      calibration: { status: "blocked" },
     }],
   });
   const payload = buildPayload({ worksFile, analysisFile, auditFile: "" });
-  assert.equal(payload.items[0].analysis.contentType, "knowledge");
-  assert.equal(payload.items[0].analysis.nanaGeneralizedClass, "follow_asset");
-  assert.equal(payload.items[0].blindScoreStatus, "not_required");
-  assert.equal(payload.items[0].dataStatus, "observed");
-  assert.deepEqual(payload.items[0].expectedWinningMetrics, ["favorite_rate", "follow_rate"]);
-  assert.equal(payload.items[0].observedResult.bucket, "strong_observed");
-  assert.equal(payload.items[0].calibration.status, "ready_for_retro");
+  const matched = payload.items.find((item) => item.index === 2);
+  assert.equal(matched.analysis.contentType, "knowledge");
+  assert.equal(matched.analysis.nanaGeneralizedClass, "follow_asset");
+  assert.equal(matched.contentType, "knowledge");
+  assert.equal(matched.nanaGeneralizedClass, "follow_asset");
+  assert.equal(matched.blindScoreStatus, "not_required");
+  assert.equal(matched.dataStatus, "observed");
+  assert.deepEqual(matched.expectedWinningMetrics, ["favorite_rate", "follow_rate"]);
+  assert.equal(matched.observedResult.bucket, "strong_observed");
+  assert.equal(matched.calibration.status, "ready_for_retro");
   assert.equal(payload.sourceSummary.analysisGeneratedAt, "2026-06-07T00:00:00.000Z");
 });
