@@ -15,6 +15,11 @@ function assertIncludes(file, needle) {
 assertIncludes("skills/douyin-analysis/SKILL.md", "Chrome Extension-first");
 assertIncludes("skills/douyin-analysis/SKILL.md", "Do not inspect browser cookies, localStorage, passwords, or session stores.");
 assertIncludes("skills/douyin-analysis/references/douyin-workflow.md", "Chrome Extension collection path");
+assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "rawDouyinTabs");
+assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "overview");
+assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "trafficAnalysis");
+assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "audienceAnalysis");
+assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "commentHotWords");
 assertIncludes("skills/douyin-analysis/agents/openai.yaml", "Chrome Extension-first");
 assertIncludes("README.md", "Chrome Extension-first");
 assertIncludes("AGENTS.md", "Chrome Extension-first");
@@ -69,6 +74,7 @@ const checkedFiles = [
   "skills/douyin-analysis/agents/openai.yaml",
   "skills/douyin-analysis/references/chrome-extension-workflow.md",
   "skills/douyin-analysis/references/douyin-workflow.md",
+  "skills/douyin-analysis/references/douyin-native-tabs.md",
   "skills/douyin-analysis/references/report-design.md",
   "skills/douyin-analysis/references/lumina-html-workflow.md",
   "skills/douyin-analysis/references/lumina-template.html",
