@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require("fs");
 const path = require("path");
+const { normalizeDouyinTabs } = require("./normalize_douyin_tabs.cjs");
 
 function parseArgs(argv) {
   const args = {};
@@ -140,6 +141,8 @@ function main() {
     const normalized = { index: work.index || idx + 1, ...work };
     const deep = deepByIndex.get(normalized.index) || deepByIndex.get(normalized.mid) || deepByIndex.get(normalized.publicUrl) || {};
     const deepMetrics = deep.metrics || deep.deepMetrics || {};
+    const rawDouyinTabs = deep.rawDouyinTabs || normalized.rawDouyinTabs || {};
+    const nativeSignals = normalizeDouyinTabs({ rawDouyinTabs });
     const fillCount = (field, names) => {
       if (!present(work[field]) && !present(work[`${field}Text`])) {
         const value = firstPresent(deepMetrics, names);
@@ -167,6 +170,16 @@ function main() {
     return {
       ...normalized,
       deepMetrics,
+      rawDouyinTabs,
+      nativeTabCompleteness: nativeSignals.nativeTabCompleteness,
+      retentionSignals: nativeSignals.retentionSignals,
+      interactionSignals: nativeSignals.interactionSignals,
+      trafficSources: nativeSignals.trafficSources,
+      searchIntent: nativeSignals.searchIntent,
+      audienceAsset: nativeSignals.audienceAsset,
+      commentIntent: nativeSignals.commentIntent,
+      negativeSignals: nativeSignals.negativeSignals,
+      trendOrPlatformBoost: nativeSignals.trendOrPlatformBoost,
       topComments,
       commentKeywords: deep.commentKeywords || normalized.commentKeywords || [],
       topic: normalized.topic || inferTopic(normalized),
@@ -209,6 +222,9 @@ function main() {
     "likeRateText", "commentRateText", "shareRateText", "favoriteRateText",
     "finalTranscriptStatus", "finalTranscriptSource", "finalTranscriptNote", "finalTranscriptChars", "finalTranscript",
     "deepMetrics", "topComments", "commentKeywords",
+    "rawDouyinTabs", "nativeTabCompleteness", "retentionSignals", "interactionSignals",
+    "trafficSources", "searchIntent", "audienceAsset", "commentIntent",
+    "negativeSignals", "trendOrPlatformBoost",
   ];
   fs.writeFileSync(path.join(outDir, `${stem}_works_final.csv`), [cols.join(",")].concat(finalWorks.map((work) => cols.map((col) => csvCell(work[col])).join(","))).join("\n"));
 
