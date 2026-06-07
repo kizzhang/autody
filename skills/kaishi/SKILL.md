@@ -11,6 +11,8 @@ Use this command-like skill for `/kaishi` / `开始建档`.
 
 This workflow is Chrome Extension-first. Use the Codex Chrome Extension / Chrome plugin to work inside the user's already logged-in Chrome session. Do not start another browser collector or inspect cookies, localStorage, passwords, session stores, or Chrome profile files.
 
+Handle Douyin creator center and Doubao at human pace: one active item, wait for visible stability, save progress, then continue. During an authorized run, complete visible login, QR, CAPTCHA, and permission checks through the normal page UI instead of abandoning the workflow.
+
 ## Required Context
 
 Before collecting data, read:
@@ -30,11 +32,12 @@ Follow those shared safety, provenance, schema, and resume rules. If a field is 
 3. Collected the full published works list from Douyin creator center.
 4. Saved `douyin_works_final.json` with visible works fields.
 5. Opened each creator-center analytics page through Chrome and saved visible deep metrics.
-6. Opened one fresh Doubao page/chat per item for transcript or image-text extraction, saved the result, then closed that page.
-7. Collected Top comments where visible.
-8. Persisted progress after every item so the run can resume.
-9. Ran audit and merge scripts.
-10. Reported item counts, output paths, and remaining `dataGap` items.
+6. Collected all visible/exportable native Douyin tabs for every work: overview, trafficAnalysis, audienceAnalysis, commentHotWords.
+7. Used one normal Doubao window at human pace for transcript or image-text extraction, saved each result, and opened a new chat only when the current conversation was polluted, stuck, or failed.
+8. Collected Top comments where visible.
+9. Persisted progress after every item so the run can resume.
+10. Ran audit and merge scripts.
+11. Reported item counts, output paths, and remaining `dataGap` items.
 
 Do not create HTML dashboards, strategy reports, topic roadmaps, or next-batch recommendations in `/kaishi`. Use `/baogao` for report analysis and `/html` for Lumina HTML rendering after a baseline exists.
 
@@ -62,7 +65,7 @@ node ~/.codex/skills/douyin-analysis/scripts/merge_content_outputs.cjs \
 
 ## Stop Conditions
 
-Stop and ask the user to act in Chrome when Douyin requires login, QR scan, CAPTCHA, permission confirmation, or another account-side step.
+Complete visible login, QR scan, CAPTCHA, permission confirmation, or another account-side step through the normal Chrome UI when the current run is authorized. Record `manualVerificationStatus` on the affected item or run note.
 
 Stop and ask the user to reconnect Chrome Extension if the Chrome plugin cannot claim or open Chrome tabs.
 

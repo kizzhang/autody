@@ -11,6 +11,8 @@ This skill is Chrome Extension-first. Use the Codex Chrome Extension / Chrome pl
 
 Do not inspect browser cookies, localStorage, passwords, or session stores. The Chrome Extension path should claim or open normal Chrome tabs, read visible creator-center pages, use official in-page exports when available, and save only creator metrics/transcripts/comments that the user is authorized to analyze.
 
+Operate like a human assistant in the user's Chrome session. Work one active Douyin or Doubao item at a time, wait for visible page stability before reading or sending, avoid parallel tab bursts, avoid rapid repeated submissions, and persist the item result before moving to the next item. When the current run is authorized and the page shows login, QR, CAPTCHA, or permission confirmation, complete the visible check through the normal page UI. Do not bypass platform checks, scrape hidden payloads, or inspect credentials.
+
 ## Workflow
 
 1. Define scope and output folder.
@@ -20,14 +22,17 @@ Do not inspect browser cookies, localStorage, passwords, or session stores. The 
 
 2. Collect or load works data.
    - Preferred: use Chrome Extension collection path from `references/chrome-extension-workflow.md`.
-   - Claim an existing Chrome tab on `creator.douyin.com` when present; otherwise open creator center in Chrome and let the user log in if needed.
+   - Claim an existing Chrome tab on `creator.douyin.com` when present; otherwise open creator center in Chrome and complete visible login, QR, CAPTCHA, or permission checks through the normal page UI when the run is authorized.
    - Read visible creator-center tables/cards or use official page exports/downloads when available.
-   - Required fields: `index`, `mid`, `publicUrl`, `publishedAt`, `caption`, `itemType`, `plays`, `likes`, `comments`, `shares`, `favorites`, `finalTranscript`.
+   - Required bottom-ledger fields for every work: `index`, `mid`, `publicUrl`, `publishedAt`, `status`, `itemType`, `durationSeconds`, `caption`, cover/title text when visible, `plays`, `likes`, `comments`, `shares`, `favorites`, `finalTranscript`, `finalTranscriptStatus`, `dataSource`, and `fetchedAt`.
+   - Native creator-detail tabs must be saved raw-first under `rawDouyinTabs`: `overview`, `trafficAnalysis`, `audienceAnalysis`, and `commentHotWords`.
+   - For each tab, collect all visible/exportable metrics, tables, ranked words, search terms, traffic-source rows, audience distributions, retention labels, follow metrics, and comparison labels. If Douyin does not expose the value through export or visible DOM, record `dataGap` with the section name.
    - Deep fields: average watch time, completion rate, 3s/5s retention, new followers, lost followers, follow rate, profile visits, cover click rate, Top comments.
 
 3. Extract transcripts one item at a time.
-   - For Doubao, open one fresh page/chat per item, send the public URL, request transcript/text extraction, save, then close that page.
-   - Do not keep a long Doubao chat open across many works.
+   - For Doubao, reuse one normal Doubao window at human pace: send one public URL or visible text payload, pause, request transcript/text extraction, wait for the answer to finish, save, then continue to the next item.
+   - Do not parallelize Doubao chats, rapidly submit many URLs, or repeat mechanical coordinate clicks. Open a new chat only when the current conversation is polluted, stuck, or explicitly fails.
+   - If Doubao shows login, QR, CAPTCHA, or permission confirmation and the run is authorized, complete the visible check through the normal page UI and record the verification status.
    - Use local ASR or public page text only as fallback, and label provenance.
 
 4. Audit before rerun.
@@ -83,5 +88,7 @@ node ~/.codex/skills/douyin-analysis/scripts/merge_content_outputs.cjs \
 Read `references/douyin-workflow.md` when planning a full run, debugging field gaps, or explaining the expected JSON schema.
 
 Read `references/chrome-extension-workflow.md` before collecting creator-center data. It is the primary browser path.
+
+Read `references/douyin-native-tabs.md` before collecting, auditing, merging, or explaining native Douyin creator-detail tab data.
 
 Read `references/report-design.md` when turning collected data into an HTML report, factor map, sample review, or next-batch content roadmap.

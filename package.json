@@ -38,7 +38,7 @@
     "skills/"
   ],
   "scripts": {
-    "validate": "node bin/autody.js doctor --package-only && node --check skills/douyin-analysis/scripts/audit_content_gaps.cjs && node --check skills/douyin-analysis/scripts/merge_content_outputs.cjs && node --check skills/douyin-analysis/scripts/render_lumina_report.cjs && node scripts/validate_chrome_extension_policy.cjs",
+    "validate": "node bin/autody.js doctor --package-only && node --check skills/douyin-analysis/scripts/audit_content_gaps.cjs && node --check skills/douyin-analysis/scripts/merge_content_outputs.cjs && node --check skills/douyin-analysis/scripts/render_lumina_report.cjs && node --check skills/douyin-analysis/scripts/normalize_douyin_tabs.cjs && node --check skills/douyin-analysis/scripts/build_report_analysis.cjs && node --test skills/douyin-analysis/scripts/normalize_douyin_tabs.test.cjs && node --test skills/douyin-analysis/scripts/merge_content_outputs.native-tabs.test.cjs && node --test skills/douyin-analysis/scripts/audit_content_gaps.native-tabs.test.cjs && node --test skills/douyin-analysis/scripts/build_report_analysis.test.cjs && node scripts/validate_chrome_extension_policy.cjs",
     "pack:dry": "npm pack --dry-run",
     "test": "npm run validate"
   },

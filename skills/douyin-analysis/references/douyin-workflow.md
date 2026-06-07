@@ -80,6 +80,32 @@ douyin_deep_transcripts_final.md
 }
 ```
 
+## Native Tab Schema
+
+Persist raw tab evidence and normalized report signals on each work when Douyin exposes them:
+
+```json
+{
+  "rawDouyinTabs": {
+    "overview": {},
+    "trafficAnalysis": {},
+    "audienceAnalysis": {},
+    "commentHotWords": {}
+  },
+  "nativeTabCompleteness": {},
+  "retentionSignals": {},
+  "interactionSignals": {},
+  "trafficSources": [],
+  "searchIntent": {},
+  "audienceAsset": {},
+  "commentIntent": {},
+  "negativeSignals": {},
+  "trendOrPlatformBoost": {}
+}
+```
+
+`rawDouyinTabs` is evidence. The normalized fields are derived signals for audit, report, and HTML.
+
 ## Completion Rules
 
 A published work is complete when it has:
@@ -105,9 +131,15 @@ For Douyin creator center, current detail pages often expose 5-second retention 
 
 When mixing sources, preserve provenance with values such as `chrome-extension`, `doubao`, `public_page_text`, or `local_asr`.
 
+## Human-Paced Browser Rule
+
+Treat Douyin creator center and Doubao like normal manual work. Process one work at a time, wait for the visible page or model response to settle, save progress, then continue. Do not open many work-detail pages at once, rapidly submit many Doubao prompts, or repeat mechanical coordinate clicks.
+
+During an authorized run, complete visible login, QR, CAPTCHA, or permission checks through the normal page UI and record `manualVerificationStatus`. Do not bypass platform checks, inspect cookies, or read hidden session state.
+
 ## Doubao Prompts
 
-First send only the public URL. Then send one of:
+Reuse one normal Doubao conversation when it is clean. Send one public URL or visible text payload, wait, then send one of:
 
 ```text
 不要总结。请基于刚才这个抖音视频，输出完整口播逐字稿/transcript，尽量逐句还原原话；只输出 transcript 正文。
@@ -117,7 +149,7 @@ First send only the public URL. Then send one of:
 不要总结。请基于刚才这个抖音图文，提取图文里所有可见文字和文案正文；只输出正文。
 ```
 
-Close that Doubao page/chat after each saved item.
+Save the transcript to `transcript_progress.json` before sending the next item. Open a new Doubao chat only when the current conversation is polluted, stuck, or explicitly fails.
 
 ## Safety
 

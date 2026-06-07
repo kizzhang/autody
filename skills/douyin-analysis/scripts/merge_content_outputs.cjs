@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require("fs");
 const path = require("path");
+const { normalizeDouyinTabs } = require("./normalize_douyin_tabs.cjs");
 
 function parseArgs(argv) {
   const args = {};
@@ -28,8 +29,11 @@ function asArray(data, keys) {
 }
 
 function csvCell(value) {
-  if (Array.isArray(value)) value = value.join(" ");
-  if (value && typeof value === "object") value = JSON.stringify(value);
+  if (Array.isArray(value)) {
+    value = value.some((item) => item && typeof item === "object") ? JSON.stringify(value) : value.join(" ");
+  } else if (value && typeof value === "object") {
+    value = JSON.stringify(value);
+  }
   if (value == null) value = "";
   value = String(value);
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -45,6 +49,13 @@ function numericRate(part, whole) {
 
 function present(value) {
   if (Array.isArray(value)) return value.length > 0;
+  if (value === 0 || value === false) return true;
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function hasNativeTabEvidence(value) {
+  if (Array.isArray(value)) return value.some((item) => hasNativeTabEvidence(item));
+  if (value && typeof value === "object") return Object.values(value).some((item) => hasNativeTabEvidence(item));
   if (value === 0 || value === false) return true;
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
@@ -140,6 +151,8 @@ function main() {
     const normalized = { index: work.index || idx + 1, ...work };
     const deep = deepByIndex.get(normalized.index) || deepByIndex.get(normalized.mid) || deepByIndex.get(normalized.publicUrl) || {};
     const deepMetrics = deep.metrics || deep.deepMetrics || {};
+    const rawDouyinTabs = hasNativeTabEvidence(deep.rawDouyinTabs) ? deep.rawDouyinTabs : normalized.rawDouyinTabs || {};
+    const nativeSignals = normalizeDouyinTabs({ rawDouyinTabs });
     const fillCount = (field, names) => {
       if (!present(work[field]) && !present(work[`${field}Text`])) {
         const value = firstPresent(deepMetrics, names);
@@ -167,6 +180,16 @@ function main() {
     return {
       ...normalized,
       deepMetrics,
+      rawDouyinTabs,
+      nativeTabCompleteness: nativeSignals.nativeTabCompleteness,
+      retentionSignals: nativeSignals.retentionSignals,
+      interactionSignals: nativeSignals.interactionSignals,
+      trafficSources: nativeSignals.trafficSources,
+      searchIntent: nativeSignals.searchIntent,
+      audienceAsset: nativeSignals.audienceAsset,
+      commentIntent: nativeSignals.commentIntent,
+      negativeSignals: nativeSignals.negativeSignals,
+      trendOrPlatformBoost: nativeSignals.trendOrPlatformBoost,
       topComments,
       commentKeywords: deep.commentKeywords || normalized.commentKeywords || [],
       topic: normalized.topic || inferTopic(normalized),
@@ -209,6 +232,9 @@ function main() {
     "likeRateText", "commentRateText", "shareRateText", "favoriteRateText",
     "finalTranscriptStatus", "finalTranscriptSource", "finalTranscriptNote", "finalTranscriptChars", "finalTranscript",
     "deepMetrics", "topComments", "commentKeywords",
+    "rawDouyinTabs", "nativeTabCompleteness", "retentionSignals", "interactionSignals",
+    "trafficSources", "searchIntent", "audienceAsset", "commentIntent",
+    "negativeSignals", "trendOrPlatformBoost",
   ];
   fs.writeFileSync(path.join(outDir, `${stem}_works_final.csv`), [cols.join(",")].concat(finalWorks.map((work) => cols.map((col) => csvCell(work[col])).join(","))).join("\n"));
 

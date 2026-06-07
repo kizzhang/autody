@@ -2,6 +2,10 @@
 
 Use this when the user asks for an HTML report, dashboard, factor map, sample review, or next-batch creator roadmap.
 
+Read `report-agent.md` before writing report analysis or rendering a Lumina payload. This file defines the visual/report contract; `report-agent.md` defines the analysis contract, including blind prediction for new videos.
+
+Lumina should consume the fresh analysis payload from `douyin_incremental_analysis_YYYY-MM-DD.json`. Visual elements can stay stable, but conclusions, sample labels, caveats, blind-score status, and next-batch recommendations come from the current payload.
+
 ## Report Contract
 
 The report should help the creator answer four questions quickly:
@@ -22,10 +26,12 @@ Do not collapse everything into prose. Use structured sections, charts, cards, a
 - **Sample review**: short title, original caption excerpt, 2x2 metrics, judgment, and next step for every key video.
 - **Full table**: every video keeps its original index, URL, caption, bucket, metrics, transcript status, and data gap notes.
 - **Next-batch plan**: specific formats to shoot next, not generic content advice.
+- **Adversarial audit**: confidence limits, data exclusions, trend-borrowing risks, and next validation tests.
 
 ## Analysis Rules
 
 - Treat hidden/limited or private samples as distribution-unknown. Diagnose the script, but do not use their low plays as content-quality evidence.
+- New videos require blind prediction from `report-agent.md` before observed data is used. If blind scoring is blocked, mark it rather than inventing a retrospective score.
 - Separate "useful and direct" from deeper mechanisms such as identity contrast, emotional tension, proof strength, AI re-pricing, audience pain, workflow reproducibility, and trend borrowing.
 - Mark trend borrowing explicitly. If a video won because of a hot format or public meme, say that instead of pretending the topic alone caused the result.
 - Keep each per-video judgment tied to visible data: plays, saves, shares, comments, new followers, transcript, and comments.
