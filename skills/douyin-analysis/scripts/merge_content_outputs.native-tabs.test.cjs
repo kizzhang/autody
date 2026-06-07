@@ -38,7 +38,7 @@ const rawDouyinTabs = {
   },
 };
 
-test("merge preserves raw Douyin tabs and normalized native report signals", () => {
+function runMerge({ workOverrides = {}, deepOverrides = {} } = {}) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "autody-merge-native-tabs-"));
   const worksPath = path.join(tmpDir, "works.json");
   const deepPath = path.join(tmpDir, "deep.json");
@@ -61,6 +61,7 @@ test("merge preserves raw Douyin tabs and normalized native report signals", () 
           comments: 7,
           shares: 3,
           favorites: 11,
+          ...workOverrides,
         },
       ],
     }),
@@ -76,6 +77,7 @@ test("merge preserves raw Douyin tabs and normalized native report signals", () 
           fetchedAt: "2026-06-07T09:00:00.000Z",
           metrics: { plays: 1000, likes: 42, comments: 7, shares: 3, favorites: 11 },
           rawDouyinTabs,
+          ...deepOverrides,
         },
       ],
     }),
@@ -93,7 +95,14 @@ test("merge preserves raw Douyin tabs and normalized native report signals", () 
     "douyin_deep",
   ]);
 
-  const merged = JSON.parse(fs.readFileSync(path.join(outDir, "douyin_deep_works_final.json"), "utf8"));
+  return {
+    csv: fs.readFileSync(path.join(outDir, "douyin_deep_works_final.csv"), "utf8"),
+    merged: JSON.parse(fs.readFileSync(path.join(outDir, "douyin_deep_works_final.json"), "utf8")),
+  };
+}
+
+test("merge preserves raw Douyin tabs and normalized native report signals", () => {
+  const { merged } = runMerge();
   const work = merged.publishedWorks[0];
 
   assert.equal(work.rawDouyinTabs.trafficAnalysis.searchTermsBefore[0].term, "自媒体复盘");
@@ -104,4 +113,24 @@ test("merge preserves raw Douyin tabs and normalized native report signals", () 
   assert.equal(work.searchIntent.before[0].term, "自媒体复盘");
   assert.equal(work.audienceAsset.newFollowers, 26);
   assert.equal(work.commentIntent.words[0].word, "干货");
+});
+
+test("merge writes structured native signal arrays as JSON in CSV", () => {
+  const { csv } = runMerge();
+
+  assert.doesNotMatch(csv, /\[object Object\]/);
+  assert.match(csv, /推荐页/);
+  assert.match(csv, /\[\{""source"":""推荐页""/);
+});
+
+test("merge uses work-level raw tabs when deep raw tabs are empty", () => {
+  const { merged } = runMerge({
+    workOverrides: { rawDouyinTabs },
+    deepOverrides: { rawDouyinTabs: {} },
+  });
+  const work = merged.publishedWorks[0];
+
+  assert.equal(work.rawDouyinTabs.trafficAnalysis.searchTermsBefore[0].term, "自媒体复盘");
+  assert.equal(work.nativeTabCompleteness.status, "complete");
+  assert.equal(work.trafficSources[0].source, "推荐页");
 });

@@ -29,8 +29,11 @@ function asArray(data, keys) {
 }
 
 function csvCell(value) {
-  if (Array.isArray(value)) value = value.join(" ");
-  if (value && typeof value === "object") value = JSON.stringify(value);
+  if (Array.isArray(value)) {
+    value = value.some((item) => item && typeof item === "object") ? JSON.stringify(value) : value.join(" ");
+  } else if (value && typeof value === "object") {
+    value = JSON.stringify(value);
+  }
   if (value == null) value = "";
   value = String(value);
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -48,6 +51,11 @@ function present(value) {
   if (Array.isArray(value)) return value.length > 0;
   if (value === 0 || value === false) return true;
   return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function hasNativeTabEvidence(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).some((section) => present(section));
 }
 
 function firstPresent(obj, names) {
@@ -141,7 +149,7 @@ function main() {
     const normalized = { index: work.index || idx + 1, ...work };
     const deep = deepByIndex.get(normalized.index) || deepByIndex.get(normalized.mid) || deepByIndex.get(normalized.publicUrl) || {};
     const deepMetrics = deep.metrics || deep.deepMetrics || {};
-    const rawDouyinTabs = deep.rawDouyinTabs || normalized.rawDouyinTabs || {};
+    const rawDouyinTabs = hasNativeTabEvidence(deep.rawDouyinTabs) ? deep.rawDouyinTabs : normalized.rawDouyinTabs || {};
     const nativeSignals = normalizeDouyinTabs({ rawDouyinTabs });
     const fillCount = (field, names) => {
       if (!present(work[field]) && !present(work[`${field}Text`])) {
