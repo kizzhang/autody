@@ -82,6 +82,24 @@ function runReport({ works, audit, blind, args = [] }) {
   return JSON.parse(fs.readFileSync(path.join(outDir, "douyin_incremental_analysis_2026-06-07.json"), "utf8"));
 }
 
+function runReportProcess({ works, args = [] }) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "autody-report-analysis-"));
+  const worksPath = path.join(tmpDir, "works.json");
+  const outDir = path.join(tmpDir, "out");
+  fs.writeFileSync(worksPath, JSON.stringify(works));
+  return {
+    result: require("node:child_process").spawnSync(process.execPath, [
+      scriptPath,
+      "--works",
+      worksPath,
+      "--out",
+      outDir,
+      ...args,
+    ], { encoding: "utf8" }),
+    outDir,
+  };
+}
+
 test("builds atomic report rows from current works and audit caveats", () => {
   const report = runReport({
     works: { publishedWorks: [baseWork()] },
@@ -107,6 +125,17 @@ test("uses audit caveats keyed by workKey to mark provisional rows", () => {
   assert.deepEqual(report.items[0].observedResult.caveats, ["topComments"]);
 });
 
+test("marks complete native tab rows with missing transcript status as provisional", () => {
+  const report = runReport({
+    works: { items: [baseWork({ finalTranscriptStatus: "missing", finalTranscript: "" })] },
+    audit: { items: [] },
+  });
+
+  assert.equal(report.items[0].dataStatus, "provisional");
+  assert.ok(report.items[0].observedResult.caveats.includes("transcript_incomplete"));
+  assert.ok(report.items[0].claims.some((claim) => claim.evidence.includes("transcript:missing")));
+});
+
 test("marks new videos blind_score_blocked when no blind prediction exists", () => {
   const report = runReport({
     works: { items: [baseWork({ mid: "m2", publicUrl: "https://www.douyin.com/video/m2", publishedAt: "2026-06-07" })] },
@@ -116,6 +145,28 @@ test("marks new videos blind_score_blocked when no blind prediction exists", () 
 
   assert.equal(report.items[0].blindScoreStatus, "blind_score_blocked");
   assert.equal(report.items[0].blindPrediction, null);
+});
+
+test("keeps new videos with null blind prediction blocked", () => {
+  const report = runReport({
+    works: { items: [baseWork({ mid: "m4", publicUrl: "https://www.douyin.com/video/m4", publishedAt: "2026-06-07" })] },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:m4", prediction: null }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_score_blocked");
+  assert.equal(report.items[0].blindPrediction, null);
+});
+
+test("sets top-level data gate to provisional_data for non-observed rows without blind block", () => {
+  const report = runReport({
+    works: { items: [baseWork({ rawDouyinTabs: { overview: {} } })] },
+    audit: { items: [] },
+  });
+
+  assert.equal(report.items[0].dataStatus, "provisional");
+  assert.equal(report.dataGate.status, "provisional_data");
 });
 
 test("carries blind prediction exactly unchanged when present and produces calibration with predicted bucket", () => {
@@ -134,4 +185,15 @@ test("carries blind prediction exactly unchanged when present and produces calib
   assert.equal(report.items[0].blindScoreStatus, "blind_scored");
   assert.deepEqual(report.items[0].blindPrediction, prediction);
   assert.equal(report.items[0].calibration.predictedBucket, "high_save_low_share");
+});
+
+test("invalid --date exits nonzero with targeted error", () => {
+  const { result } = runReportProcess({
+    works: { items: [baseWork()] },
+    args: ["--date", "../bad"],
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Invalid --date/);
+  assert.match(result.stderr, /YYYY-MM-DD/);
 });

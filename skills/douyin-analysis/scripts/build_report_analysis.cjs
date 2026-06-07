@@ -186,12 +186,23 @@ function auditGaps(auditRow) {
   ].filter(Boolean);
 }
 
-function classifyDataStatus(work, auditRow, nativeCompleteness) {
-  const gaps = auditGaps(auditRow);
+function transcriptCaveats(work) {
   const transcriptStatus = `${work.finalTranscriptStatus || work.transcriptStatus || ""} ${work.finalTranscriptNote || ""}`;
+  const transcriptText = firstPresent(work.finalTranscript, work.transcript, "");
+  if (/private|inaccessible|missing|failed|非公开|删除/i.test(transcriptStatus) || !present(transcriptText)) {
+    return ["transcript_incomplete"];
+  }
+  return [];
+}
+
+function rowCaveats(work, auditRow) {
+  return Array.from(new Set([...auditGaps(auditRow), ...transcriptCaveats(work)]));
+}
+
+function classifyDataStatus(work, auditRow, nativeCompleteness) {
+  const gaps = rowCaveats(work, auditRow);
   const hasAuditGaps = gaps.length > 0;
-  const hidden = /private|inaccessible|missing|failed|非公开|删除/i.test(transcriptStatus);
-  if (nativeCompleteness.status === "complete" && !hasAuditGaps && !hidden) return "observed";
+  if (nativeCompleteness.status === "complete" && !hasAuditGaps) return "observed";
   if (hasAuditGaps || nativeCompleteness.status !== "complete") return "provisional";
   return "observed";
 }
@@ -200,8 +211,12 @@ function isNewWork(work, newAfter) {
   return Boolean(newAfter && work.publishedAt && String(work.publishedAt).slice(0, 10) >= newAfter);
 }
 
+function usefulPrediction(prediction) {
+  return Boolean(prediction && typeof prediction === "object" && !Array.isArray(prediction) && present(prediction));
+}
+
 function blindState(work, blindRow, newAfter) {
-  if (blindRow && Object.prototype.hasOwnProperty.call(blindRow, "prediction")) {
+  if (blindRow && usefulPrediction(blindRow.prediction)) {
     return { blindScoreStatus: "blind_scored", blindPrediction: blindRow.prediction };
   }
   if (isNewWork(work, newAfter)) {
@@ -246,14 +261,32 @@ function buildClaims(work, nativeSignals, signal, dataStatus) {
       evidence: nativeSignals.commentIntent.words.slice(0, 3).map((word) => word.word || JSON.stringify(word)),
     });
   }
+  for (const caveat of transcriptCaveats(work)) {
+    claims.push({
+      claim: "Transcript evidence is incomplete, so the row cannot be treated as fully observed.",
+      evidence: [`transcript:${work.finalTranscriptStatus || work.transcriptStatus || "missing"}`, caveat],
+    });
+  }
   return claims.filter((claim) => claim.evidence.length > 0);
+}
+
+function validateReportDate(date) {
+  if (!date) return new Date().toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Invalid --date: expected YYYY-MM-DD.");
+  }
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw new Error("Invalid --date: expected a real calendar date in YYYY-MM-DD format.");
+  }
+  return date;
 }
 
 function buildReport(options) {
   const worksData = options.worksData || readJson(options.works);
   const auditData = options.auditData || readJson(options.audit);
   const blindData = options.blindData || readJson(options.blind);
-  const reportDate = options.date || new Date().toISOString().slice(0, 10);
+  const reportDate = validateReportDate(options.date);
   const generatedAt = options.generatedAt || new Date().toISOString();
   const works = asArray(worksData, ["publishedWorks", "works", "items"]);
   const auditRows = asArray(auditData, ["items", "publishedWorks", "works"]);
@@ -266,6 +299,7 @@ function buildReport(options) {
     const rawDouyinTabs = hasNativeTabEvidence(row.rawDouyinTabs) ? row.rawDouyinTabs : {};
     const nativeSignals = normalizeDouyinTabs({ rawDouyinTabs });
     const auditRow = findByWork(auditByKey, row);
+    const caveats = rowCaveats(row, auditRow);
     const dataStatus = classifyDataStatus(row, auditRow, nativeSignals.nativeTabCompleteness);
     const contentType = inferContentType(row);
     const accountAsset = inferAccountAsset(row, nativeSignals);
@@ -292,7 +326,7 @@ function buildReport(options) {
       observedResult: {
         bucket: observedBucket(signal),
         dataStatus,
-        caveats: auditGaps(auditRow),
+        caveats,
       },
       calibration: {
         predictedBucket: bucket,
@@ -328,7 +362,7 @@ function buildReport(options) {
       browserCollection: false,
       fakeBlindScoring: false,
       newAfter: options.newAfter || "",
-      status: summary.blindScoreBlocked > 0 ? "blocked_for_new_blind_scores" : "ready",
+      status: summary.blindScoreBlocked > 0 ? "blocked_for_new_blind_scores" : summary.provisional > 0 ? "provisional_data" : "ready",
     },
     summary,
     items,
@@ -388,16 +422,24 @@ function main(argv) {
   }
   const outDir = path.resolve(args.out);
   fs.mkdirSync(outDir, { recursive: true });
-  const report = buildReport({
-    works: args.works,
-    audit: args.audit,
-    blind: args.blind,
-    newAfter: args["new-after"],
-    date: args.date,
-  });
-  const stem = `douyin_incremental_analysis_${report.reportDate}`;
-  fs.writeFileSync(path.join(outDir, `${stem}.json`), `${JSON.stringify(report, null, 2)}\n`);
-  fs.writeFileSync(path.join(outDir, `${stem}.md`), renderMarkdown(report));
+  try {
+    const report = buildReport({
+      works: args.works,
+      audit: args.audit,
+      blind: args.blind,
+      newAfter: args["new-after"],
+      date: args.date,
+    });
+    const stem = `douyin_incremental_analysis_${report.reportDate}`;
+    fs.writeFileSync(path.join(outDir, `${stem}.json`), `${JSON.stringify(report, null, 2)}\n`);
+    fs.writeFileSync(path.join(outDir, `${stem}.md`), renderMarkdown(report));
+  } catch (error) {
+    if (/^Invalid --date:/.test(error.message)) {
+      console.error(error.message);
+      process.exit(2);
+    }
+    throw error;
+  }
 }
 
 if (require.main === module) main(process.argv);
