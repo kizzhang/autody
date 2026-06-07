@@ -100,6 +100,10 @@ function runReportProcess({ works, args = [] }) {
   };
 }
 
+function writeJson(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data), "utf8");
+}
+
 test("builds atomic report rows from current works and audit caveats", () => {
   const report = runReport({
     works: { publishedWorks: [baseWork()] },
@@ -196,4 +200,35 @@ test("invalid --date exits nonzero with targeted error", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Invalid --date/);
   assert.match(result.stderr, /YYYY-MM-DD/);
+});
+
+test("lumina payload can carry report analysis fields by work index", () => {
+  const { buildPayload } = require("./render_lumina_report.cjs");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "autody-lumina-analysis-"));
+  const worksFile = path.join(tmp, "works.json");
+  const analysisFile = path.join(tmp, "analysis.json");
+  writeJson(worksFile, { publishedWorks: [baseWork()] });
+  writeJson(analysisFile, {
+    generatedAt: "2026-06-07T00:00:00.000Z",
+    items: [{
+      index: 1,
+      dataStatus: "observed",
+      contentType: "knowledge",
+      nanaGeneralizedClass: "follow_asset",
+      blindScoreStatus: "not_required",
+      expectedWinningMetrics: ["favorite_rate", "follow_rate"],
+      actualSignal: "high favorite rate, follow signal",
+      observedResult: { bucket: "strong_observed" },
+      calibration: { status: "ready_for_retro" },
+    }],
+  });
+  const payload = buildPayload({ worksFile, analysisFile, auditFile: "" });
+  assert.equal(payload.items[0].analysis.contentType, "knowledge");
+  assert.equal(payload.items[0].analysis.nanaGeneralizedClass, "follow_asset");
+  assert.equal(payload.items[0].blindScoreStatus, "not_required");
+  assert.equal(payload.items[0].dataStatus, "observed");
+  assert.deepEqual(payload.items[0].expectedWinningMetrics, ["favorite_rate", "follow_rate"]);
+  assert.equal(payload.items[0].observedResult.bucket, "strong_observed");
+  assert.equal(payload.items[0].calibration.status, "ready_for_retro");
+  assert.equal(payload.sourceSummary.analysisGeneratedAt, "2026-06-07T00:00:00.000Z");
 });

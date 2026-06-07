@@ -27,6 +27,14 @@ function asArray(data, keys) {
   return [];
 }
 
+function byIndex(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    if (row && row.index != null) map.set(Number(row.index), row);
+  }
+  return map;
+}
+
 function present(value) {
   if (Array.isArray(value)) return value.length > 0;
   if (value === 0 || value === false) return true;
@@ -174,16 +182,30 @@ function buildPayload({ worksFile, analysisFile, auditFile }) {
   const auditData = readJson(auditFile);
   const rawWorks = asArray(worksData, ["publishedWorks", "works", "items"]);
   const normalized = rawWorks.map(normalizeWork);
+  const analysisRows = byIndex(asArray(analysisData, ["items", "works"]));
   const boundaries = {
     p30: quantile(normalized.map((item) => item.plays), 0.3),
     p60: quantile(normalized.map((item) => item.plays), 0.6),
     p85: quantile(normalized.map((item) => item.plays), 0.85),
     p95: quantile(normalized.map((item) => item.plays), 0.95),
   };
-  const items = normalized.map((item) => ({
-    ...item,
-    role: roleFor(item, boundaries),
-  }));
+  const items = normalized.map((item) => {
+    const analysis = analysisRows.get(item.index) || null;
+    return {
+      ...item,
+      role: roleFor(item, boundaries),
+      analysis,
+      dataStatus: (analysis && analysis.dataStatus) || item.distributionStatus || "observed",
+      contentType: (analysis && analysis.contentType) || item.topic || "",
+      nanaGeneralizedClass: (analysis && analysis.nanaGeneralizedClass) || "",
+      blindScoreStatus: (analysis && analysis.blindScoreStatus) || "not_required",
+      blindPrediction: (analysis && analysis.blindPrediction) || null,
+      expectedWinningMetrics: (analysis && analysis.expectedWinningMetrics) || [],
+      actualSignal: (analysis && analysis.actualSignal) || "",
+      observedResult: (analysis && analysis.observedResult) || null,
+      calibration: (analysis && analysis.calibration) || null,
+    };
+  });
   const roleCounts = items.reduce((acc, item) => {
     acc[item.role] = (acc[item.role] || 0) + 1;
     return acc;
