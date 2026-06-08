@@ -25,20 +25,23 @@ Operate like a human assistant in the user's Chrome session. Work one active Dou
    - Claim an existing Chrome tab on `creator.douyin.com` when present; otherwise open creator center in Chrome and complete visible login, QR, CAPTCHA, or permission checks through the normal page UI when the run is authorized.
    - Read visible creator-center tables/cards or use official page exports/downloads when available.
    - Required bottom-ledger fields for every work: `index`, `mid`, `publicUrl`, `publishedAt`, `status`, `itemType`, `durationSeconds`, `caption`, cover/title text when visible, `plays`, `likes`, `comments`, `shares`, `favorites`, `finalTranscript`, `finalTranscriptStatus`, `dataSource`, and `fetchedAt`.
+   - Treat the visible `status` / `visibility` shown in the creator-center work list as the source of truth for private, hidden, limited, or deleted works. Mark those before transcript extraction; do not infer privacy from Doubao failures, zero plays, or missing public-page access.
    - Native creator-detail tabs must be saved raw-first under `rawDouyinTabs`: `overview`, `trafficAnalysis`, `audienceAnalysis`, and `commentHotWords`.
    - For each tab, collect all visible/exportable metrics, tables, ranked words, search terms, traffic-source rows, audience distributions, retention labels, follow metrics, and comparison labels. If Douyin does not expose the value through export or visible DOM, record `dataGap` with the section name.
    - Deep fields: average watch time, completion rate, 3s/5s retention, new followers, lost followers, follow rate, profile visits, cover click rate, Top comments.
 
 3. Extract transcripts one item at a time.
    - For Doubao, reuse one normal Doubao window at human pace: send one public URL or visible text payload, pause, request transcript/text extraction, wait for the answer to finish, save, then continue to the next item.
+   - Skip Doubao/public-link extraction for works whose visible creator-center `status` / `visibility` is private, hidden, limited, or deleted. Use creator-center visible original text, already supplied local scripts, or user-provided text only, and label that provenance.
    - Do not parallelize Doubao chats, rapidly submit many URLs, or repeat mechanical coordinate clicks. Open a new chat only when the current conversation is polluted, stuck, or explicitly fails.
    - If Doubao shows login, QR, CAPTCHA, or permission confirmation and the run is authorized, complete the visible check through the normal page UI and record the verification status.
-   - Use local ASR or public page text only as fallback, and label provenance.
+   - Do not fetch media files or run local ASR in the current transcript workflow. Media/ASR can be listed only as a future improvement comment after explicit safety review and user approval.
 
 4. Audit before rerun.
    - Run `scripts/audit_content_gaps.cjs` against existing works/deep JSON.
    - First run for an account should collect all published works.
    - Later runs should fetch only missing or stale fields.
+   - Treat metric conflicts, stale deep metrics, fallback transcripts, and zero-play items with positive deep activity as gaps. Do not present a report from mixed-date or conflict-heavy data.
 
 5. Backfill deep metrics.
    - Preferred: use Chrome Extension to open each creator-center video analytics page in the user's Chrome session, read visible metrics, and persist each item.
@@ -48,6 +51,7 @@ Operate like a human assistant in the user's Chrome session. Work one active Dou
 6. Export and validate.
    - Merge to JSON, CSV, and Markdown with `scripts/merge_content_outputs.cjs`.
    - Validate item count, duplicate IDs, missing URLs, empty transcripts, missing deep metrics, and missing Top comments.
+   - Check `summary.metricConflictCount`, `summary.distributionUnknown`, and `summary.dataQualityWarningCounts`; if any are non-empty, mark the data as provisional and backfill before strategic conclusions.
    - Keep `.cheat-cache/`, cookies, browser storage, and raw private dumps out of git.
 
 7. Present the report when asked for analysis.
@@ -70,6 +74,7 @@ Audit gaps:
 node ~/.codex/skills/douyin-analysis/scripts/audit_content_gaps.cjs \
   --works outputs/douyin_analysis_YYYY-MM-DD/douyin_works_final.json \
   --deep outputs/douyin_analysis_YYYY-MM-DD/deep_metrics_progress.json \
+  --fresh-after YYYY-MM-DD \
   --out outputs/douyin_analysis_YYYY-MM-DD/content_gap_audit.json
 ```
 

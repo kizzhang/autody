@@ -141,3 +141,23 @@ test("merge uses work-level raw tabs when deep raw tabs are placeholder namespac
   assert.equal(work.nativeTabCompleteness.status, "complete");
   assert.equal(work.trafficSources[0].source, "推荐页");
 });
+
+test("merge uses visible creator status as the private distribution source of truth", () => {
+  const { merged } = runMerge({
+    workOverrides: {
+      status: "私密",
+      visibility: "私密",
+      plays: 0,
+      finalTranscriptStatus: "missing",
+    },
+    deepOverrides: {
+      metrics: { plays: 0, likes: 26, comments: 3, shares: 0, favorites: 6 },
+    },
+  });
+  const work = merged.publishedWorks[0];
+
+  assert.equal(work.distributionStatus, "private_or_hidden");
+  assert.equal(work.performanceBucket, "分发未知/私密");
+  assert.ok(work.dataQualityWarnings.includes("private_or_hidden_work"));
+  assert.ok(work.dataQualityWarnings.includes("zero_plays_with_positive_deep_activity"));
+});

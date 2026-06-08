@@ -160,3 +160,32 @@ test("audit falls back from empty deep native tab placeholders to work-level tab
   assert.equal(result.summary.missingCounts["rawDouyinTabs.overview.interactionMetrics"], undefined);
   assert.equal(result.summary.missingCounts["rawDouyinTabs.trafficAnalysis.douyinAppSourceShare"], undefined);
 });
+
+test("audit records visible private status without inferring it from transcript failure", () => {
+  const result = runAudit({
+    workOverrides: {
+      status: "私密",
+      visibility: "私密",
+      plays: 0,
+      finalTranscript: "",
+      finalTranscriptStatus: "missing",
+    },
+    deepOverrides: {
+      metrics: {
+        plays: 0,
+        likes: 26,
+        comments: 3,
+        shares: 0,
+        favorites: 6,
+        completionRate: "2.58%",
+        fiveSecondRetention: "37.25%",
+      },
+      rawDouyinTabs: completeRawDouyinTabs,
+    },
+  });
+  const item = result.items[0];
+
+  assert.ok(item.warnings.includes("private_or_hidden_work"));
+  assert.ok(item.warnings.includes("zero_plays_with_positive_deep_activity"));
+  assert.equal(item.action, "use_creator_visible_text_or_local_script");
+});
