@@ -232,9 +232,9 @@ The other command skills should also stay small:
 
 ## Error Handling
 
-If Chrome Extension is unavailable or disconnected, `/kaishi` stops and asks the user to reconnect it.
+If Chrome Extension is unavailable or disconnected, `/kaishi` first attempts the normal claim/open/reload path. It pauses only after reconnect attempts fail, reports the exact blocker, preserves progress, and resumes after the blocker clears.
 
-If creator center requires login, QR scan, CAPTCHA, permission, or account-side confirmation, `/kaishi` asks the user to complete that action in Chrome.
+If creator center requires a non-sensitive visible confirmation during an authorized run, `/kaishi` completes it through the normal Chrome UI. It pauses for true human-only blockers such as QR scan, CAPTCHA, password/OTP, account switch, sensitive consent, payment, or verification that cannot be completed by the agent.
 
 If a field is not visible or exportable in Chrome, `/kaishi` records a `dataGap` entry with the page checked and reason.
 

@@ -11,7 +11,9 @@ This skill is Chrome Extension-first. Use the Codex Chrome Extension / Chrome pl
 
 Do not inspect browser cookies, localStorage, passwords, or session stores. The Chrome Extension path should claim or open normal Chrome tabs, read visible creator-center pages, use official in-page exports when available, and save only creator metrics/transcripts/comments that the user is authorized to analyze.
 
-Operate like a human assistant in the user's Chrome session. Work one active Douyin or Doubao item at a time, wait for visible page stability before reading or sending, avoid parallel tab bursts, avoid rapid repeated submissions, and persist the item result before moving to the next item. When the current run is authorized and the page shows login, QR, CAPTCHA, or permission confirmation, complete the visible check through the normal page UI. Do not bypass platform checks, scrape hidden payloads, or inspect credentials.
+Operate like a human assistant in the user's Chrome session. Work one active Douyin or Doubao item at a time, wait for visible page stability before reading or sending, avoid parallel tab bursts, avoid rapid repeated submissions, and persist the item result before moving to the next item. During an authorized run, complete only non-sensitive visible confirmations that do not require a human verification action. If the page shows QR scan, CAPTCHA, password, OTP, account switch, payment, or sensitive consent, persist progress, name the exact screen, pause for the human action, then resume the workflow after it clears. Do not bypass platform checks, scrape hidden payloads, or inspect credentials.
+
+Do not pass automatable collection work back to the user. The agent must click, read, export, copy public URLs, send approved Doubao prompts, save files, audit, and merge when those actions are possible through the authorized Chrome session or local workspace. Pause only for true human-only blockers such as Chrome Extension disconnection after reconnect attempts, QR scan, CAPTCHA, password/OTP entry, account switch, payment, consent that changes account state, or a platform verification the agent cannot complete through the normal visible UI.
 
 ## Workflow
 
@@ -22,7 +24,7 @@ Operate like a human assistant in the user's Chrome session. Work one active Dou
 
 2. Collect or load works data.
    - Preferred: use Chrome Extension collection path from `references/chrome-extension-workflow.md`.
-   - Claim an existing Chrome tab on `creator.douyin.com` when present; otherwise open creator center in Chrome and complete visible login, QR, CAPTCHA, or permission checks through the normal page UI when the run is authorized.
+   - Claim an existing Chrome tab on `creator.douyin.com` when present; otherwise open creator center in Chrome, complete non-sensitive visible confirmations when authorized, and pause for QR scan, CAPTCHA, password, OTP, account switch, payment, or sensitive consent before resuming.
    - Read visible creator-center tables/cards or use official page exports/downloads when available.
    - Required bottom-ledger fields for every work: `index`, `mid`, `publicUrl`, `publishedAt`, `status`, `itemType`, `durationSeconds`, `caption`, cover/title text when visible, `plays`, `likes`, `comments`, `shares`, `favorites`, `finalTranscript`, `finalTranscriptStatus`, `dataSource`, and `fetchedAt`.
    - Treat the visible `status` / `visibility` shown in the creator-center work list as the source of truth for private, hidden, limited, or deleted works. Mark those before transcript extraction; do not infer privacy from Doubao failures, zero plays, or missing public-page access.
@@ -34,7 +36,7 @@ Operate like a human assistant in the user's Chrome session. Work one active Dou
    - For Doubao, reuse one normal Doubao window at human pace: send one public URL or visible text payload, pause, request transcript/text extraction, wait for the answer to finish, save, then continue to the next item.
    - Skip Doubao/public-link extraction for works whose visible creator-center `status` / `visibility` is private, hidden, limited, or deleted. Use creator-center visible original text, already supplied local scripts, or user-provided text only, and label that provenance.
    - Do not parallelize Doubao chats, rapidly submit many URLs, or repeat mechanical coordinate clicks. Open a new chat only when the current conversation is polluted, stuck, or explicitly fails.
-   - If Doubao shows login, QR, CAPTCHA, or permission confirmation and the run is authorized, complete the visible check through the normal page UI and record the verification status.
+   - If Doubao shows QR scan, CAPTCHA, password, OTP, account switch, payment, or sensitive consent, record the verification status, pause for the human action, then resume after it clears. Complete only non-sensitive visible confirmations that do not require human verification.
    - Do not fetch media files or run local ASR in the current transcript workflow. Media/ASR can be listed only as a future improvement comment after explicit safety review and user approval.
 
 4. Audit before rerun.

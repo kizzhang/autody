@@ -9,7 +9,7 @@ Use this command-like skill for `/html` / `Lumina HTML`.
 
 `/html` turns an existing Autody run folder into a Lumina HTML page. It is a rendering workflow, not a collection workflow. Regenerate the report analysis from the latest data every run.
 
-Do not use Chrome, Doubao, creator center, or public Douyin pages from this command. If data is missing, ask the user to run `/kaishi`, `/gengxin`, `/buchong`, or `/tijian` first.
+Do not use Chrome, Doubao, creator center, or public Douyin pages from this command. If required data is missing, report the exact missing files/fields and, when the user's current request is actually collection, update, backfill, or audit, route yourself to the matching Autody workflow in the same turn instead of telling the user to run it. If the request is strictly `/html`, render only when the local data is sufficient.
 
 ## Required Context
 
