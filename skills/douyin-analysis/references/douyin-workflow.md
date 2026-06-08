@@ -129,7 +129,11 @@ For Douyin creator center, current detail pages often expose 5-second retention 
 5. Audit gaps.
 6. Keep unavailable fields in `dataGap` with source notes so later runs can retry through Chrome.
 
-When mixing sources, preserve provenance with values such as `chrome-extension`, `doubao`, `public_page_text`, or `local_asr`.
+When mixing sources, preserve provenance with values such as `chrome-extension`, `creator_center_visible_text`, `doubao`, or `public_page_text`.
+
+Private, hidden, limited, and deleted works are visible in the creator-center work list. Record that visible `status` / `visibility` before transcript extraction and use it as the source of truth; do not infer privacy from Doubao failures, zero public plays, or public-link access errors.
+
+Do not fetch media files or run local ASR in the current workflow. Keep media/ASR only as a future improvement comment that requires an explicit safety review and user approval before implementation.
 
 ## Human-Paced Browser Rule
 
@@ -142,6 +146,10 @@ During an authorized run, complete visible login, QR, CAPTCHA, or permission che
 Reuse one normal Doubao conversation when it is clean. Send one public URL or visible text payload, wait, then send one of:
 
 ```text
+给我完整文稿
+```
+
+```text
 不要总结。请基于刚才这个抖音视频，输出完整口播逐字稿/transcript，尽量逐句还原原话；只输出 transcript 正文。
 ```
 
@@ -150,6 +158,8 @@ Reuse one normal Doubao conversation when it is clean. Send one public URL or vi
 ```
 
 Save the transcript to `transcript_progress.json` before sending the next item. Open a new Doubao chat only when the current conversation is polluted, stuck, or explicitly fails.
+
+Do not send private, hidden, limited, or deleted works to Doubao. For those items, use creator-center visible text or an already supplied local script; otherwise save the transcript status as unavailable with the visible privacy state.
 
 ## Safety
 

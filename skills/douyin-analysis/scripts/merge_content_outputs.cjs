@@ -47,6 +47,73 @@ function numericRate(part, whole) {
   return whole > 0 ? part / whole : 0;
 }
 
+function asNumber(value) {
+  if (!present(value)) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const cleaned = String(value).replace(/,/g, "").trim();
+  if (!cleaned) return null;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+function parseRate(value) {
+  if (!present(value)) return null;
+  if (typeof value === "number") {
+    const ratio = value > 1 ? value / 100 : value;
+    return ratio >= 0 && ratio <= 1 ? ratio : null;
+  }
+  const text = String(value);
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const num = Number(match[0]);
+  const ratio = text.includes("%") || num > 1 ? num / 100 : num;
+  return ratio >= 0 && ratio <= 1 ? ratio : null;
+}
+
+function firstMetricValue(metrics, names) {
+  const value = firstPresent(metrics, names);
+  return asNumber(value);
+}
+
+function hasPositiveDeepActivity(metrics) {
+  return [
+    { names: ["likes", "likeCount", "like_count"], parse: asNumber },
+    { names: ["comments", "commentCount", "comment_count"], parse: asNumber },
+    { names: ["shares", "shareCount", "share_count"], parse: asNumber },
+    { names: ["favorites", "favoriteCount", "favorite_count"], parse: asNumber },
+    { names: ["newFollowers", "newFollowerCount"], parse: asNumber },
+    { names: ["profileVisits"], parse: asNumber },
+    { names: ["avgWatchTimeSeconds"], parse: asNumber },
+    { names: ["completionRate", "completionRateText", "finishRate", "finishRateText"], parse: parseRate },
+    { names: ["fiveSecondRetention", "fiveSecondRetentionText", "threeSecondRetention", "threeSecondRetentionText", "threeSecRetention", "threeSecRetentionText"], parse: parseRate },
+  ].some((group) => group.names.some((name) => (group.parse(metrics[name]) || 0) > 0));
+}
+
+function visibleStatusText(work) {
+  return [
+    work.status,
+    work.visibility,
+    work.statusText,
+    work.visibilityText,
+    work.publishStatus,
+    work.reviewStatus,
+    ...(Array.isArray(work.dataCaveats) ? work.dataCaveats : []),
+  ].filter(present).join(" ");
+}
+
+function isPrivateOrHiddenFromVisibleStatus(work) {
+  return /私密|仅自己可见|隐藏|hidden|private|非公开|已删除|deleted|下架|不可见|limited/i.test(visibleStatusText(work));
+}
+
+function transcriptNeedsBackfill(transcript) {
+  const text = `${transcript.source || ""} ${transcript.status || ""} ${transcript.note || ""}`;
+  // Existing local ASR provenance is tolerated only for already-supplied artifacts.
+  // Current collection must not fetch media or initiate ASR; keep that as a future improvement.
+  if (/^local_asr\s+ok\b/i.test(text)) return false;
+  if (/\bok\b/i.test(text) && !/fallback|missing|failed|page_text|chapter_summary|no_asr/i.test(text)) return false;
+  return /fallback|missing|failed|page_text|chapter_summary|no_asr|private|inaccessible|非公开|已删除/i.test(text);
+}
+
 function present(value) {
   if (Array.isArray(value)) return value.length > 0;
   if (value === 0 || value === false) return true;
@@ -151,12 +218,32 @@ function main() {
     const normalized = { index: work.index || idx + 1, ...work };
     const deep = deepByIndex.get(normalized.index) || deepByIndex.get(normalized.mid) || deepByIndex.get(normalized.publicUrl) || {};
     const deepMetrics = deep.metrics || deep.deepMetrics || {};
+    const visiblePrivateOrHidden = isPrivateOrHiddenFromVisibleStatus(normalized);
     const rawDouyinTabs = hasNativeTabEvidence(deep.rawDouyinTabs) ? deep.rawDouyinTabs : normalized.rawDouyinTabs || {};
     const nativeSignals = normalizeDouyinTabs({ rawDouyinTabs });
+    const metricConflicts = [];
+    const dataQualityWarnings = [];
     const fillCount = (field, names) => {
+      const deepValue = firstMetricValue(deepMetrics, names);
+      const workValue = asNumber(work[field]);
       if (!present(work[field]) && !present(work[`${field}Text`])) {
-        const value = firstPresent(deepMetrics, names);
-        if (present(value)) normalized[field] = Number(value);
+        if (deepValue !== null) normalized[field] = deepValue;
+        return;
+      }
+      if (deepValue !== null && workValue !== null && deepValue !== workValue) {
+        metricConflicts.push({
+          field,
+          workValue,
+          deepValue,
+          delta: deepValue - workValue,
+          deepFetchedAt: deep.fetchedAt || "",
+        });
+        if (workValue === 0 && deepValue > 0) {
+          normalized[field] = deepValue;
+          dataQualityWarnings.push(`${field}_zero_replaced_by_deep_metric`);
+        } else {
+          dataQualityWarnings.push(`${field}_conflict_work_vs_deep`);
+        }
       }
     };
     fillCount("plays", ["plays", "playCount", "viewCount", "view_count"]);
@@ -176,10 +263,21 @@ function main() {
     normalized.shareRate = Number.isFinite(normalized.shareRate) ? normalized.shareRate : numericRate(normalized.shares, normalized.plays);
     normalized.favoriteRate = Number.isFinite(normalized.favoriteRate) ? normalized.favoriteRate : numericRate(normalized.favorites, normalized.plays);
     const transcript = buildFinalTranscript(normalized, transcriptByIndex);
+    if (transcriptNeedsBackfill(transcript)) dataQualityWarnings.push("transcript_needs_backfill");
+    if (visiblePrivateOrHidden) dataQualityWarnings.push("private_or_hidden_work");
+    if (normalized.plays === 0 && hasPositiveDeepActivity(deepMetrics)) {
+      dataQualityWarnings.push("zero_plays_with_positive_deep_activity");
+    }
+    const distributionStatus = visiblePrivateOrHidden
+      ? "private_or_hidden"
+      : normalized.plays === 0 && hasPositiveDeepActivity(deepMetrics)
+        ? "distribution_unknown_needs_review"
+        : "observed";
     const topComments = deep.topComments || deep.comments || normalized.topComments || [];
     return {
       ...normalized,
       deepMetrics,
+      deepMetricsFetchedAt: deep.fetchedAt || normalized.deepMetricsFetchedAt || "",
       rawDouyinTabs,
       nativeTabCompleteness: nativeSignals.nativeTabCompleteness,
       retentionSignals: nativeSignals.retentionSignals,
@@ -193,7 +291,12 @@ function main() {
       topComments,
       commentKeywords: deep.commentKeywords || normalized.commentKeywords || [],
       topic: normalized.topic || inferTopic(normalized),
-      performanceBucket: normalized.performanceBucket || engagementBucket(normalized),
+      performanceBucket: distributionStatus === "observed"
+        ? (normalized.performanceBucket || engagementBucket(normalized))
+        : visiblePrivateOrHidden ? "分发未知/私密" : "分发未知/需复核",
+      distributionStatus,
+      metricConflicts,
+      dataQualityWarnings: Array.from(new Set(dataQualityWarnings)),
       likeRateText: pct(normalized.likeRate),
       commentRateText: pct(normalized.commentRate),
       shareRateText: pct(normalized.shareRate),
@@ -213,6 +316,13 @@ function main() {
     emptyTranscripts: finalWorks.filter((work) => !work.finalTranscript).map((work) => work.index),
     missingTopComments: finalWorks.filter((work) => !Array.isArray(work.topComments) || work.topComments.length === 0).map((work) => work.index),
     missingCompletionRate: finalWorks.filter((work) => work.itemType === "video" && !["completionRate", "completionRateText", "finishRate", "finishRateText"].some((key) => present(work.deepMetrics[key]))).map((work) => work.index),
+    distributionUnknown: finalWorks.filter((work) => work.distributionStatus !== "observed").map((work) => work.index),
+    metricConflictCount: finalWorks.reduce((sum, work) => sum + (work.metricConflicts || []).length, 0),
+    metricConflictIndexes: finalWorks.filter((work) => (work.metricConflicts || []).length).map((work) => work.index),
+    dataQualityWarningCounts: finalWorks.reduce((acc, work) => {
+      for (const warning of work.dataQualityWarnings || []) acc[warning] = (acc[warning] || 0) + 1;
+      return acc;
+    }, {}),
     sourceCounts: finalWorks.reduce((acc, work) => {
       acc[work.finalTranscriptSource] = (acc[work.finalTranscriptSource] || 0) + 1;
       return acc;

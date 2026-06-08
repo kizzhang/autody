@@ -41,6 +41,91 @@ function hasNativeTabEvidence(value) {
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
 
+function asNumber(value) {
+  if (!present(value)) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const cleaned = String(value).replace(/,/g, "").trim();
+  if (!cleaned) return null;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+function firstPresentValue(obj, names) {
+  for (const name of names) {
+    if (present(obj[name])) return obj[name];
+  }
+  return null;
+}
+
+function firstDeepNumber(deep, names) {
+  if (!deep) return null;
+  const roots = [deep, deep.metrics || {}, deep.deepMetrics || {}];
+  for (const root of roots) {
+    const value = firstPresentValue(root, names);
+    const number = asNumber(value);
+    if (number !== null) return number;
+  }
+  return null;
+}
+
+function firstDeepRate(deep, names) {
+  if (!deep) return null;
+  const roots = [deep, deep.metrics || {}, deep.deepMetrics || {}];
+  for (const root of roots) {
+    const value = firstPresentValue(root, names);
+    const rate = parseRate(value);
+    if (rate !== null) return rate;
+  }
+  return null;
+}
+
+function hasPositiveDeepActivity(deep) {
+  if (!deep) return false;
+  return [
+    { names: ["likes", "likeCount", "like_count"], read: firstDeepNumber },
+    { names: ["comments", "commentCount", "comment_count"], read: firstDeepNumber },
+    { names: ["shares", "shareCount", "share_count"], read: firstDeepNumber },
+    { names: ["favorites", "favoriteCount", "favorite_count"], read: firstDeepNumber },
+    { names: ["newFollowers", "newFollowerCount"], read: firstDeepNumber },
+    { names: ["profileVisits"], read: firstDeepNumber },
+    { names: ["avgWatchTimeSeconds"], read: firstDeepNumber },
+    { names: ["completionRate", "completionRateText", "finishRate", "finishRateText"], read: firstDeepRate },
+    { names: ["fiveSecondRetention", "fiveSecondRetentionText", "threeSecondRetention", "threeSecondRetentionText", "threeSecRetention", "threeSecRetentionText"], read: firstDeepRate },
+  ].some((group) => (group.read(deep, group.names) || 0) > 0);
+}
+
+function visibleStatusText(work) {
+  return [
+    work.status,
+    work.visibility,
+    work.statusText,
+    work.visibilityText,
+    work.publishStatus,
+    work.reviewStatus,
+    ...(Array.isArray(work.dataCaveats) ? work.dataCaveats : []),
+  ].filter(present).join(" ");
+}
+
+function isPrivateOrHiddenFromVisibleStatus(work) {
+  return /私密|仅自己可见|隐藏|hidden|private|非公开|已删除|deleted|下架|不可见|limited/i.test(visibleStatusText(work));
+}
+
+function needsVerbatimTranscript(work) {
+  const text = `${work.finalTranscriptSource || ""} ${work.finalTranscriptStatus || ""} ${work.finalTranscriptNote || ""}`;
+  // Existing local ASR provenance is tolerated only for already-supplied artifacts.
+  // Current collection must not fetch media or initiate ASR; keep that as a future improvement.
+  if (/^local_asr\s+ok\b/i.test(text)) return false;
+  if (/\bok\b/i.test(text) && !/fallback|missing|failed|page_text|chapter_summary|no_asr/i.test(text)) return false;
+  return /fallback|missing|failed|page_text|chapter_summary|no_asr|private|inaccessible|非公开|已删除/i.test(text);
+}
+
+function isBeforeDate(value, dateText) {
+  if (!value || !dateText) return false;
+  const left = new Date(value).getTime();
+  const right = new Date(dateText).getTime();
+  return Number.isFinite(left) && Number.isFinite(right) && left < right;
+}
+
 function deepById(deepRows) {
   const map = new Map();
   for (const row of deepRows) {
@@ -95,18 +180,43 @@ function main() {
   const works = asArray(worksData, ["publishedWorks", "works", "items"]);
   const deepRows = asArray(deepData, ["items", "deepMetrics", "results", "publishedWorks"]);
   const deepMap = deepById(deepRows);
+  const freshAfter = args["fresh-after"] || "";
 
   const rows = [];
   for (const work of works) {
     const missing = [];
+    const conflicts = [];
+    const warnings = [];
     const deep = getDeep(work, deepMap);
+    const visiblePrivateOrHidden = isPrivateOrHiddenFromVisibleStatus(work);
     for (const field of ["mid", "publicUrl", "publishedAt", "caption", "itemType", "plays", "likes", "comments", "shares", "favorites", "finalTranscript"]) {
       const deepFallback = {
+        plays: ["plays", "playCount", "viewCount", "view_count"],
+        likes: ["likes", "likeCount", "like_count"],
+        comments: ["comments", "commentCount", "comment_count"],
         shares: ["shares", "shareCount", "share_count"],
         favorites: ["favorites", "favoriteCount", "favorite_count"],
       }[field];
       if (!present(work[field]) && !(deepFallback && hasDeepMetric(deep, deepFallback))) missing.push(field);
     }
+    const metricFields = {
+      plays: ["plays", "playCount", "viewCount", "view_count"],
+      likes: ["likes", "likeCount", "like_count"],
+      comments: ["comments", "commentCount", "comment_count"],
+      shares: ["shares", "shareCount", "share_count"],
+      favorites: ["favorites", "favoriteCount", "favorite_count"],
+    };
+    for (const [field, names] of Object.entries(metricFields)) {
+      const workValue = asNumber(work[field]);
+      const deepValue = firstDeepNumber(deep, names);
+      if (workValue !== null && deepValue !== null && workValue !== deepValue) {
+        conflicts.push({ field, workValue, deepValue, delta: deepValue - workValue, deepFetchedAt: deep && deep.fetchedAt || "" });
+      }
+    }
+    if (needsVerbatimTranscript(work)) missing.push("verbatimTranscript");
+    if (freshAfter && deep && isBeforeDate(deep.fetchedAt, freshAfter)) missing.push("staleDeepMetrics");
+    if (visiblePrivateOrHidden) warnings.push("private_or_hidden_work");
+    if (asNumber(work.plays) === 0 && hasPositiveDeepActivity(deep)) warnings.push("zero_plays_with_positive_deep_activity");
     if (work.itemType === "video") {
       if (!present(work.durationSeconds) && !present(work.durationOrType)) missing.push("duration");
       if (!present(work.avgPlayTimeText) && !hasDeepMetric(deep, ["avgWatchTimeText", "avgWatchTimeSeconds", "avgPlayTimeText"])) missing.push("avgWatchTime");
@@ -122,14 +232,16 @@ function main() {
     }
     const comments = (deep && (deep.topComments || deep.comments)) || work.topComments || [];
     if (!Array.isArray(comments) || comments.length === 0) missing.push("topComments");
-    if (missing.length) {
+    if (missing.length || conflicts.length || warnings.length) {
       rows.push({
         index: work.index,
         mid: work.mid || "",
         publicUrl: work.publicUrl || "",
         itemType: work.itemType || "",
-        missing,
-        action: "backfill",
+        missing: Array.from(new Set(missing)),
+        conflicts,
+        warnings,
+        action: visiblePrivateOrHidden ? "use_creator_visible_text_or_local_script" : "backfill",
       });
     }
   }
@@ -139,6 +251,15 @@ function main() {
     withGaps: rows.length,
     missingCounts: rows.reduce((acc, row) => {
       for (const field of row.missing) acc[field] = (acc[field] || 0) + 1;
+      return acc;
+    }, {}),
+    withConflicts: rows.filter((row) => row.conflicts.length).length,
+    conflictCounts: rows.reduce((acc, row) => {
+      for (const conflict of row.conflicts) acc[conflict.field] = (acc[conflict.field] || 0) + 1;
+      return acc;
+    }, {}),
+    warningCounts: rows.reduce((acc, row) => {
+      for (const warning of row.warnings) acc[warning] = (acc[warning] || 0) + 1;
       return acc;
     }, {}),
   };
