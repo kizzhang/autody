@@ -149,6 +149,12 @@ Run blind prediction for:
 
 Historical videos do not require blind scoring by default. Use normal evidence-based diagnosis for historical samples unless the user asks for retro-calibration.
 
+Run production blind scoring only when the item has a full transcript, full
+script, or complete image-text body. Do not use caption-only text, chapter
+summaries, fallback summaries, or obviously truncated transcripts as production
+blind inputs. Mark those items `blind_score_transcript_incomplete`; they may be
+used only in a calibration experiment where transcript provenance is reported.
+
 ### Hard Isolation Rule
 
 The blind subagent may receive only:
@@ -194,17 +200,16 @@ report later compares against observed data:
     "favorite_rate_shape": "low|mid|high|breakout",
     "follow_asset_shape": "low|mid|high|breakout"
   },
-  "scores": {
-    "hook": 0,
+  "scores_0_5": {
+    "hook_strength": 0,
     "first_5s_clarity": 0,
-    "density": 0,
-    "scarcity": 0,
-    "usefulness": 0,
-    "emotional_value": 0,
-    "proof_strength": 0,
+    "middle_delivery": 0,
+    "completion_risk": 0,
+    "save_intent": 0,
+    "share_intent": 0,
+    "comment_intent": 0,
     "follow_reason": 0,
-    "conversion_asset": 0,
-    "completion_risk": 0
+    "account_asset": 0
   },
   "predicted_bucket": "weak|ordinary|testable|strong|priority_reshoot",
   "one_line_reason": "...",
@@ -214,6 +219,29 @@ report later compares against observed data:
 ```
 
 The main report agent must not edit the blind score after seeing data. It may only compare prediction to observed results.
+
+### Blind Schema Gate
+
+Before any observed data is opened, validate the blind subagent output.
+
+A production blind score is valid only when all of these are true:
+
+- It is parseable JSON.
+- It contains `blind_id`, `relative_predictions`, `scores_0_5`, `why`,
+  `risk_flags`, and `confidence`.
+- `relative_predictions` contains exactly the metric-shape fields listed in
+  the contract above.
+- Every bucket value is from the allowed enum. Do not accept invented values
+  such as `medium`, `medium_high`, `mid_low`, `low_medium`, `high-ish`, or
+  `overall_bucket`.
+- The output does not include or imply observed data.
+
+If the first output fails this gate, reprompt the same isolated subagent once
+with only the schema error and the original title/script. If the second output
+still fails, save the raw output as calibration evidence, mark the item
+`blind_score_schema_failed`, and do not use it as a production blind score.
+Normalization is allowed only in a calibration report, never as the report's
+official blind prediction.
 
 ### Blind Prediction Calibration Rules
 
@@ -230,6 +258,26 @@ to the blind subagent.
 - Share requires social transmission evidence: identity threat, controversy, strong empathy, a sentence viewers would send to a friend, or a broadly legible external cost. Niche technical usefulness alone is not high share.
 - Comment requires a reason to respond: disagreement, question bait, resource request, personal story invitation, or a claim that viewers can challenge.
 - Follow asset requires the creator to become scarce: proof that only this creator can keep showing the process, provide the next workflow, interpret the trend, or reduce future risk.
+- AI anxiety plus a clear route map can break out even without a loud opening.
+  Signals include named resources, named steps, creator transformation proof,
+  and a credible "from zero to keeping up" path. Raise favorite, share, follow,
+  and sometimes distribution expectations for this pattern.
+- Copyable short workflow content should not inherit long口播 penalties. If the
+  script is concise and gives a prompt, template, checklist, or directly usable
+  workflow, raise completion, favorite, and share expectations.
+- Do not predict high likes or comments from emotion alone. A "破防" or
+  vulnerable niche story still needs a low-friction reply path, universal pain,
+  resource ask, disagreement hook, or broadly legible conflict.
+- Technical trend explainers can split distribution from depth. When a dense
+  first-principles explanation is tied to a current trend, it may have weak
+  distribution or weak first-stop metrics but high average watch, comments, and
+  shares among retained target viewers.
+- Macro empowerment narratives can produce high like and comment rates even
+  with mid distribution when they give viewers an aspirational identity and ask
+  an easy personal question.
+- Identity threat often drives share and follow more reliably than comments.
+  Predict high comments only when the script gives viewers something easy to
+  answer, challenge, request, or confess.
 
 ### Calibration Output
 

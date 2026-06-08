@@ -460,6 +460,12 @@ CoC lens:
 
 New videos must be blind-scored before observed metrics are used, when isolated scoring is available.
 
+Production blind scoring requires a full transcript, full script, or complete
+image-text body. Caption-only text, chapter summaries, fallback summaries, and
+truncated transcripts are not valid production blind inputs; mark those rows
+`blind_score_transcript_incomplete`. They can be used in calibration research
+only when transcript provenance is reported.
+
 Blind scorer receives only:
 
 ```json
@@ -517,6 +523,18 @@ shapes:
 }
 ```
 
+Before opening observed metrics, validate the blind scorer output. It is usable
+as a production blind score only if it is parseable JSON, contains
+`relative_predictions` with every metric-shape field, contains `scores_0_5`,
+`why`, `risk_flags`, and `confidence`, and uses only the allowed enums. Reject
+invented values such as `medium`, `medium_high`, `mid_low`, `low_medium`, or
+`overall_bucket`.
+
+If schema validation fails, reprompt the same isolated scorer once with only the
+schema error and the original title/script. If it fails again, save the raw
+output as calibration evidence, mark `blindScoreStatus: blind_score_schema_failed`,
+and do not use a normalized version as the official blind prediction.
+
 Calibration rules:
 
 - Real project, real experience, or real tool usage is not enough for high distribution; the first 5 seconds need broad pain, identity threat, strong result, strong contrast, or clear failure cost.
@@ -524,6 +542,11 @@ Calibration rules:
 - Personal project showcases, feature lists, abstract methodology, and dense technical terms cap distribution unless there is a clear story arc.
 - Route-map content can still produce high favorites when it gives a career path, profitable project path, real users/customers, beginner-to-result proof, or concrete next moves.
 - Judge share, comment, favorite, and follow separately; useful content is not automatically shareable or follow-worthy.
+- AI anxiety plus named steps/resources and creator transformation proof can break out even without a loud opening, especially on favorites, shares, follows, and sometimes distribution.
+- Copyable short workflow content should not inherit long口播 penalties; prompts, templates, checklists, and directly usable workflows can raise completion, favorite, and share expectations.
+- Emotion alone is not a comment/like guarantee. Require a low-friction reply path, universal pain, resource ask, disagreement hook, or broadly legible conflict.
+- Technical trend explainers can have low distribution but high average watch, comments, and shares among retained target viewers when tied to a current trend.
+- Identity threat often drives share/follow more reliably than comments; comments need an easy answer, challenge, request, or confession.
 
 ### Step 7: Account Diagnosis
 
