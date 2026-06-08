@@ -135,11 +135,17 @@ Private, hidden, limited, and deleted works are visible in the creator-center wo
 
 Do not fetch media files or run local ASR in the current workflow. Keep media/ASR only as a future improvement comment that requires an explicit safety review and user approval before implementation.
 
+## Agent Autonomy
+
+The agent must perform the full collection/update workflow when the user requests it. Do not substitute a next-step checklist, ask the user to paste Doubao transcripts, ask the user to export creator-center files, or tell the user to run another command when those actions are available through the authorized Chrome session or local workspace.
+
+Pause only for true human-only blockers: Chrome Extension disconnected after reconnect attempts, QR scan, CAPTCHA, password/OTP, account switch, payment, consent that changes account state, or platform verification the agent cannot complete through the normal visible UI. Persist progress before pausing, name the blocker precisely, then resume after it clears.
+
 ## Human-Paced Browser Rule
 
 Treat Douyin creator center and Doubao like normal manual work. Process one work at a time, wait for the visible page or model response to settle, save progress, then continue. Do not open many work-detail pages at once, rapidly submit many Doubao prompts, or repeat mechanical coordinate clicks.
 
-During an authorized run, complete visible login, QR, CAPTCHA, or permission checks through the normal page UI and record `manualVerificationStatus`. Do not bypass platform checks, inspect cookies, or read hidden session state.
+During an authorized run, complete only non-sensitive visible confirmations through the normal page UI and record `manualVerificationStatus`. Pause for QR scan, CAPTCHA, password, OTP, account switch, payment, sensitive consent, or platform verification that cannot be completed by the agent. Do not bypass platform checks, inspect cookies, or read hidden session state.
 
 ## Doubao Prompts
 

@@ -4,7 +4,7 @@ Use this reference before collecting Douyin creator data. The default path is Ch
 
 ## When To Use
 
-Use Chrome Extension collection for all browser work. It works in the user's real Chrome profile and avoids creating a second browser session. If Chrome Extension is unavailable or disconnected, stop and ask the user to reconnect it.
+Use Chrome Extension collection for all browser work. It works in the user's real Chrome profile and avoids creating a second browser session. If Chrome Extension is unavailable or disconnected, attempt the normal claim/open/reload path first. Pause only when the extension truly cannot be reached; report the exact reconnect blocker and resume after it is cleared.
 
 ## Safety Rules
 
@@ -12,7 +12,13 @@ Use Chrome Extension collection for all browser work. It works in the user's rea
 - Do not inspect browser cookies, localStorage, passwords, session stores, or Chrome profile files.
 - Do not export raw private browser state.
 - Save only creator works, public URLs, transcripts, metrics, Top comments, provenance notes, and report artifacts.
-- If Chrome asks for login, CAPTCHA, QR scan, permission, or another account-side action and the current run is authorized, complete the visible check through the normal page UI. Do not bypass the check, read credentials, or use hidden browser state.
+- If Chrome asks for a non-sensitive visible confirmation and the current run is authorized, complete it through the normal page UI. If Chrome asks for QR scan, CAPTCHA, password, OTP, account switch, payment, sensitive consent, or another human verification action, persist progress, name the exact screen, pause for the human action, and resume after it clears. Do not bypass the check, read credentials, or use hidden browser state.
+
+## Agent Autonomy
+
+The agent must do the collection work. Do not tell the user to export, copy links, gather transcripts, paste page text, run another Autody command, or continue the checklist when the action is possible through Chrome Extension or the local workspace.
+
+Only pause for a true human-only blocker: Chrome Extension disconnected after reconnect attempts, QR scan, CAPTCHA, account password, OTP, account switch, payment, consent that changes account state, or a platform verification the agent cannot complete through the normal visible UI. A pause is not completion: persist current progress, name the exact blocker, and continue the remaining workflow after the blocker clears.
 
 ## Human-Paced Operation
 
@@ -23,14 +29,14 @@ Handle Douyin creator center and Doubao as a human assistant, not as a batch cra
 - Wait for visible page stability before reading, clicking, typing, or saving.
 - Avoid parallel tab bursts, rapid refresh loops, and repeated mechanical coordinate clicks.
 - Save progress after each item before moving to the next item.
-- When a visible login, QR, CAPTCHA, or permission step appears during an authorized run, complete it through the normal UI and record `manualVerificationStatus`.
-- If the page asks for a password, OTP, account switch, payment, or another sensitive action not already authorized, pause before entering or changing that sensitive value.
+- Complete non-sensitive visible confirmations through the normal UI and record `manualVerificationStatus`.
+- If the page asks for QR scan, CAPTCHA, password, OTP, account switch, payment, sensitive consent, or another human verification action, pause before proceeding and resume after the human action clears.
 
 ## Chrome Tab Flow
 
 1. List open Chrome tabs and claim an existing tab whose URL starts with `https://creator.douyin.com/` when available.
 2. If no creator tab is open, open `https://creator.douyin.com/creator-micro/content/manage` in Chrome.
-3. Confirm the visible page is logged in. If it is not and the run is authorized, complete visible login, QR, CAPTCHA, or permission checks through the normal page UI, then continue after the page reaches creator center.
+3. Confirm the visible page is logged in. If it is not and the run is authorized, complete only non-sensitive visible confirmations through the normal page UI. Pause for QR scan, CAPTCHA, password, OTP, account switch, payment, sensitive consent, or verification that cannot be completed by the agent, then continue after the page reaches creator center.
 4. Create or reuse `outputs/douyin_analysis_YYYY-MM-DD/`.
 5. Keep one progress file per stage and write after every item so the run can resume.
 

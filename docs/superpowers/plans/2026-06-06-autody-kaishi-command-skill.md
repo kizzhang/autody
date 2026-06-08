@@ -210,9 +210,9 @@ node ~/.codex/skills/douyin-analysis/scripts/merge_content_outputs.cjs \
 
 ## Stop Conditions
 
-Stop and ask the user to act in Chrome when Douyin requires login, QR scan, CAPTCHA, permission confirmation, or another account-side step.
+Complete only non-sensitive visible confirmations through the normal Chrome UI when the run is authorized. Pause for true human-only blockers such as QR scan, CAPTCHA, password/OTP, account switch, sensitive consent, payment, or verification that cannot be completed by the agent.
 
-Stop and ask the user to reconnect Chrome Extension if the Chrome plugin cannot claim or open Chrome tabs.
+Pause only after Chrome Extension reconnect/claim/open attempts fail. Report the exact reconnect blocker, preserve progress, and resume after it clears.
 
 If Doubao cannot extract a transcript for one item, record transcript status and continue to the next item.
 ```
@@ -260,7 +260,7 @@ Use this command-like skill for `/html` / `Lumina HTML`.
 
 `/html` turns an existing Autody run folder into a Lumina HTML page. It is a rendering workflow, not a collection workflow. Regenerate the report analysis from the latest data every run.
 
-Do not use Chrome, Doubao, creator center, or public Douyin pages from this command. If data is missing, ask the user to run `/kaishi`, `/gengxin`, `/buchong`, or `/tijian` first.
+Do not use Chrome, Doubao, creator center, or public Douyin pages from this command. If required data is missing, report the exact missing files/fields and, when the user's current request is actually collection, update, backfill, or audit, route yourself to the matching Autody workflow in the same turn instead of telling the user to run it. If the request is strictly `/html`, render only when the local data is sufficient.
 
 ## Required Context
 
@@ -625,7 +625,7 @@ function install(opts) {
   }
 
   console.log(`Installed ${skillNames.join(", ")} to ${skillsDir}`);
-  console.log("Ask Codex: run /kaishi for the first full Douyin creator baseline, then /html to render Lumina HTML.");
+  console.log("Codex should invoke /kaishi for the first full Douyin creator baseline, then /html to render Lumina HTML.");
 }
 
 function doctor(opts) {
@@ -803,7 +803,7 @@ interface:
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
   brand_color: "#111827"
-  default_prompt: "For first-time Douyin baselining, run /kaishi. For Lumina HTML rendering from an existing baseline, run /html. Use $douyin-analysis as the shared Chrome Extension-first workflow for authorized Douyin creator data, backfills, audits, and reports."
+  default_prompt: "For first-time Douyin baselining, Codex should invoke /kaishi. For Lumina HTML rendering from an existing baseline, Codex should invoke /html. Use $douyin-analysis as the shared Chrome Extension-first workflow for authorized Douyin creator data, backfills, audits, and reports."
 policy:
   allow_implicit_invocation: true
 ```
@@ -937,7 +937,7 @@ test -f "$HOME/.codex/skills/douyin-analysis/scripts/render_lumina_report.cjs"
 rg -n 'douyin-session|crawler\.py|backfill\.py|requirements\.txt|uv run|\.auth/' "$HOME/.codex/skills/douyin-analysis" "$HOME/.codex/skills/kaishi" "$HOME/.codex/skills/html" && exit 1 || true
 ```
 
-Expected: PASS. The install output should tell the user to run `/kaishi` and `/html`.
+Expected: PASS. The install output should tell Codex which Autody command to invoke for `/kaishi` and `/html` workflows.
 
 - [ ] **Step 5: Check git status**
 

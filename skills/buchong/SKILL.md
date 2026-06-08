@@ -11,7 +11,7 @@ Use this command-like skill for `/buchong` / `补充`.
 
 Start from the latest /tijian or audit output. The audit names missing native tab sections, stale metrics, transcript gaps, comment gaps, and metric conflicts so `/buchong` can collect only what is missing.
 
-Use Chrome Extension-first browser work for creator-center metrics and visible comments. Handle Douyin and Doubao at human pace: one active item, wait for visible stability, save progress, then continue. For transcript gaps, reuse one normal Doubao window and open a new chat only when the current conversation is polluted, stuck, or failed. During an authorized run, complete visible login, QR, CAPTCHA, and permission checks through the normal page UI. Do not inspect cookies, localStorage, passwords, session stores, or Chrome profile files.
+Use Chrome Extension-first browser work for creator-center metrics and visible comments. Handle Douyin and Doubao at human pace: one active item, wait for visible stability, save progress, then continue. For transcript gaps, reuse one normal Doubao window and open a new chat only when the current conversation is polluted, stuck, or failed. During an authorized run, complete only non-sensitive visible confirmations through the normal page UI. If QR scan, CAPTCHA, password, OTP, account switch, payment, or sensitive consent appears, preserve progress, pause for the human action, and resume after it clears. Do not inspect cookies, localStorage, passwords, session stores, or Chrome profile files.
 
 ## Required Context
 

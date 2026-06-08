@@ -156,7 +156,7 @@ Autody uses this path:
 
 1. Claim an existing Chrome tab on `creator.douyin.com` when available.
 2. Otherwise open creator center in the user's normal Chrome.
-3. If login, QR scan, CAPTCHA, or permission appears, stop and ask the user to complete it.
+3. If a non-sensitive visible confirmation appears during an authorized run, complete it through the normal Chrome UI. Pause for QR scan, CAPTCHA, password/OTP, account switch, sensitive consent, payment, or verification that cannot be completed by the agent.
 4. Read page-visible creator-center data through Chrome Extension.
 5. Prefer official in-page export/download controls when available.
 6. If export is unavailable, read visible DOM text, table rows, ranked lists, labels, and chart values that are visible.
@@ -567,4 +567,3 @@ Autody is acceptable when:
 - `/baogao` recomputes from the latest run folder.
 - New videos are blind-scored before metrics, or explicitly marked `blind_score_blocked`.
 - `/html` renders Lumina from a fresh payload and does not reuse old conclusions.
-

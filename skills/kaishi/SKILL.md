@@ -11,7 +11,9 @@ Use this command-like skill for `/kaishi` / `开始建档`.
 
 This workflow is Chrome Extension-first. Use the Codex Chrome Extension / Chrome plugin to work inside the user's already logged-in Chrome session. Do not start another browser collector or inspect cookies, localStorage, passwords, session stores, or Chrome profile files.
 
-Handle Douyin creator center and Doubao at human pace: one active item, wait for visible stability, save progress, then continue. During an authorized run, complete visible login, QR, CAPTCHA, and permission checks through the normal page UI instead of abandoning the workflow.
+Handle Douyin creator center and Doubao at human pace: one active item, wait for visible stability, save progress, then continue. During an authorized run, complete only non-sensitive visible confirmations through the normal page UI. If QR scan, CAPTCHA, password, OTP, account switch, payment, or sensitive consent appears, persist progress, name the exact screen, pause for the human action, then resume instead of abandoning the workflow.
+
+The agent owns the first-run baseline. Do not tell the user to export files, copy links, collect transcripts, paste page text, or run a checklist when those actions are possible through the authorized Chrome session or local workspace.
 
 ## Required Context
 
@@ -65,8 +67,8 @@ node ~/.codex/skills/douyin-analysis/scripts/merge_content_outputs.cjs \
 
 ## Stop Conditions
 
-Complete visible login, QR scan, CAPTCHA, permission confirmation, or another account-side step through the normal Chrome UI when the current run is authorized. Record `manualVerificationStatus` on the affected item or run note.
+Complete only non-sensitive visible confirmations through the normal Chrome UI when the current run is authorized. QR scan, CAPTCHA, password, OTP, account switch, payment, sensitive consent, or other human verification steps are blockers: record `manualVerificationStatus`, preserve progress, pause for the human action, and resume after it clears.
 
-Stop and ask the user to reconnect Chrome Extension if the Chrome plugin cannot claim or open Chrome tabs.
+Pause only after Chrome Extension reconnect/claim/open attempts fail. Report the exact reconnect blocker, preserve progress, and resume after it clears.
 
 If Doubao cannot extract a transcript for one item, record transcript status and continue to the next item.

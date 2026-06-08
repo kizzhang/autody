@@ -17,11 +17,14 @@ assertIncludes("skills/douyin-analysis/SKILL.md", "Do not inspect browser cookie
 assertIncludes("skills/douyin-analysis/SKILL.md", "references/douyin-native-tabs.md");
 assertIncludes("skills/douyin-analysis/SKILL.md", "rawDouyinTabs");
 assertIncludes("skills/douyin-analysis/SKILL.md", "Operate like a human assistant");
-assertIncludes("skills/douyin-analysis/SKILL.md", "complete the visible check through the normal page UI");
+assertIncludes("skills/douyin-analysis/SKILL.md", "complete only non-sensitive visible confirmations");
+assertIncludes("skills/douyin-analysis/SKILL.md", "QR scan, CAPTCHA");
 assertIncludes("skills/douyin-analysis/references/douyin-workflow.md", "Chrome Extension collection path");
 assertIncludes("skills/douyin-analysis/references/chrome-extension-workflow.md", "official in-page export first");
 assertIncludes("skills/douyin-analysis/references/chrome-extension-workflow.md", "Human-Paced Operation");
 assertIncludes("skills/douyin-analysis/references/chrome-extension-workflow.md", "manualVerificationStatus");
+assertIncludes("skills/douyin-analysis/references/chrome-extension-workflow.md", "human verification action");
+assertIncludes("skills/douyin-analysis/references/chrome-extension-workflow.md", "QR scan, CAPTCHA");
 assertIncludes("skills/douyin-analysis/references/douyin-workflow.md", "rawDouyinTabs");
 assertIncludes("skills/douyin-analysis/references/douyin-workflow.md", "Reuse one normal Doubao conversation");
 assertIncludes("skills/douyin-analysis/references/report-agent.md", "build_report_analysis.cjs");
@@ -127,6 +130,9 @@ const forbiddenHumanPaceRegressions = [
   ["one", "fresh", "Doubao", "page/chat", "per", "item"].join(" "),
   ["Close", "that", "Doubao", "page/chat", "after", "each", "saved", "item"].join(" "),
   ["Stop", "and", "ask", "the", "user", "to", "act", "in", "Chrome", "when", "Douyin", "requires", "login"].join(" "),
+  ["complete", "every", "automatable", "visible", "login"].join(" "),
+  ["complete", "visible", "login,", "QR,", "CAPTCHA"].join(" "),
+  ["complete", "visible", "login,", "QR"].join(" "),
 ];
 
 for (const file of checkedFiles) {
