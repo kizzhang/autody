@@ -172,7 +172,8 @@ If no isolated subagent capability is available, do not fake blind scoring in th
 
 ### Blind Output Contract
 
-The blind subagent must output strict JSON:
+The blind subagent must output strict JSON. It must predict the metric shape that the
+report later compares against observed data:
 
 ```json
 {
@@ -181,15 +182,29 @@ The blind subagent must output strict JSON:
   "account_asset": ["professional_authority"],
   "nana_generalized_class": "one_time_watch|useful_but_detached|follow_asset|compound_asset",
   "expected_winning_metrics": ["favorite_rate", "share_rate", "follow_rate"],
+  "relative_predictions": {
+    "distribution_bucket": "low|mid|high|breakout",
+    "two_second_bounce_shape": "strong_low_bounce|mid|weak_high_bounce",
+    "five_second_retention_shape": "low|mid|high|breakout",
+    "completion_shape": "low|mid|high|breakout",
+    "avg_watch_shape": "low|mid|high|breakout",
+    "like_rate_shape": "low|mid|high|breakout",
+    "comment_rate_shape": "low|mid|high|breakout",
+    "share_rate_shape": "low|mid|high|breakout",
+    "favorite_rate_shape": "low|mid|high|breakout",
+    "follow_asset_shape": "low|mid|high|breakout"
+  },
   "scores": {
     "hook": 0,
+    "first_5s_clarity": 0,
     "density": 0,
     "scarcity": 0,
     "usefulness": 0,
     "emotional_value": 0,
     "proof_strength": 0,
     "follow_reason": 0,
-    "conversion_asset": 0
+    "conversion_asset": 0,
+    "completion_risk": 0
   },
   "predicted_bucket": "weak|ordinary|testable|strong|priority_reshoot",
   "one_line_reason": "...",
@@ -199,6 +214,22 @@ The blind subagent must output strict JSON:
 ```
 
 The main report agent must not edit the blind score after seeing data. It may only compare prediction to observed results.
+
+### Blind Prediction Calibration Rules
+
+Use these rules inside the isolated blind prompt. They are deliberately about script
+features only; do not leak account baselines, historical winners, or observed metrics
+to the blind subagent.
+
+- Real project, real tool, real workflow, or real life experience does not automatically mean high distribution. Distribution can be `high` or `breakout` only when the first 5 seconds contain a broad pain, identity threat, strong result, strong contrast, or clear failure cost.
+- If the opening tells viewers the video is long, dense, or can be summarized elsewhere, penalize `two_second_bounce_shape`, `five_second_retention_shape`, and `completion_shape`.
+- Personal project showcases, feature lists, abstract methodology, and dense technical terms cap distribution at `low` or `mid` unless the script has a clear story arc: problem, cost, conflict, solution, result.
+- Separate watch time from completion. Long口播 can have `avg_watch_shape: high` while `completion_shape` stays `low` or `mid`.
+- Separate content quality from account asset. A useful one-off answer can earn likes or favorites without creating a future follow reason.
+- Route-map content can earn high favorites even when it lacks a downloadable checklist. Signals include unemployment/career paths, profitable project paths, real users, real customers, "from beginner to result", and concrete next moves. Do not downgrade favorites only because the advice is narrative.
+- Share requires social transmission evidence: identity threat, controversy, strong empathy, a sentence viewers would send to a friend, or a broadly legible external cost. Niche technical usefulness alone is not high share.
+- Comment requires a reason to respond: disagreement, question bait, resource request, personal story invitation, or a claim that viewers can challenge.
+- Follow asset requires the creator to become scarce: proof that only this creator can keep showing the process, provide the next workflow, interpret the trend, or reduce future risk.
 
 ### Calibration Output
 

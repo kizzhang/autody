@@ -497,6 +497,34 @@ If isolated blind scoring is unavailable, mark:
 
 Do not create retrospective blind scores after seeing data.
 
+Blind scorer output must include script-only predictions for all report-facing metric
+shapes:
+
+```json
+{
+  "relative_predictions": {
+    "distribution_bucket": "low|mid|high|breakout",
+    "two_second_bounce_shape": "strong_low_bounce|mid|weak_high_bounce",
+    "five_second_retention_shape": "low|mid|high|breakout",
+    "completion_shape": "low|mid|high|breakout",
+    "avg_watch_shape": "low|mid|high|breakout",
+    "like_rate_shape": "low|mid|high|breakout",
+    "comment_rate_shape": "low|mid|high|breakout",
+    "share_rate_shape": "low|mid|high|breakout",
+    "favorite_rate_shape": "low|mid|high|breakout",
+    "follow_asset_shape": "low|mid|high|breakout"
+  }
+}
+```
+
+Calibration rules:
+
+- Real project, real experience, or real tool usage is not enough for high distribution; the first 5 seconds need broad pain, identity threat, strong result, strong contrast, or clear failure cost.
+- If the opening says the video is long, dense, or can be summarized elsewhere, penalize first-stop, 5-second retention, and completion.
+- Personal project showcases, feature lists, abstract methodology, and dense technical terms cap distribution unless there is a clear story arc.
+- Route-map content can still produce high favorites when it gives a career path, profitable project path, real users/customers, beginner-to-result proof, or concrete next moves.
+- Judge share, comment, favorite, and follow separately; useful content is not automatically shareable or follow-worthy.
+
 ### Step 7: Account Diagnosis
 
 Recompute account-level conclusions from current data:
