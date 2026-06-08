@@ -232,8 +232,77 @@ function usefulPrediction(prediction) {
   return Boolean(prediction && typeof prediction === "object" && !Array.isArray(prediction) && present(prediction));
 }
 
+const BLIND_RELATIVE_ENUMS = {
+  distribution_bucket: ["low", "mid", "high", "breakout"],
+  two_second_bounce_shape: ["strong_low_bounce", "mid", "weak_high_bounce"],
+  five_second_retention_shape: ["low", "mid", "high", "breakout"],
+  completion_shape: ["low", "mid", "high", "breakout"],
+  avg_watch_shape: ["low", "mid", "high", "breakout"],
+  like_rate_shape: ["low", "mid", "high", "breakout"],
+  comment_rate_shape: ["low", "mid", "high", "breakout"],
+  share_rate_shape: ["low", "mid", "high", "breakout"],
+  favorite_rate_shape: ["low", "mid", "high", "breakout"],
+  follow_asset_shape: ["low", "mid", "high", "breakout"],
+};
+
+const BLIND_SCORE_FIELDS = [
+  "hook_strength",
+  "first_5s_clarity",
+  "middle_delivery",
+  "completion_risk",
+  "save_intent",
+  "share_intent",
+  "comment_intent",
+  "follow_reason",
+  "account_asset",
+];
+
+function validateBlindPrediction(blindRow) {
+  const prediction = blindRow && blindRow.prediction;
+  const errors = [];
+  if (!usefulPrediction(prediction)) return { ok: false, errors: ["prediction_missing"] };
+  if (!present(prediction.blind_id || blindRow.blind_id)) errors.push("blind_id_missing");
+  if (!prediction.relative_predictions || typeof prediction.relative_predictions !== "object" || Array.isArray(prediction.relative_predictions)) {
+    errors.push("relative_predictions_missing");
+  } else {
+    for (const [field, allowed] of Object.entries(BLIND_RELATIVE_ENUMS)) {
+      const value = prediction.relative_predictions[field];
+      if (!allowed.includes(value)) errors.push(`relative_predictions.${field}_invalid:${value === undefined ? "missing" : value}`);
+    }
+  }
+  if (!prediction.scores_0_5 || typeof prediction.scores_0_5 !== "object" || Array.isArray(prediction.scores_0_5)) {
+    errors.push("scores_0_5_missing");
+  } else {
+    for (const field of BLIND_SCORE_FIELDS) {
+      const score = prediction.scores_0_5[field];
+      if (typeof score !== "number" || !Number.isFinite(score) || score < 0 || score > 5) {
+        errors.push(`scores_0_5.${field}_invalid:${score === undefined ? "missing" : score}`);
+      }
+    }
+  }
+  if (!present(prediction.why)) errors.push("why_missing");
+  if (!Array.isArray(prediction.risk_flags)) errors.push("risk_flags_missing");
+  if (!["low", "medium", "high"].includes(prediction.confidence)) errors.push(`confidence_invalid:${prediction.confidence}`);
+  return { ok: errors.length === 0, errors };
+}
+
 function blindState(work, blindRow, newAfter) {
+  if (isNewWork(work, newAfter) && transcriptCaveats(work).includes("transcript_incomplete")) {
+    return {
+      blindScoreStatus: "blind_score_transcript_incomplete",
+      blindPrediction: null,
+      blindSchemaErrors: [],
+    };
+  }
   if (blindRow && usefulPrediction(blindRow.prediction)) {
+    const validation = validateBlindPrediction(blindRow);
+    if (!validation.ok) {
+      return {
+        blindScoreStatus: "blind_score_schema_failed",
+        blindPrediction: null,
+        blindSchemaErrors: validation.errors,
+      };
+    }
     return { blindScoreStatus: "blind_scored", blindPrediction: blindRow.prediction };
   }
   if (isNewWork(work, newAfter)) {
@@ -340,6 +409,7 @@ function buildReport(options) {
       nativeTabCompleteness: nativeSignals.nativeTabCompleteness,
       blindScoreStatus: blind.blindScoreStatus,
       blindPrediction: blind.blindPrediction,
+      blindSchemaErrors: blind.blindSchemaErrors || [],
       observedResult: {
         bucket: observedBucket(signal),
         dataStatus,
@@ -348,7 +418,13 @@ function buildReport(options) {
       calibration: {
         predictedBucket: bucket,
         observedBucket: observedBucket(signal),
-        status: bucket ? "ready_for_retro" : blind.blindScoreStatus === "blind_score_blocked" ? "blocked_missing_blind_score" : "no_blind_prediction",
+        status: bucket
+          ? "ready_for_retro"
+          : blind.blindScoreStatus === "blind_score_blocked"
+            ? "blocked_missing_blind_score"
+            : blind.blindScoreStatus === "blind_score_schema_failed"
+              ? "blocked_blind_schema_failed"
+              : "no_blind_prediction",
       },
       claims: buildClaims(row, nativeSignals, signal, dataStatus),
     };
@@ -359,6 +435,8 @@ function buildReport(options) {
     observed: items.filter((item) => item.dataStatus === "observed").length,
     provisional: items.filter((item) => item.dataStatus === "provisional").length,
     blindScoreBlocked: items.filter((item) => item.blindScoreStatus === "blind_score_blocked").length,
+    blindScoreTranscriptIncomplete: items.filter((item) => item.blindScoreStatus === "blind_score_transcript_incomplete").length,
+    blindScoreSchemaFailed: items.filter((item) => item.blindScoreStatus === "blind_score_schema_failed").length,
     blindScored: items.filter((item) => item.blindScoreStatus === "blind_scored").length,
     contentTypeCounts: items.reduce((acc, item) => {
       acc[item.contentType] = (acc[item.contentType] || 0) + 1;
@@ -379,7 +457,15 @@ function buildReport(options) {
       browserCollection: false,
       fakeBlindScoring: false,
       newAfter: options.newAfter || "",
-      status: summary.blindScoreBlocked > 0 ? "blocked_for_new_blind_scores" : summary.provisional > 0 ? "provisional_data" : "ready",
+      status: summary.blindScoreSchemaFailed > 0
+        ? "blocked_for_blind_schema"
+        : summary.blindScoreTranscriptIncomplete > 0
+          ? "blocked_for_blind_transcripts"
+        : summary.blindScoreBlocked > 0
+          ? "blocked_for_new_blind_scores"
+          : summary.provisional > 0
+            ? "provisional_data"
+            : "ready",
     },
     summary,
     items,
@@ -391,6 +477,8 @@ function buildReport(options) {
         "Marks incomplete native tabs or audit gaps as provisional.",
       ],
       blockedItems: items.filter((item) => item.blindScoreStatus === "blind_score_blocked").map((item) => item.index),
+      transcriptIncompleteItems: items.filter((item) => item.blindScoreStatus === "blind_score_transcript_incomplete").map((item) => item.index),
+      schemaFailedItems: items.filter((item) => item.blindScoreStatus === "blind_score_schema_failed").map((item) => item.index),
       provisionalItems: items.filter((item) => item.dataStatus === "provisional").map((item) => item.index),
     },
   };
@@ -402,7 +490,7 @@ function renderMarkdown(report) {
     "",
     `Generated: ${report.generatedAt}`,
     "",
-    `Summary: total ${report.summary.total}, observed ${report.summary.observed}, provisional ${report.summary.provisional}, blind blocked ${report.summary.blindScoreBlocked}.`,
+    `Summary: total ${report.summary.total}, observed ${report.summary.observed}, provisional ${report.summary.provisional}, blind blocked ${report.summary.blindScoreBlocked}, blind transcript incomplete ${report.summary.blindScoreTranscriptIncomplete}, blind schema failed ${report.summary.blindScoreSchemaFailed}.`,
     "",
     "## Data Gate",
     "",
@@ -425,6 +513,9 @@ function renderMarkdown(report) {
       `- Observed: plays ${item.actualSignal.plays}, favorite rate ${item.actualSignal.favoriteRateText}`,
       `- Calibration: predicted ${item.calibration.predictedBucket || "n/a"}, observed ${item.calibration.observedBucket}`,
     );
+    if (item.blindSchemaErrors.length) {
+      lines.push(`- Blind schema errors: ${item.blindSchemaErrors.join("; ")}`);
+    }
   }
   lines.push("", "## Adversarial Audit", "");
   for (const check of report.adversarialAudit.checks) lines.push(`- ${check}`);

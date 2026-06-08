@@ -187,9 +187,34 @@ test("sets top-level data gate to provisional_data for non-observed rows without
 
 test("carries blind prediction exactly unchanged when present and produces calibration with predicted bucket", () => {
   const prediction = {
+    blind_id: "blind-abc",
+    relative_predictions: {
+      distribution_bucket: "mid",
+      two_second_bounce_shape: "mid",
+      five_second_retention_shape: "mid",
+      completion_shape: "low",
+      avg_watch_shape: "mid",
+      like_rate_shape: "mid",
+      comment_rate_shape: "mid",
+      share_rate_shape: "low",
+      favorite_rate_shape: "high",
+      follow_asset_shape: "mid",
+    },
+    scores_0_5: {
+      hook_strength: 3,
+      first_5s_clarity: 3,
+      middle_delivery: 3,
+      completion_risk: 4,
+      save_intent: 4,
+      share_intent: 2,
+      comment_intent: 2,
+      follow_reason: 3,
+      account_asset: 3,
+    },
     predicted_bucket: "high_save_low_share",
-    dimensions: { utility: { score: 5, confidence: "high", reason: "clear utility" } },
-    notes: ["keep this exact object"],
+    why: "clear utility",
+    risk_flags: ["long口播"],
+    confidence: "high",
   };
   const report = runReport({
     works: { items: [baseWork({ mid: "m2", publicUrl: "https://www.douyin.com/video/m2", publishedAt: "2026-06-07" })] },
@@ -201,6 +226,81 @@ test("carries blind prediction exactly unchanged when present and produces calib
   assert.equal(report.items[0].blindScoreStatus, "blind_scored");
   assert.deepEqual(report.items[0].blindPrediction, prediction);
   assert.equal(report.items[0].calibration.predictedBucket, "high_save_low_share");
+});
+
+test("rejects blind predictions that fail the metric-shape schema", () => {
+  const report = runReport({
+    works: { items: [baseWork({ mid: "m5", publicUrl: "https://www.douyin.com/video/m5", publishedAt: "2026-06-07" })] },
+    audit: { items: [] },
+    blind: {
+      items: [{
+        workKey: "mid:m5",
+        blind_id: "blind-bad",
+        prediction: {
+          overall_bucket: "medium_high",
+          predictions: { play: "medium", save: "high" },
+        },
+      }],
+    },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_score_schema_failed");
+  assert.equal(report.items[0].blindPrediction, null);
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error.includes("relative_predictions")));
+  assert.equal(report.summary.blindScoreSchemaFailed, 1);
+  assert.equal(report.dataGate.status, "blocked_for_blind_schema");
+});
+
+test("blocks production blind scoring when the new video transcript is incomplete", () => {
+  const prediction = {
+    blind_id: "blind-transcript",
+    relative_predictions: {
+      distribution_bucket: "mid",
+      two_second_bounce_shape: "mid",
+      five_second_retention_shape: "mid",
+      completion_shape: "low",
+      avg_watch_shape: "mid",
+      like_rate_shape: "mid",
+      comment_rate_shape: "mid",
+      share_rate_shape: "low",
+      favorite_rate_shape: "mid",
+      follow_asset_shape: "mid",
+    },
+    scores_0_5: {
+      hook_strength: 3,
+      first_5s_clarity: 3,
+      middle_delivery: 3,
+      completion_risk: 4,
+      save_intent: 2,
+      share_intent: 2,
+      comment_intent: 2,
+      follow_reason: 2,
+      account_asset: 2,
+    },
+    why: "valid shape, but transcript is missing",
+    risk_flags: [],
+    confidence: "medium",
+  };
+  const report = runReport({
+    works: {
+      items: [baseWork({
+        mid: "m6",
+        publicUrl: "https://www.douyin.com/video/m6",
+        publishedAt: "2026-06-07",
+        finalTranscriptStatus: "missing",
+        finalTranscript: "",
+      })],
+    },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:m6", blind_id: "blind-transcript", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_score_transcript_incomplete");
+  assert.equal(report.items[0].blindPrediction, null);
+  assert.equal(report.summary.blindScoreTranscriptIncomplete, 1);
+  assert.equal(report.dataGate.status, "blocked_for_blind_transcripts");
 });
 
 test("invalid --date exits nonzero with targeted error", () => {
