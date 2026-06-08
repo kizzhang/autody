@@ -68,19 +68,30 @@ function firstDeepNumber(deep, names) {
   return null;
 }
 
+function firstDeepRate(deep, names) {
+  if (!deep) return null;
+  const roots = [deep, deep.metrics || {}, deep.deepMetrics || {}];
+  for (const root of roots) {
+    const value = firstPresentValue(root, names);
+    const rate = parseRate(value);
+    if (rate !== null) return rate;
+  }
+  return null;
+}
+
 function hasPositiveDeepActivity(deep) {
   if (!deep) return false;
   return [
-    ["likes", "likeCount", "like_count"],
-    ["comments", "commentCount", "comment_count"],
-    ["shares", "shareCount", "share_count"],
-    ["favorites", "favoriteCount", "favorite_count"],
-    ["newFollowers", "newFollowerCount"],
-    ["profileVisits"],
-    ["avgWatchTimeSeconds"],
-    ["completionRate", "finishRate"],
-    ["fiveSecondRetention", "threeSecondRetention", "threeSecRetention"],
-  ].some((names) => (firstDeepNumber(deep, names) || 0) > 0);
+    { names: ["likes", "likeCount", "like_count"], read: firstDeepNumber },
+    { names: ["comments", "commentCount", "comment_count"], read: firstDeepNumber },
+    { names: ["shares", "shareCount", "share_count"], read: firstDeepNumber },
+    { names: ["favorites", "favoriteCount", "favorite_count"], read: firstDeepNumber },
+    { names: ["newFollowers", "newFollowerCount"], read: firstDeepNumber },
+    { names: ["profileVisits"], read: firstDeepNumber },
+    { names: ["avgWatchTimeSeconds"], read: firstDeepNumber },
+    { names: ["completionRate", "completionRateText", "finishRate", "finishRateText"], read: firstDeepRate },
+    { names: ["fiveSecondRetention", "fiveSecondRetentionText", "threeSecondRetention", "threeSecondRetentionText", "threeSecRetention", "threeSecRetentionText"], read: firstDeepRate },
+  ].some((group) => (group.read(deep, group.names) || 0) > 0);
 }
 
 function visibleStatusText(work) {

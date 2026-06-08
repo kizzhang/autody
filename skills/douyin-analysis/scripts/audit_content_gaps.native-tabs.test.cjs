@@ -189,3 +189,30 @@ test("audit records visible private status without inferring it from transcript 
   assert.ok(item.warnings.includes("zero_plays_with_positive_deep_activity"));
   assert.equal(item.action, "use_creator_visible_text_or_local_script");
 });
+
+test("audit treats percent retention strings as positive activity for zero-play rows", () => {
+  const result = runAudit({
+    workOverrides: {
+      plays: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      favorites: 0,
+    },
+    deepOverrides: {
+      metrics: {
+        plays: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        favorites: 0,
+        completionRate: "2.58%",
+        fiveSecondRetention: "37.25%",
+      },
+      rawDouyinTabs: completeRawDouyinTabs,
+    },
+  });
+  const item = result.items[0];
+
+  assert.ok(item.warnings.includes("zero_plays_with_positive_deep_activity"));
+});
