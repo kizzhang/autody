@@ -56,6 +56,20 @@ function asNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function parseRate(value) {
+  if (!present(value)) return null;
+  if (typeof value === "number") {
+    const ratio = value > 1 ? value / 100 : value;
+    return ratio >= 0 && ratio <= 1 ? ratio : null;
+  }
+  const text = String(value);
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const num = Number(match[0]);
+  const ratio = text.includes("%") || num > 1 ? num / 100 : num;
+  return ratio >= 0 && ratio <= 1 ? ratio : null;
+}
+
 function firstMetricValue(metrics, names) {
   const value = firstPresent(metrics, names);
   return asNumber(value);
@@ -63,16 +77,16 @@ function firstMetricValue(metrics, names) {
 
 function hasPositiveDeepActivity(metrics) {
   return [
-    ["likes", "likeCount", "like_count"],
-    ["comments", "commentCount", "comment_count"],
-    ["shares", "shareCount", "share_count"],
-    ["favorites", "favoriteCount", "favorite_count"],
-    ["newFollowers", "newFollowerCount"],
-    ["profileVisits"],
-    ["avgWatchTimeSeconds"],
-    ["completionRate", "finishRate"],
-    ["fiveSecondRetention", "threeSecondRetention", "threeSecRetention"],
-  ].some((names) => names.some((name) => (asNumber(metrics[name]) || 0) > 0));
+    { names: ["likes", "likeCount", "like_count"], parse: asNumber },
+    { names: ["comments", "commentCount", "comment_count"], parse: asNumber },
+    { names: ["shares", "shareCount", "share_count"], parse: asNumber },
+    { names: ["favorites", "favoriteCount", "favorite_count"], parse: asNumber },
+    { names: ["newFollowers", "newFollowerCount"], parse: asNumber },
+    { names: ["profileVisits"], parse: asNumber },
+    { names: ["avgWatchTimeSeconds"], parse: asNumber },
+    { names: ["completionRate", "completionRateText", "finishRate", "finishRateText"], parse: parseRate },
+    { names: ["fiveSecondRetention", "fiveSecondRetentionText", "threeSecondRetention", "threeSecondRetentionText", "threeSecRetention", "threeSecRetentionText"], parse: parseRate },
+  ].some((group) => group.names.some((name) => (group.parse(metrics[name]) || 0) > 0));
 }
 
 function visibleStatusText(work) {
