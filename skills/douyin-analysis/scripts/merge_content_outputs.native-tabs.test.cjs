@@ -161,3 +161,31 @@ test("merge uses visible creator status as the private distribution source of tr
   assert.ok(work.dataQualityWarnings.includes("private_or_hidden_work"));
   assert.ok(work.dataQualityWarnings.includes("zero_plays_with_positive_deep_activity"));
 });
+
+test("merge treats alias deep metrics as positive activity for zero-play rows", () => {
+  const { merged } = runMerge({
+    workOverrides: {
+      plays: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      favorites: 0,
+    },
+    deepOverrides: {
+      metrics: {
+        plays: 0,
+        likeCount: 5,
+        commentCount: 1,
+        shareCount: 0,
+        favoriteCount: 2,
+      },
+    },
+  });
+  const work = merged.publishedWorks[0];
+
+  assert.equal(work.distributionStatus, "distribution_unknown_needs_review");
+  assert.equal(work.likes, 5);
+  assert.equal(work.comments, 1);
+  assert.equal(work.favorites, 2);
+  assert.ok(work.dataQualityWarnings.includes("zero_plays_with_positive_deep_activity"));
+});

@@ -63,18 +63,16 @@ function firstMetricValue(metrics, names) {
 
 function hasPositiveDeepActivity(metrics) {
   return [
-    "likes",
-    "comments",
-    "shares",
-    "favorites",
-    "newFollowers",
-    "profileVisits",
-    "avgWatchTimeSeconds",
-    "completionRate",
-    "fiveSecondRetention",
-    "threeSecondRetention",
-    "threeSecRetention",
-  ].some((name) => (asNumber(metrics[name]) || 0) > 0);
+    ["likes", "likeCount", "like_count"],
+    ["comments", "commentCount", "comment_count"],
+    ["shares", "shareCount", "share_count"],
+    ["favorites", "favoriteCount", "favorite_count"],
+    ["newFollowers", "newFollowerCount"],
+    ["profileVisits"],
+    ["avgWatchTimeSeconds"],
+    ["completionRate", "finishRate"],
+    ["fiveSecondRetention", "threeSecondRetention", "threeSecRetention"],
+  ].some((names) => names.some((name) => (asNumber(metrics[name]) || 0) > 0));
 }
 
 function visibleStatusText(work) {
