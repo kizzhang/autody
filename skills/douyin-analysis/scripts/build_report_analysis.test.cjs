@@ -39,6 +39,26 @@ const completeRawDouyinTabs = {
   },
 };
 
+function rawTabsWithMetrics({ favoriteRate = "3.5%", shareRate = "0.8%", completionRate = "38%", fiveSecondCompletionRate = "70%", twoSecondBounceRate = "18%", followRate = "1.2%" } = {}) {
+  const tabs = JSON.parse(JSON.stringify(completeRawDouyinTabs));
+  tabs.overview.coreMetrics = {
+    ...tabs.overview.coreMetrics,
+    completionRate,
+    fiveSecondCompletionRate,
+    twoSecondBounceRate,
+  };
+  tabs.overview.interactionMetrics = {
+    ...tabs.overview.interactionMetrics,
+    favoriteRate,
+    shareRate,
+  };
+  tabs.audienceAnalysis.followMetrics = {
+    ...tabs.audienceAnalysis.followMetrics,
+    followRate,
+  };
+  return tabs;
+}
+
 function baseWork(overrides = {}) {
   return {
     index: 1,
@@ -58,6 +78,46 @@ function baseWork(overrides = {}) {
     rawDouyinTabs: completeRawDouyinTabs,
     topComments: [{ text: "干货，收藏了", likes: 8 }],
     ...overrides,
+  };
+}
+
+function validBlindPrediction(overrides = {}) {
+  const relativePredictions = {
+    distribution_bucket: "mid",
+    two_second_bounce_shape: "mid",
+    five_second_retention_shape: "mid",
+    completion_shape: "low",
+    avg_watch_shape: "mid",
+    like_rate_shape: "mid",
+    comment_rate_shape: "mid",
+    share_rate_shape: "low",
+    favorite_rate_shape: "high",
+    follow_asset_shape: "mid",
+    ...(overrides.relative_predictions || {}),
+  };
+  const scores = {
+    hook_strength: 3,
+    first_5s_clarity: 3,
+    middle_delivery: 3,
+    completion_risk: 4,
+    save_intent: 4,
+    share_intent: 2,
+    comment_intent: 2,
+    follow_reason: 3,
+    account_asset: 3,
+    ...(overrides.scores_0_5 || {}),
+  };
+  return {
+    blind_id: "blind-abc",
+    relative_predictions: relativePredictions,
+    scores_0_5: scores,
+    predicted_bucket: "high_save_low_share",
+    why: "clear utility",
+    risk_flags: ["long口播"],
+    confidence: "high",
+    ...overrides,
+    relative_predictions: relativePredictions,
+    scores_0_5: scores,
   };
 }
 
@@ -186,36 +246,7 @@ test("sets top-level data gate to provisional_data for non-observed rows without
 });
 
 test("carries blind prediction exactly unchanged when present and produces calibration with predicted bucket", () => {
-  const prediction = {
-    blind_id: "blind-abc",
-    relative_predictions: {
-      distribution_bucket: "mid",
-      two_second_bounce_shape: "mid",
-      five_second_retention_shape: "mid",
-      completion_shape: "low",
-      avg_watch_shape: "mid",
-      like_rate_shape: "mid",
-      comment_rate_shape: "mid",
-      share_rate_shape: "low",
-      favorite_rate_shape: "high",
-      follow_asset_shape: "mid",
-    },
-    scores_0_5: {
-      hook_strength: 3,
-      first_5s_clarity: 3,
-      middle_delivery: 3,
-      completion_risk: 4,
-      save_intent: 4,
-      share_intent: 2,
-      comment_intent: 2,
-      follow_reason: 3,
-      account_asset: 3,
-    },
-    predicted_bucket: "high_save_low_share",
-    why: "clear utility",
-    risk_flags: ["long口播"],
-    confidence: "high",
-  };
+  const prediction = validBlindPrediction();
   const report = runReport({
     works: { items: [baseWork({ mid: "m2", publicUrl: "https://www.douyin.com/video/m2", publishedAt: "2026-06-07" })] },
     audit: { items: [] },
@@ -226,6 +257,105 @@ test("carries blind prediction exactly unchanged when present and produces calib
   assert.equal(report.items[0].blindScoreStatus, "blind_scored");
   assert.deepEqual(report.items[0].blindPrediction, prediction);
   assert.equal(report.items[0].calibration.predictedBucket, "high_save_low_share");
+});
+
+test("marks v5 blind predictions ready even without optional predicted bucket", () => {
+  const prediction = validBlindPrediction();
+  delete prediction.predicted_bucket;
+  const report = runReport({
+    works: { items: [baseWork({ mid: "m10", publicUrl: "https://www.douyin.com/video/m10", publishedAt: "2026-06-07" })] },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:m10", blind_id: "blind-no-bucket", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_scored");
+  assert.equal(report.items[0].calibration.predictedBucket, null);
+  assert.equal(report.items[0].calibration.status, "ready_for_retro");
+});
+
+test("maps blind buckets to account-calibrated numeric ranges and compares observed actual values", () => {
+  const prediction = validBlindPrediction({
+    relative_predictions: {
+      distribution_bucket: "high",
+      favorite_rate_shape: "high",
+    },
+  });
+  const report = runReport({
+    works: {
+      items: [
+        baseWork({ mid: "old-low", publicUrl: "https://www.douyin.com/video/old-low", plays: 100, likes: 5, comments: 1, shares: 0, favorites: 1, rawDouyinTabs: rawTabsWithMetrics({ favoriteRate: "0.5%" }) }),
+        baseWork({ mid: "old-mid", publicUrl: "https://www.douyin.com/video/old-mid", plays: 400, likes: 30, comments: 3, shares: 2, favorites: 4, rawDouyinTabs: rawTabsWithMetrics({ favoriteRate: "1.0%" }) }),
+        baseWork({ mid: "target", publicUrl: "https://www.douyin.com/video/target", publishedAt: "2026-06-07", plays: 900, likes: 90, comments: 9, shares: 4, favorites: 27, rawDouyinTabs: rawTabsWithMetrics({ favoriteRate: "3.0%" }) }),
+        baseWork({ mid: "old-high", publicUrl: "https://www.douyin.com/video/old-high", plays: 1600, likes: 120, comments: 16, shares: 12, favorites: 64, rawDouyinTabs: rawTabsWithMetrics({ favoriteRate: "4.0%" }) }),
+      ],
+    },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:target", blind_id: "blind-abc", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  const item = report.items.find((row) => row.mid === "target");
+  assert.equal(item.blindScoreStatus, "blind_scored");
+  assert.equal(item.calibration.calibratedPrior.basisItemCount, 3);
+  assert.equal(item.calibration.calibratedPrior.metrics.plays.shape, "high");
+  assert.equal(item.calibration.calibratedPrior.metrics.plays.quantileRange, "P70-P90");
+  assert.deepEqual(item.calibration.calibratedPrior.metrics.plays.valueRange, [880, 1360]);
+  assert.equal(item.calibration.calibratedPrior.metrics.favoriteRate.valueRangeText, "2.20%-3.40%");
+  assert.equal(item.calibration.observedActual.plays, 900);
+  assert.equal(item.calibration.observedActual.favoriteRateText, "3.00%");
+  assert.equal(item.calibration.deltas.plays.result, "hit");
+  assert.equal(item.calibration.deltas.favoriteRate.result, "hit");
+});
+
+test("excludes provisional rows from account-calibrated numeric ranges", () => {
+  const prediction = validBlindPrediction({
+    relative_predictions: {
+      distribution_bucket: "high",
+    },
+  });
+  const report = runReport({
+    works: {
+      items: [
+        baseWork({ mid: "observed-low", publicUrl: "https://www.douyin.com/video/observed-low", plays: 100 }),
+        baseWork({ mid: "provisional-outlier", publicUrl: "https://www.douyin.com/video/provisional-outlier", plays: 100000, rawDouyinTabs: { overview: {} } }),
+        baseWork({ mid: "target2", publicUrl: "https://www.douyin.com/video/target2", publishedAt: "2026-06-07", plays: 500 }),
+        baseWork({ mid: "observed-high", publicUrl: "https://www.douyin.com/video/observed-high", plays: 1000 }),
+      ],
+    },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:target2", blind_id: "blind-abc", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  const item = report.items.find((row) => row.mid === "target2");
+  assert.equal(item.calibration.calibratedPrior.basisItemCount, 2);
+  assert.deepEqual(item.calibration.calibratedPrior.metrics.plays.valueRange, [730, 910]);
+});
+
+test("treats low two-second bounce as the better blind prediction direction", () => {
+  const prediction = validBlindPrediction({
+    relative_predictions: {
+      two_second_bounce_shape: "strong_low_bounce",
+    },
+  });
+  const report = runReport({
+    works: {
+      items: [
+        baseWork({ mid: "bounce-low", publicUrl: "https://www.douyin.com/video/bounce-low", rawDouyinTabs: rawTabsWithMetrics({ twoSecondBounceRate: "10%" }) }),
+        baseWork({ mid: "bounce-mid", publicUrl: "https://www.douyin.com/video/bounce-mid", rawDouyinTabs: rawTabsWithMetrics({ twoSecondBounceRate: "20%" }) }),
+        baseWork({ mid: "target-bounce", publicUrl: "https://www.douyin.com/video/target-bounce", publishedAt: "2026-06-07", rawDouyinTabs: rawTabsWithMetrics({ twoSecondBounceRate: "40%" }) }),
+        baseWork({ mid: "bounce-high", publicUrl: "https://www.douyin.com/video/bounce-high", rawDouyinTabs: rawTabsWithMetrics({ twoSecondBounceRate: "30%" }) }),
+      ],
+    },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:target-bounce", blind_id: "blind-abc", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  const item = report.items.find((row) => row.mid === "target-bounce");
+  assert.equal(item.calibration.deltas.twoSecondBounceRate.observedShape, "weak_high_bounce");
+  assert.equal(item.calibration.deltas.twoSecondBounceRate.result, "over_predicted");
 });
 
 test("rejects blind predictions that fail the metric-shape schema", () => {
@@ -250,6 +380,62 @@ test("rejects blind predictions that fail the metric-shape schema", () => {
   assert.ok(report.items[0].blindSchemaErrors.some((error) => error.includes("relative_predictions")));
   assert.equal(report.summary.blindScoreSchemaFailed, 1);
   assert.equal(report.dataGate.status, "blocked_for_blind_schema");
+});
+
+test("rejects blind predictions that include fake numeric actual values", () => {
+  const prediction = validBlindPrediction({
+    predicted_plays: 12000,
+    absolute_predictions: {
+      favorite_rate: "3%",
+    },
+  });
+  const report = runReport({
+    works: { items: [baseWork({ mid: "m7", publicUrl: "https://www.douyin.com/video/m7", publishedAt: "2026-06-07" })] },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:m7", blind_id: "blind-fake-actuals", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_score_schema_failed");
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error.includes("forbidden_actual_value")));
+});
+
+test("rejects prefixed predicted numeric count and rate fields in blind predictions", () => {
+  const prediction = validBlindPrediction({
+    predicted_likes: 100,
+    predicted_favorite_rate: "3%",
+    estimated_follows: 12,
+  });
+  const report = runReport({
+    works: { items: [baseWork({ mid: "m8", publicUrl: "https://www.douyin.com/video/m8", publishedAt: "2026-06-07" })] },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:m8", blind_id: "blind-prefixed-actuals", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_score_schema_failed");
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:predicted_likes"));
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:predicted_favorite_rate"));
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:estimated_follows"));
+});
+
+test("rejects actual and observed prefixed numeric fields in blind predictions", () => {
+  const prediction = validBlindPrediction({
+    actual_plays: 1000,
+    actualFavoriteRate: "4%",
+    observedPlays: 900,
+  });
+  const report = runReport({
+    works: { items: [baseWork({ mid: "m9", publicUrl: "https://www.douyin.com/video/m9", publishedAt: "2026-06-07" })] },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:m9", blind_id: "blind-observed-actuals", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_score_schema_failed");
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:actual_plays"));
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:actualFavoriteRate"));
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:observedPlays"));
 });
 
 test("blocks production blind scoring when the new video transcript is incomplete", () => {

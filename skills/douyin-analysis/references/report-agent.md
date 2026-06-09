@@ -139,6 +139,10 @@ If a video appears to win because of a hot format or external trend, mark `trend
 
 New videos must be scored by an isolated subagent before the main report agent reads or uses their observed data.
 
+Use `references/blind-subagent-prompt.md` as the reusable prompt. The blind
+subagent predicts script-only metric shapes; it must not output single-point
+actual values, numeric ranges, or any estimated plays/rates/follows.
+
 ### Trigger
 
 Run blind prediction for:
@@ -174,6 +178,14 @@ Never provide:
 - account historical performance, old report conclusions, peer comparisons, or comments
 - any hint that implies whether the video performed well or badly
 
+Never ask the blind subagent for:
+
+- predicted plays, views, likes, comments, shares, favorites, or follows
+- predicted like/comment/share/favorite/follow rates
+- predicted completion, watch-time, retention, or bounce values
+- numeric ranges, `absolute_predictions`, `numeric_predictions`,
+  `predicted_plays`, or `estimated_plays`
+
 If no isolated subagent capability is available, do not fake blind scoring in the main context. Mark the item `blind_score_blocked` and ask for an isolated subagent path before using blind predictions.
 
 ### Blind Output Contract
@@ -184,10 +196,6 @@ report later compares against observed data:
 ```json
 {
   "blind_id": "...",
-  "content_type": "viewpoint|process|knowledge|story|commerce|image_text|mixed",
-  "account_asset": ["professional_authority"],
-  "nana_generalized_class": "one_time_watch|useful_but_detached|follow_asset|compound_asset",
-  "expected_winning_metrics": ["favorite_rate", "share_rate", "follow_rate"],
   "relative_predictions": {
     "distribution_bucket": "low|mid|high|breakout",
     "two_second_bounce_shape": "strong_low_bounce|mid|weak_high_bounce",
@@ -211,14 +219,19 @@ report later compares against observed data:
     "follow_reason": 0,
     "account_asset": 0
   },
-  "predicted_bucket": "weak|ordinary|testable|strong|priority_reshoot",
-  "one_line_reason": "...",
-  "main_risks": ["..."],
-  "revision_advice": "..."
+  "why": "...",
+  "risk_flags": ["..."],
+  "confidence": "low|medium|high"
 }
 ```
 
 The main report agent must not edit the blind score after seeing data. It may only compare prediction to observed results.
+
+Optional qualitative fields such as `content_type`, `account_asset`,
+`nana_generalized_class`, `expected_winning_metrics`, `predicted_bucket`,
+`one_line_reason`, `main_risks`, and `revision_advice` may be accepted for
+calibration experiments, but they are not a substitute for the required
+production schema above.
 
 ### Blind Schema Gate
 
@@ -235,6 +248,14 @@ A production blind score is valid only when all of these are true:
   such as `medium`, `medium_high`, `mid_low`, `low_medium`, `high-ish`, or
   `overall_bucket`.
 - The output does not include or imply observed data.
+- The output does not include fake numeric estimates or actual-value fields,
+  including `plays`, `likes`, `comments`, `shares`, `favorites`,
+  `completion_rate`, `avg_watch_time`, `like_rate`, `comment_rate`,
+  `share_rate`, `favorite_rate`, `follow_rate`, `absolute_predictions`,
+  `numeric_predictions`, `predicted_plays`, `estimated_plays`,
+  `predicted_likes`, `predicted_favorite_rate`, `estimated_follows`, or any
+  `predicted_`, `estimated_`, `expected_`, `actual_`, or `observed_`
+  count/rate/range field.
 
 If the first output fails this gate, reprompt the same isolated subagent once
 with only the schema error and the original title/script. If the second output
@@ -242,6 +263,57 @@ still fails, save the raw output as calibration evidence, mark the item
 `blind_score_schema_failed`, and do not use it as a production blind score.
 Normalization is allowed only in a calibration report, never as the report's
 official blind prediction.
+
+### Account-Calibrated Numeric Output
+
+Blind subagents do not output actual values. Numeric report output is produced
+only by the main report builder after the blind score has passed schema gate and
+the observed data is allowed to be opened.
+
+For each blind-scored row, the report builder must include:
+
+```json
+{
+  "calibration": {
+    "calibratedPrior": {
+      "basisItemCount": 0,
+      "basis": "current_account_observed_items_excluding_this_work",
+      "metrics": {
+        "plays": {
+          "predictionField": "distribution_bucket",
+          "shape": "high",
+          "quantileRange": "P70-P90",
+          "valueRange": [880, 1360],
+          "valueRangeText": "880-1,360"
+        },
+        "favoriteRate": {
+          "predictionField": "favorite_rate_shape",
+          "shape": "high",
+          "quantileRange": "P70-P90",
+          "valueRange": [0.022, 0.034],
+          "valueRangeText": "2.20%-3.40%"
+        }
+      }
+    },
+    "observedActual": {
+      "plays": 900,
+      "favoriteRate": 0.03,
+      "favoriteRateText": "3.00%"
+    },
+    "deltas": {
+      "plays": {
+        "predictedShape": "high",
+        "observedShape": "high",
+        "result": "hit"
+      }
+    }
+  }
+}
+```
+
+This preserves isolation: the blind prediction stays qualitative, while the
+report still shows actual observed values and whether the blind shape was
+over-predicted, under-predicted, or hit.
 
 ### Blind Prediction Calibration Rules
 
@@ -286,8 +358,10 @@ For blind-scored videos, include:
 | Field | Meaning |
 | --- | --- |
 | `blind_prediction` | Subagent prediction before data |
+| `calibrated_prior` | Account-calibrated numeric range derived from the blind shape |
+| `observed_actual` | Actual observed metrics after data gate allows analysis |
+| `blind_delta` | Hit, over-predicted, under-predicted, or unknown |
 | `observed_result` | Actual metrics after the data gate |
-| `delta` | Where prediction and reality diverged |
 | `calibration` | What the rubric should learn |
 | `next_test` | The next structure or variant to shoot |
 
