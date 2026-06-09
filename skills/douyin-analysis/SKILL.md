@@ -99,3 +99,5 @@ Read `references/chrome-extension-workflow.md` before collecting creator-center 
 Read `references/douyin-native-tabs.md` before collecting, auditing, merging, or explaining native Douyin creator-detail tab data.
 
 Read `references/report-design.md` when turning collected data into an HTML report, factor map, sample review, or next-batch content roadmap.
+
+Read `references/blind-subagent-prompt.md` before blind-scoring new videos or explaining the blind subagent prompt.

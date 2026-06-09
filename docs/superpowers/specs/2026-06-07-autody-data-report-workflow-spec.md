@@ -492,6 +492,7 @@ Blind scorer must not receive:
 - comments
 - account history
 - old report conclusions
+- numeric targets or requests for predicted actual values
 
 If isolated blind scoring is unavailable, mark:
 
@@ -523,6 +524,12 @@ shapes:
 }
 ```
 
+The blind scorer must not output single-point actual values or numeric ranges.
+Reject fields such as `predicted_plays`, `estimated_plays`,
+`absolute_predictions`, `numeric_predictions`, `plays`, `likes`, `comments`,
+`shares`, `favorites`, `completion_rate`, `avg_watch_time`, `like_rate`,
+`comment_rate`, `share_rate`, `favorite_rate`, or `follow_rate`.
+
 Before opening observed metrics, validate the blind scorer output. It is usable
 as a production blind score only if it is parseable JSON, contains
 `relative_predictions` with every metric-shape field, contains `scores_0_5`,
@@ -534,6 +541,43 @@ If schema validation fails, reprompt the same isolated scorer once with only the
 schema error and the original title/script. If it fails again, save the raw
 output as calibration evidence, mark `blindScoreStatus: blind_score_schema_failed`,
 and do not use a normalized version as the official blind prediction.
+
+Numeric calibration is main-agent only. After the blind score passes schema gate
+and observed metrics are opened, `/baogao` must write three separate sections:
+
+```json
+{
+  "calibration": {
+    "calibratedPrior": {
+      "basis": "current_account_observed_items_excluding_this_work",
+      "metrics": {
+        "plays": {
+          "shape": "high",
+          "quantileRange": "P70-P90",
+          "valueRange": [880, 1360],
+          "valueRangeText": "880-1,360"
+        }
+      }
+    },
+    "observedActual": {
+      "plays": 900,
+      "favoriteRate": 0.03,
+      "favoriteRateText": "3.00%"
+    },
+    "deltas": {
+      "plays": {
+        "predictedShape": "high",
+        "observedShape": "high",
+        "result": "hit"
+      }
+    }
+  }
+}
+```
+
+Do not let the blind subagent guess these numbers. The main report builder maps
+`low/mid/high/breakout` to account quantile ranges and compares those ranges
+with observed actual values.
 
 Calibration rules:
 
@@ -617,4 +661,5 @@ Autody is acceptable when:
 - `/buchong` uses audit results instead of asking the user to manually repeat every gap.
 - `/baogao` recomputes from the latest run folder.
 - New videos are blind-scored before metrics, or explicitly marked `blind_score_blocked`.
+- Blind subagents do not output fake numeric actual values; `/baogao` outputs account-calibrated priors, observed actual values, and deltas.
 - `/html` renders Lumina from a fresh payload and does not reuse old conclusions.

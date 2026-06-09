@@ -57,6 +57,10 @@ function pct(value) {
   return Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : "";
 }
 
+function displayCount(value) {
+  return Number.isFinite(value) ? Math.round(value).toLocaleString("en-US") : "";
+}
+
 function firstPresent(...values) {
   return values.find((value) => present(value));
 }
@@ -167,11 +171,22 @@ function observedSignal(work, nativeSignals) {
     commentRate,
     shareRate,
     favoriteRate,
+    likeRateText: pct(likeRate),
+    commentRateText: pct(commentRate),
+    shareRateText: pct(shareRate),
     favoriteRateText: pct(favoriteRate),
     completionRate: nativeSignals.retentionSignals.completionRate,
+    completionRateText: pct(nativeSignals.retentionSignals.completionRate),
+    avgWatchTimeText: nativeSignals.retentionSignals.avgWatchTimeText || "",
+    avgPlayRatio: nativeSignals.retentionSignals.avgPlayRatio,
+    avgPlayRatioText: pct(nativeSignals.retentionSignals.avgPlayRatio),
+    twoSecondBounceRate: nativeSignals.retentionSignals.twoSecondBounceRate,
+    twoSecondBounceRateText: pct(nativeSignals.retentionSignals.twoSecondBounceRate),
     fiveSecondCompletionRate: nativeSignals.retentionSignals.fiveSecondCompletionRate,
+    fiveSecondCompletionRateText: pct(nativeSignals.retentionSignals.fiveSecondCompletionRate),
     newFollowers: nativeSignals.audienceAsset.newFollowers,
     followRate: nativeSignals.audienceAsset.followRate,
+    followRateText: pct(nativeSignals.audienceAsset.followRate),
   };
 }
 
@@ -257,6 +272,51 @@ const BLIND_SCORE_FIELDS = [
   "account_asset",
 ];
 
+const FORBIDDEN_BLIND_ACTUAL_KEYS = new Set([
+  "plays",
+  "views",
+  "play_count",
+  "like_count",
+  "likes",
+  "comment_count",
+  "comments",
+  "share_count",
+  "shares",
+  "favorite_count",
+  "favorites",
+  "new_followers",
+  "follow_count",
+  "completion_rate",
+  "avg_watch_time",
+  "average_watch_time",
+  "like_rate",
+  "comment_rate",
+  "share_rate",
+  "favorite_rate",
+  "follow_rate",
+  "predicted_plays",
+  "estimated_plays",
+  "expected_plays",
+  "absolute_predictions",
+  "numeric_predictions",
+  "actual_predictions",
+  "actual_values",
+  "observed_actual",
+  "calibrated_prior",
+]);
+
+function findForbiddenBlindActualKeys(value, pathParts = []) {
+  const found = [];
+  if (!value || typeof value !== "object") return found;
+  for (const [key, child] of Object.entries(value)) {
+    const normalizedKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`).toLowerCase();
+    const path = [...pathParts, key];
+    if (FORBIDDEN_BLIND_ACTUAL_KEYS.has(normalizedKey)) found.push(path.join("."));
+    if (child && typeof child === "object") found.push(...findForbiddenBlindActualKeys(child, path));
+  }
+  return found;
+}
+
 function validateBlindPrediction(blindRow) {
   const prediction = blindRow && blindRow.prediction;
   const errors = [];
@@ -283,6 +343,9 @@ function validateBlindPrediction(blindRow) {
   if (!present(prediction.why)) errors.push("why_missing");
   if (!Array.isArray(prediction.risk_flags)) errors.push("risk_flags_missing");
   if (!["low", "medium", "high"].includes(prediction.confidence)) errors.push(`confidence_invalid:${prediction.confidence}`);
+  for (const path of findForbiddenBlindActualKeys(prediction)) {
+    errors.push(`forbidden_actual_value:${path}`);
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -314,6 +377,169 @@ function blindState(work, blindRow, newAfter) {
 function predictedBucket(prediction) {
   if (!prediction || typeof prediction !== "object") return null;
   return prediction.predicted_bucket || prediction.predictedBucket || prediction.bucket || prediction.performance_bucket || null;
+}
+
+const STANDARD_BUCKET_ORDER = ["low", "mid", "high", "breakout"];
+const BOUNCE_BUCKET_ORDER = ["strong_low_bounce", "mid", "weak_high_bounce"];
+const BOUNCE_QUALITY_ORDER = ["weak_high_bounce", "mid", "strong_low_bounce"];
+const STANDARD_BUCKET_RANGES = {
+  low: { label: "P0-P25", low: 0, high: 0.25 },
+  mid: { label: "P25-P70", low: 0.25, high: 0.7 },
+  high: { label: "P70-P90", low: 0.7, high: 0.9 },
+  breakout: { label: "P90-P100", low: 0.9, high: 1 },
+};
+const BOUNCE_BUCKET_RANGES = {
+  strong_low_bounce: { label: "P0-P25", low: 0, high: 0.25 },
+  mid: { label: "P25-P75", low: 0.25, high: 0.75 },
+  weak_high_bounce: { label: "P75-P100", low: 0.75, high: 1 },
+};
+const CALIBRATION_METRICS = [
+  { key: "plays", predictionField: "distribution_bucket", signalField: "plays", kind: "count", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+  { key: "twoSecondBounceRate", predictionField: "two_second_bounce_shape", signalField: "twoSecondBounceRate", kind: "rate", ranges: BOUNCE_BUCKET_RANGES, order: BOUNCE_QUALITY_ORDER },
+  { key: "fiveSecondCompletionRate", predictionField: "five_second_retention_shape", signalField: "fiveSecondCompletionRate", kind: "rate", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+  { key: "completionRate", predictionField: "completion_shape", signalField: "completionRate", kind: "rate", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+  { key: "avgPlayRatio", predictionField: "avg_watch_shape", signalField: "avgPlayRatio", kind: "rate", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+  { key: "likeRate", predictionField: "like_rate_shape", signalField: "likeRate", kind: "rate", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+  { key: "commentRate", predictionField: "comment_rate_shape", signalField: "commentRate", kind: "rate", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+  { key: "shareRate", predictionField: "share_rate_shape", signalField: "shareRate", kind: "rate", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+  { key: "favoriteRate", predictionField: "favorite_rate_shape", signalField: "favoriteRate", kind: "rate", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+  { key: "followRate", predictionField: "follow_asset_shape", signalField: "followRate", kind: "rate", ranges: STANDARD_BUCKET_RANGES, order: STANDARD_BUCKET_ORDER },
+];
+
+function metricValue(signal, field) {
+  const value = signal && signal[field];
+  return Number.isFinite(value) ? value : null;
+}
+
+function percentile(sortedValues, p) {
+  if (!sortedValues.length) return null;
+  if (sortedValues.length === 1) return sortedValues[0];
+  const position = (sortedValues.length - 1) * p;
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.ceil(position);
+  const lower = sortedValues[lowerIndex];
+  const upper = sortedValues[upperIndex];
+  if (lowerIndex === upperIndex) return lower;
+  return lower + (upper - lower) * (position - lowerIndex);
+}
+
+function roundMetricValue(value, kind) {
+  if (!Number.isFinite(value)) return null;
+  if (kind === "count") return Math.round(value);
+  return Number(value.toFixed(6));
+}
+
+function valueRangeText(range, kind) {
+  if (!Array.isArray(range) || range.length !== 2) return "";
+  if (kind === "rate") return `${pct(range[0])}-${pct(range[1])}`;
+  return `${displayCount(range[0])}-${displayCount(range[1])}`;
+}
+
+function actualShapeForValue(value, sortedValues, metric) {
+  if (!Number.isFinite(value) || sortedValues.length === 0) return null;
+  const entries = Object.entries(metric.ranges);
+  for (const [shape, range] of entries) {
+    const upper = percentile(sortedValues, range.high);
+    if (upper === null) continue;
+    if (value <= upper || range.high === 1) return shape;
+  }
+  return entries[entries.length - 1][0];
+}
+
+function deltaResult(predictedShape, actualShape, order) {
+  if (!predictedShape || !actualShape) return "unknown";
+  const predictedIndex = order.indexOf(predictedShape);
+  const actualIndex = order.indexOf(actualShape);
+  if (predictedIndex < 0 || actualIndex < 0) return "unknown";
+  if (predictedIndex === actualIndex) return "hit";
+  return predictedIndex > actualIndex ? "over_predicted" : "under_predicted";
+}
+
+function observedActual(signal) {
+  return {
+    plays: signal.plays,
+    likes: signal.likes,
+    comments: signal.comments,
+    shares: signal.shares,
+    favorites: signal.favorites,
+    likeRate: signal.likeRate,
+    likeRateText: signal.likeRateText,
+    commentRate: signal.commentRate,
+    commentRateText: signal.commentRateText,
+    shareRate: signal.shareRate,
+    shareRateText: signal.shareRateText,
+    favoriteRate: signal.favoriteRate,
+    favoriteRateText: signal.favoriteRateText,
+    completionRate: signal.completionRate,
+    completionRateText: signal.completionRateText,
+    twoSecondBounceRate: signal.twoSecondBounceRate,
+    twoSecondBounceRateText: signal.twoSecondBounceRateText,
+    fiveSecondCompletionRate: signal.fiveSecondCompletionRate,
+    fiveSecondCompletionRateText: signal.fiveSecondCompletionRateText,
+    avgWatchTimeText: signal.avgWatchTimeText,
+    avgPlayRatio: signal.avgPlayRatio,
+    avgPlayRatioText: signal.avgPlayRatioText,
+    newFollowers: signal.newFollowers,
+    followRate: signal.followRate,
+    followRateText: signal.followRateText,
+  };
+}
+
+function buildCalibratedPrior(prediction, accountSignals) {
+  if (!prediction || !prediction.relative_predictions) return null;
+  const metrics = {};
+  let basisItemCount = 0;
+  for (const metric of CALIBRATION_METRICS) {
+    const shape = prediction.relative_predictions[metric.predictionField];
+    const rangeSpec = metric.ranges[shape];
+    if (!rangeSpec) continue;
+    const values = accountSignals
+      .map((signal) => metricValue(signal, metric.signalField))
+      .filter((value) => Number.isFinite(value))
+      .sort((a, b) => a - b);
+    if (!values.length) continue;
+    if (metric.key === "plays") basisItemCount = values.length;
+    const low = roundMetricValue(percentile(values, rangeSpec.low), metric.kind);
+    const high = roundMetricValue(percentile(values, rangeSpec.high), metric.kind);
+    metrics[metric.key] = {
+      predictionField: metric.predictionField,
+      shape,
+      quantileRange: rangeSpec.label,
+      valueRange: [low, high],
+      valueRangeText: valueRangeText([low, high], metric.kind),
+      basisItemCount: values.length,
+    };
+  }
+  return {
+    basisItemCount,
+    basis: "current_account_observed_items_excluding_this_work",
+    note: "Blind subagents predict shapes only; numeric ranges are account-calibrated by the main report builder.",
+    metrics,
+  };
+}
+
+function buildDeltas(prediction, actual, accountSignals) {
+  if (!prediction || !prediction.relative_predictions) return {};
+  const deltas = {};
+  for (const metric of CALIBRATION_METRICS) {
+    const predictedShape = prediction.relative_predictions[metric.predictionField];
+    const actualValue = actual[metric.key];
+    const values = accountSignals
+      .map((signal) => metricValue(signal, metric.signalField))
+      .filter((value) => Number.isFinite(value))
+      .sort((a, b) => a - b);
+    const actualShape = actualShapeForValue(actualValue, values, metric);
+    deltas[metric.key] = {
+      predictionField: metric.predictionField,
+      predictedShape,
+      observedShape: actualShape,
+      observedValue: actualValue,
+      observedValueText: metric.kind === "rate" ? pct(actualValue) : displayCount(actualValue),
+      result: deltaResult(predictedShape, actualShape, metric.order),
+      basisItemCount: values.length,
+    };
+  }
+  return deltas;
 }
 
 function observedBucket(signal) {
@@ -380,19 +606,27 @@ function buildReport(options) {
   const auditByKey = indexByKeys(auditRows);
   const blindByKey = indexByKeys(blindRows);
 
-  const items = works.map((work, idx) => {
+  const preparedRows = works.map((work, idx) => {
     const row = { index: work.index || idx + 1, ...work };
     const rawDouyinTabs = hasNativeTabEvidence(row.rawDouyinTabs) ? row.rawDouyinTabs : {};
     const nativeSignals = normalizeDouyinTabs({ rawDouyinTabs });
+    const signal = observedSignal(row, nativeSignals);
     const auditRow = findByWork(auditByKey, row);
     const caveats = rowCaveats(row, auditRow);
     const dataStatus = classifyDataStatus(row, auditRow, nativeSignals.nativeTabCompleteness);
+    return { row, nativeSignals, signal, auditRow, caveats, dataStatus };
+  });
+
+  const items = preparedRows.map(({ row, nativeSignals, signal, caveats, dataStatus }, idx) => {
     const contentType = inferContentType(row);
     const accountAsset = inferAccountAsset(row, nativeSignals);
     const userBait = inferUserBait(row, nativeSignals);
-    const signal = observedSignal(row, nativeSignals);
     const blind = blindState(row, findByWork(blindByKey, row), options.newAfter);
     const bucket = predictedBucket(blind.blindPrediction);
+    const accountSignals = preparedRows
+      .filter((entry, entryIndex) => entryIndex !== idx && entry.dataStatus === "observed" && entry.signal.plays > 0)
+      .map((entry) => entry.signal);
+    const actual = observedActual(signal);
     return {
       index: row.index,
       mid: row.mid || "",
@@ -418,6 +652,9 @@ function buildReport(options) {
       calibration: {
         predictedBucket: bucket,
         observedBucket: observedBucket(signal),
+        calibratedPrior: buildCalibratedPrior(blind.blindPrediction, accountSignals),
+        observedActual: actual,
+        deltas: buildDeltas(blind.blindPrediction, actual, accountSignals),
         status: bucket
           ? "ready_for_retro"
           : blind.blindScoreStatus === "blind_score_blocked"
@@ -502,6 +739,10 @@ function renderMarkdown(report) {
     "## Items",
   ];
   for (const item of report.items) {
+    const priorMetrics = (item.calibration.calibratedPrior && item.calibration.calibratedPrior.metrics) || {};
+    const playsPrior = priorMetrics.plays;
+    const favoritePrior = priorMetrics.favoriteRate;
+    const deltas = item.calibration.deltas || {};
     lines.push(
       "",
       `### ${item.index}. ${item.title || item.mid}`,
@@ -510,9 +751,15 @@ function renderMarkdown(report) {
       `- URL: ${item.publicUrl}`,
       `- Type: ${item.contentType}; class: ${item.nanaGeneralizedClass}`,
       `- Expected metrics: ${item.expectedWinningMetrics.join(", ")}`,
-      `- Observed: plays ${item.actualSignal.plays}, favorite rate ${item.actualSignal.favoriteRateText}`,
+      `- Observed actual: plays ${item.calibration.observedActual.plays}, likes ${item.calibration.observedActual.likes}, comments ${item.calibration.observedActual.comments}, shares ${item.calibration.observedActual.shares}, favorites ${item.calibration.observedActual.favorites}, favorite rate ${item.calibration.observedActual.favoriteRateText}`,
       `- Calibration: predicted ${item.calibration.predictedBucket || "n/a"}, observed ${item.calibration.observedBucket}`,
     );
+    if (playsPrior || favoritePrior) {
+      lines.push(`- Account-calibrated prior: plays ${playsPrior ? `${playsPrior.shape} ${playsPrior.quantileRange} ${playsPrior.valueRangeText}` : "n/a"}; favorite rate ${favoritePrior ? `${favoritePrior.shape} ${favoritePrior.quantileRange} ${favoritePrior.valueRangeText}` : "n/a"}`);
+    }
+    if (deltas.plays || deltas.favoriteRate) {
+      lines.push(`- Blind delta: plays ${deltas.plays ? deltas.plays.result : "n/a"}; favorite rate ${deltas.favoriteRate ? deltas.favoriteRate.result : "n/a"}`);
+    }
     if (item.blindSchemaErrors.length) {
       lines.push(`- Blind schema errors: ${item.blindSchemaErrors.join("; ")}`);
     }
