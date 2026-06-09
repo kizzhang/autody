@@ -698,7 +698,7 @@ function buildReport(options) {
         calibratedPrior: buildCalibratedPrior(blind.blindPrediction, accountSignals),
         observedActual: actual,
         deltas: buildDeltas(blind.blindPrediction, actual, accountSignals),
-        status: bucket
+        status: blind.blindScoreStatus === "blind_scored"
           ? "ready_for_retro"
           : blind.blindScoreStatus === "blind_score_blocked"
             ? "blocked_missing_blind_score"

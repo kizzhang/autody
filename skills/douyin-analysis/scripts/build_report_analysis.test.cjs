@@ -259,6 +259,21 @@ test("carries blind prediction exactly unchanged when present and produces calib
   assert.equal(report.items[0].calibration.predictedBucket, "high_save_low_share");
 });
 
+test("marks v5 blind predictions ready even without optional predicted bucket", () => {
+  const prediction = validBlindPrediction();
+  delete prediction.predicted_bucket;
+  const report = runReport({
+    works: { items: [baseWork({ mid: "m10", publicUrl: "https://www.douyin.com/video/m10", publishedAt: "2026-06-07" })] },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:m10", blind_id: "blind-no-bucket", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_scored");
+  assert.equal(report.items[0].calibration.predictedBucket, null);
+  assert.equal(report.items[0].calibration.status, "ready_for_retro");
+});
+
 test("maps blind buckets to account-calibrated numeric ranges and compares observed actual values", () => {
   const prediction = validBlindPrediction({
     relative_predictions: {
