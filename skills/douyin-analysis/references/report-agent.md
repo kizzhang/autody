@@ -252,7 +252,9 @@ A production blind score is valid only when all of these are true:
   including `plays`, `likes`, `comments`, `shares`, `favorites`,
   `completion_rate`, `avg_watch_time`, `like_rate`, `comment_rate`,
   `share_rate`, `favorite_rate`, `follow_rate`, `absolute_predictions`,
-  `numeric_predictions`, `predicted_plays`, or `estimated_plays`.
+  `numeric_predictions`, `predicted_plays`, `estimated_plays`,
+  `predicted_likes`, `predicted_favorite_rate`, `estimated_follows`, or any
+  `predicted_`, `estimated_`, or `expected_` count/rate/range field.
 
 If the first output fails this gate, reprompt the same isolated subagent once
 with only the schema error and the original title/script. If the second output

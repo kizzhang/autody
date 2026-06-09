@@ -297,6 +297,9 @@ const FORBIDDEN_BLIND_ACTUAL_KEYS = new Set([
   "predicted_plays",
   "estimated_plays",
   "expected_plays",
+  "value_range",
+  "numeric_range",
+  "estimated_range",
   "absolute_predictions",
   "numeric_predictions",
   "actual_predictions",
@@ -305,13 +308,53 @@ const FORBIDDEN_BLIND_ACTUAL_KEYS = new Set([
   "calibrated_prior",
 ]);
 
+const FORBIDDEN_BLIND_ACTUAL_SUFFIXES = new Set([
+  "plays",
+  "views",
+  "play_count",
+  "likes",
+  "like_count",
+  "comments",
+  "comment_count",
+  "shares",
+  "share_count",
+  "favorites",
+  "favorite_count",
+  "follows",
+  "followers",
+  "follow_count",
+  "new_followers",
+  "completion",
+  "completion_rate",
+  "retention",
+  "watch_time",
+  "avg_watch",
+  "avg_watch_time",
+  "average_watch_time",
+  "bounce",
+  "bounce_rate",
+]);
+
+function isForbiddenBlindActualKey(normalizedKey) {
+  if (FORBIDDEN_BLIND_ACTUAL_KEYS.has(normalizedKey)) return true;
+  const prefixed = normalizedKey.match(/^(predicted|estimated|expected)_(.+)$/);
+  if (!prefixed) return false;
+  const suffix = prefixed[2];
+  return (
+    FORBIDDEN_BLIND_ACTUAL_SUFFIXES.has(suffix)
+    || suffix.endsWith("_rate")
+    || suffix.endsWith("_count")
+    || suffix.endsWith("_range")
+  );
+}
+
 function findForbiddenBlindActualKeys(value, pathParts = []) {
   const found = [];
   if (!value || typeof value !== "object") return found;
   for (const [key, child] of Object.entries(value)) {
     const normalizedKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`).toLowerCase();
     const path = [...pathParts, key];
-    if (FORBIDDEN_BLIND_ACTUAL_KEYS.has(normalizedKey)) found.push(path.join("."));
+    if (isForbiddenBlindActualKey(normalizedKey)) found.push(path.join("."));
     if (child && typeof child === "object") found.push(...findForbiddenBlindActualKeys(child, path));
   }
   return found;
