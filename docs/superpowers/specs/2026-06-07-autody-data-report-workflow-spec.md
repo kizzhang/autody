@@ -530,7 +530,8 @@ Reject fields such as `predicted_plays`, `estimated_plays`,
 `shares`, `favorites`, `completion_rate`, `avg_watch_time`, `like_rate`,
 `comment_rate`, `share_rate`, `favorite_rate`, `follow_rate`,
 `predicted_likes`, `predicted_favorite_rate`, `estimated_follows`, or any
-`predicted_`, `estimated_`, or `expected_` count/rate/range field.
+`predicted_`, `estimated_`, `expected_`, `actual_`, or `observed_`
+count/rate/range field.
 
 Before opening observed metrics, validate the blind scorer output. It is usable
 as a production blind score only if it is parseable JSON, contains

@@ -404,6 +404,25 @@ test("rejects prefixed predicted numeric count and rate fields in blind predicti
   assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:estimated_follows"));
 });
 
+test("rejects actual and observed prefixed numeric fields in blind predictions", () => {
+  const prediction = validBlindPrediction({
+    actual_plays: 1000,
+    actualFavoriteRate: "4%",
+    observedPlays: 900,
+  });
+  const report = runReport({
+    works: { items: [baseWork({ mid: "m9", publicUrl: "https://www.douyin.com/video/m9", publishedAt: "2026-06-07" })] },
+    audit: { items: [] },
+    blind: { items: [{ workKey: "mid:m9", blind_id: "blind-observed-actuals", prediction }] },
+    args: ["--new-after", "2026-06-01"],
+  });
+
+  assert.equal(report.items[0].blindScoreStatus, "blind_score_schema_failed");
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:actual_plays"));
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:actualFavoriteRate"));
+  assert.ok(report.items[0].blindSchemaErrors.some((error) => error === "forbidden_actual_value:observedPlays"));
+});
+
 test("blocks production blind scoring when the new video transcript is incomplete", () => {
   const prediction = {
     blind_id: "blind-transcript",

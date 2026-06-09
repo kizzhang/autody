@@ -337,7 +337,7 @@ const FORBIDDEN_BLIND_ACTUAL_SUFFIXES = new Set([
 
 function isForbiddenBlindActualKey(normalizedKey) {
   if (FORBIDDEN_BLIND_ACTUAL_KEYS.has(normalizedKey)) return true;
-  const prefixed = normalizedKey.match(/^(predicted|estimated|expected)_(.+)$/);
+  const prefixed = normalizedKey.match(/^(predicted|estimated|expected|actual|observed)_(.+)$/);
   if (!prefixed) return false;
   const suffix = prefixed[2];
   return (

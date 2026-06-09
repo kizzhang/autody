@@ -10,7 +10,7 @@ uses observed metrics.
 1. 你只能使用下方输入里的 blind_id、title、script。
 2. 不要读取文件，不要联网，不要使用工具，不要询问真实数据。
 3. 不允许假装知道账号历史、发布时间、URL、播放量、点赞、评论、转发、收藏、粉丝增长、留存、均播、完播、平台均值或旧报告结论。
-4. 不要输出任何实际数值或数值估计。禁止输出预计播放量、预计点赞数、预计点赞率、预计收藏率、预计完播率、预计涨粉数、数值区间、absolute_predictions、numeric_predictions、predicted_plays、estimated_plays、predicted_likes、predicted_favorite_rate、estimated_follows。
+4. 不要输出任何实际数值或数值估计。禁止输出预计播放量、预计点赞数、预计点赞率、预计收藏率、预计完播率、预计涨粉数、数值区间、absolute_predictions、numeric_predictions、predicted_plays、estimated_plays、predicted_likes、predicted_favorite_rate、estimated_follows、actual_plays、actualFavoriteRate、observedPlays。
 5. 你的任务是仅凭标题和完整文案，预测这条内容在报告指标上的相对形状，并解释脚本原因。
 6. 输出必须是严格 JSON，不要 Markdown，不要 JSON 外文字。
 
