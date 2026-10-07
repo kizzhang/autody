@@ -1,26 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420" role="img" aria-label="Autody quickstart">
-  <rect width="1100" height="420" fill="#f8fafc"/>
-  <text x="72" y="74" font-family="Arial, 'PingFang SC', sans-serif" font-size="34" font-weight="700" fill="#111827">一条提示，让 agent 开始分析你自己的抖音作品</text>
-  <text x="72" y="116" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" fill="#475569">安装 skill 后，把下面这句话交给 Codex；它会按流程审计、补数据、导出报告。</text>
-  <rect x="72" y="154" width="956" height="92" rx="16" fill="#111827"/>
-  <text x="104" y="196" font-family="Menlo, Consolas, monospace" font-size="20" fill="#e5e7eb">Use $douyin-analysis to analyze my own Douyin works,</text>
-  <text x="104" y="226" font-family="Menlo, Consolas, monospace" font-size="20" fill="#e5e7eb">backfill missing metrics, and export JSON/CSV/Markdown.</text>
-  <g transform="translate(90 298)">
-    <circle cx="26" cy="26" r="26" fill="#2dd4bf"/>
-    <text x="19" y="35" font-family="Arial" font-size="26" font-weight="700" fill="#0f172a">1</text>
-    <text x="72" y="21" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#111827">自己的账号</text>
-    <text x="72" y="49" font-family="Arial, 'PingFang SC', sans-serif" font-size="15" fill="#64748b">只分析你拥有或获授权的数据</text>
-  </g>
-  <g transform="translate(410 298)">
-    <circle cx="26" cy="26" r="26" fill="#ff2f6d"/>
-    <text x="19" y="35" font-family="Arial" font-size="26" font-weight="700" fill="#ffffff">2</text>
-    <text x="72" y="21" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#111827">逐条保存</text>
-    <text x="72" y="49" font-family="Arial, 'PingFang SC', sans-serif" font-size="15" fill="#64748b">每条完成就写入 progress</text>
-  </g>
-  <g transform="translate(720 298)">
-    <circle cx="26" cy="26" r="26" fill="#818cf8"/>
-    <text x="19" y="35" font-family="Arial" font-size="26" font-weight="700" fill="#ffffff">3</text>
-    <text x="72" y="21" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#111827">报告可复用</text>
-    <text x="72" y="49" font-family="Arial, 'PingFang SC', sans-serif" font-size="15" fill="#64748b">JSON、CSV、Markdown 三份输出</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="616" viewBox="0 0 1200 616" role="img" aria-labelledby="title desc">
+  <title id="title">Autody 快速上手：抖音与小红书</title>
+  <desc id="desc">统一安装8个Skill。抖音使用kaishi建档，按需使用baogao和html；小红书使用xiaohongshu-analysis处理笔记链接。</desc>
+  <rect width="1200" height="616" rx="24" fill="#fcf9f4" />
+  <text x="56" y="42" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="15" font-weight="600" fill="#821e1a">AUTODY / QUICKSTART</text>
+  <text x="56" y="91" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="36" font-weight="700" fill="#292421">先选平台，再给任务</text>
+  <text x="56" y="130" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="20" font-weight="400" fill="#776960">一次安装 8 个 Skill，使用已登录的 Chrome 会话。</text>
+  <rect x="56" y="170" width="520" height="288" rx="18" fill="#ffffff" stroke="#e3d3c9" />
+  <text x="84" y="215" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="29" font-weight="700" fill="#821e1a">抖音</text>
+  <text x="84" y="250" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="20" font-weight="400" fill="#776960">从账号建档到内容复盘</text>
+  <rect x="624" y="170" width="520" height="288" rx="18" fill="#e8f5ee" stroke="#e3d3c9" />
+  <text x="652" y="215" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="29" font-weight="700" fill="#286d58">小红书</text>
+  <text x="652" y="250" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="20" font-weight="400" fill="#776960">给笔记链接，提取并核对原文</text>
+  <rect x="1022" y="190" width="94" height="30" rx="15" fill="#e8f5ee" stroke="#286d58" />
+  <text x="1037" y="211" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="16" font-weight="600" fill="#286d58">预发布</text>
+  <rect x="82" y="274" width="468" height="72" rx="12" fill="#302622" stroke="#302622" />
+  <text x="102" y="320" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="23" font-weight="600" fill="#fff6e8">/kaishi 为我的抖音账号建档</text>
+  <text x="84" y="385" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="21" font-weight="600" fill="#821e1a">需要报告时：/baogao → /html</text>
+  <text x="84" y="421" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">初次建档只产底账和审计。</text>
+  <rect x="650" y="274" width="468" height="72" rx="12" fill="#173f34" stroke="#173f34" />
+  <text x="670" y="318" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="23" font-weight="600" fill="#f0fff7">使用 $xiaohongshu-analysis</text>
+  <text x="652" y="385" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="21" font-weight="600" fill="#286d58">附上链接：提取口播，核对原页。</text>
+  <text x="652" y="421" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">导出 JSON、CSV 和文本。</text>
+  <path d="M56 494H1144" fill="none" stroke="#e3d3c9" />
+  <text x="56" y="537" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="20" font-weight="700" fill="#821e1a">安装</text>
+  <text x="120" y="537" font-family="Consolas, monospace" font-size="23" font-weight="500" fill="#292421">node bin/autody.js install</text>
+  <text x="56" y="580" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">已有旧版：先备份自己的修改，再使用 --force 更新。</text>
 </svg>
