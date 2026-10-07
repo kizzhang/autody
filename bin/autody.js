@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const packageRoot = path.resolve(__dirname, "..");
-const skillNames = ["douyin-analysis", "kaishi", "gengxin", "buchong", "tijian", "baogao", "html"];
+const skillNames = ["douyin-analysis", "kaishi", "gengxin", "buchong", "tijian", "baogao", "html", "xiaohongshu-analysis"];
 
 function skillSource(skillName) {
   return path.join(packageRoot, "skills", skillName);
@@ -31,8 +31,9 @@ Commands:
   skill-path  Print a packaged skill path.
 
 Safety:
-  Autody is for first-party or explicitly authorized Douyin creator data only.
+  Autody is for first-party or explicitly authorized Douyin/Xiaohongshu creator data only.
   Collection is Chrome Extension-first. Use /kaishi, /gengxin, /buchong, /tijian, /baogao, or /html in Codex after install.
+  For Xiaohongshu note links, use $xiaohongshu-analysis with the homepage Diandian AI workflow.
 `;
 }
 
@@ -76,6 +77,7 @@ function assertPackageShape() {
     "skills/douyin-analysis/scripts/audit_content_gaps.cjs",
     "skills/douyin-analysis/scripts/merge_content_outputs.cjs",
     "skills/douyin-analysis/scripts/render_lumina_report.cjs",
+    "skills/xiaohongshu-analysis/references/diandian-workflow.md",
   ];
   for (const skillName of skillNames.filter((name) => name !== "douyin-analysis")) {
     required.push(`skills/${skillName}/SKILL.md`);
@@ -107,7 +109,7 @@ function install(opts) {
     fs.cpSync(skillSource(skillName), dest, { recursive: true });
     console.log(`Installed ${skillName} to ${dest}`);
   }
-  console.log("Ask Codex: run /kaishi for first baseline, /gengxin to update, /buchong to backfill, /tijian to audit, /baogao to analyze, or /html for Lumina HTML.");
+  console.log("Ask Codex: run /kaishi for first baseline, /gengxin to update, /buchong to backfill, /tijian to audit, /baogao to analyze, or /html for Lumina HTML. Use $xiaohongshu-analysis for Xiaohongshu links via Diandian AI.");
 }
 
 function doctor(opts) {

@@ -123,6 +123,9 @@ const checkedFiles = [
   "skills/baogao/agents/openai.yaml",
   "skills/html/SKILL.md",
   "skills/html/agents/openai.yaml",
+  "skills/xiaohongshu-analysis/SKILL.md",
+  "skills/xiaohongshu-analysis/agents/openai.yaml",
+  "skills/xiaohongshu-analysis/references/diandian-workflow.md",
 ];
 
 const forbiddenHumanPaceRegressions = [

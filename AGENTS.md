@@ -1,6 +1,8 @@
 # Agent Guide
 
-Use this repository only for the user's own Douyin creator account or explicitly authorized creator data.
+Use this repository only for the user's own Douyin/Xiaohongshu creator account or explicitly authorized creator data.
+
+For Xiaohongshu note links, use `skills/xiaohongshu-analysis/SKILL.md`. Open the homepage's 点点 AI in the existing logged-in Chrome session, submit one note link at a time, and keep source-page metadata separate from AI-extracted transcript candidates. The following command workflows and metric scripts are Douyin-specific; do not run them against Xiaohongshu data.
 
 Start with a command skill when the user names one:
 
@@ -11,7 +13,7 @@ Start with a command skill when the user names one:
 - `/baogao`: `skills/baogao/SKILL.md` for fresh report analysis.
 - `/html`: `skills/html/SKILL.md` for Lumina HTML rendering.
 
-Use `skills/douyin-analysis/SKILL.md` as the shared base layer. Collection is Chrome Extension-first: use the Codex Chrome Extension / Chrome plugin to claim or open the user's existing Chrome creator-center tab, read visible Douyin creator data, and save progress after every item. Read `skills/douyin-analysis/references/chrome-extension-workflow.md` before collecting account data.
+For Douyin commands, use `skills/douyin-analysis/SKILL.md` as the shared base layer. Collection is Chrome Extension-first: use the Codex Chrome Extension / Chrome plugin to claim or open the user's existing Chrome creator-center tab, read visible Douyin creator data, and save progress after every item. Read `skills/douyin-analysis/references/chrome-extension-workflow.md` before collecting Douyin account data.
 
 Run an audit first, backfill only missing fields, persist after every item, and handle Douyin/Doubao pages at human pace: one active item, wait for visible stability, save, then continue. `/kaishi` must stop at baseline outputs and should not create strategy reports or HTML. `/baogao` must recompute analysis from the latest data every run. `/html` must use Lumina only, rebuild a fresh payload from current source files, and treat older HTML as visual reference only.
 

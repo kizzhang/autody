@@ -1,5 +1,12 @@
 # unreleased
 
+Xiaohongshu prerelease `0.0.4-xhs.1`:
+
+- Adds `xiaohongshu-analysis` for note links submitted to the homepage Diandian AI in the existing Chrome session.
+- Separates source-page metadata and visible metrics from unverified AI transcript candidates; exports a Xiaohongshu ledger without invoking Douyin metric/report scripts.
+- Includes the new skill in CLI install and package checks. One 6:30 video note and two assistant turns were tested; full transcript accuracy, image OCR, bulk runs and private analytics remain unverified.
+- Adds installation and package-completeness regression tests. Publishing the npm prerelease or advancing its `latest` tag is a separate release step.
+
 Chrome Extension-only collector guidance.
 
 - Changes `douyin-analysis` to prefer the Codex Chrome Extension / Chrome plugin for creator-center collection.
