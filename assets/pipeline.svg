@@ -1,27 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420" role="img" aria-label="Autody pipeline">
-  <rect width="1100" height="420" fill="#ffffff"/>
-  <text x="72" y="68" font-family="Arial, 'PingFang SC', sans-serif" font-size="32" font-weight="700" fill="#111827">Mac + Codex + Chrome 是当前最顺手的路径</text>
-  <text x="72" y="108" font-family="Arial, 'PingFang SC', sans-serif" font-size="18" fill="#475569">agent 读 skill，使用你自己的登录态进入创作者中心；豆包每条单开单关，避免页面变卡。</text>
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
-    </marker>
-  </defs>
-  <g font-family="Arial, 'PingFang SC', sans-serif">
-    <rect x="84" y="168" width="180" height="118" rx="18" fill="#f1f5f9" stroke="#cbd5e1"/>
-    <text x="122" y="213" font-size="22" font-weight="700" fill="#111827">Codex</text>
-    <text x="122" y="246" font-size="15" fill="#64748b">读取 $douyin-analysis</text>
-    <line x1="270" y1="227" x2="370" y2="227" stroke="#94a3b8" stroke-width="4" marker-end="url(#arrow)"/>
-    <rect x="390" y="168" width="180" height="118" rx="18" fill="#ecfeff" stroke="#67e8f9"/>
-    <text x="432" y="213" font-size="22" font-weight="700" fill="#0f172a">Chrome</text>
-    <text x="421" y="246" font-size="15" fill="#0f766e">自己的登录态</text>
-    <line x1="576" y1="227" x2="676" y2="227" stroke="#94a3b8" stroke-width="4" marker-end="url(#arrow)"/>
-    <rect x="696" y="146" width="220" height="162" rx="18" fill="#fff1f2" stroke="#fda4af"/>
-    <text x="744" y="198" font-size="22" font-weight="700" fill="#111827">抖音 + 豆包</text>
-    <text x="734" y="232" font-size="15" fill="#9f1239">创作者数据、Top 评论</text>
-    <text x="734" y="260" font-size="15" fill="#9f1239">逐字稿、图文文字</text>
-    <line x1="806" y1="314" x2="806" y2="360" stroke="#94a3b8" stroke-width="4" marker-end="url(#arrow)"/>
-    <rect x="626" y="360" width="360" height="42" rx="12" fill="#111827"/>
-    <text x="716" y="387" font-size="17" fill="#e5e7eb">保存 progress，失败也能继续</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="634" viewBox="0 0 1200 634" role="img" aria-labelledby="title desc">
+  <title id="title">Autody 两个平台的处理流程</title>
+  <desc id="desc">抖音经创作者中心、豆包、审计分析形成底账和报告。小红书经笔记链接、点点、原页核对形成带验证状态的文件。</desc>
+  <rect width="1200" height="634" rx="24" fill="#fcf9f4" />
+  <text x="56" y="42" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="15" font-weight="600" fill="#821e1a">AUTODY / WORKFLOW</text>
+  <text x="56" y="91" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="36" font-weight="700" fill="#292421">共用浏览器，两条处理路径</text>
+  <text x="56" y="130" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="20" font-weight="400" fill="#776960">复用已登录的 Chrome；一次处理一条，等回复完成后保存。</text>
+  <text x="56" y="195" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="22" font-weight="700" fill="#821e1a">抖音</text>
+  <rect x="56" y="219" width="254" height="128" rx="18" fill="#ffffff" stroke="#e3d3c9" />
+  <text x="78" y="270" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="26" font-weight="700" fill="#821e1a">创作者中心</text>
+  <text x="78" y="307" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">作品与可见指标</text>
+  <path d="M316 283H328m-7-6 7 6-7 6" fill="none" stroke="#821e1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="334" y="219" width="254" height="128" rx="18" fill="#ffffff" stroke="#e3d3c9" />
+  <text x="356" y="270" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="26" font-weight="700" fill="#821e1a">豆包转写</text>
+  <text x="356" y="307" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">复用对话，逐条提取</text>
+  <path d="M594 283H606m-7-6 7 6-7 6" fill="none" stroke="#821e1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="612" y="219" width="254" height="128" rx="18" fill="#ffffff" stroke="#e3d3c9" />
+  <text x="634" y="270" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="26" font-weight="700" fill="#821e1a">审计与分析</text>
+  <text x="634" y="307" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">检查缺口，按需补齐</text>
+  <path d="M872 283H884m-7-6 7 6-7 6" fill="none" stroke="#821e1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="890" y="219" width="254" height="128" rx="18" fill="#ffffff" stroke="#e3d3c9" />
+  <text x="912" y="270" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="26" font-weight="700" fill="#821e1a">底账与报告</text>
+  <text x="912" y="307" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">按需生成 Lumina HTML</text>
+  <text x="56" y="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="22" font-weight="700" fill="#286d58">小红书 · 预发布</text>
+  <rect x="56" y="424" width="254" height="128" rx="18" fill="#e8f5ee" stroke="#e3d3c9" />
+  <text x="78" y="475" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="26" font-weight="700" fill="#286d58">笔记链接</text>
+  <text x="78" y="512" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">原页标题、正文与数据</text>
+  <path d="M316 488H328m-7-6 7 6-7 6" fill="none" stroke="#286d58" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="334" y="424" width="254" height="128" rx="18" fill="#e8f5ee" stroke="#e3d3c9" />
+  <text x="356" y="475" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="26" font-weight="700" fill="#286d58">首页点点</text>
+  <text x="356" y="512" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">逐条提取口播</text>
+  <path d="M594 488H606m-7-6 7 6-7 6" fill="none" stroke="#286d58" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="612" y="424" width="254" height="128" rx="18" fill="#e8f5ee" stroke="#e3d3c9" />
+  <text x="634" y="475" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="26" font-weight="700" fill="#286d58">核对与标记</text>
+  <text x="634" y="512" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">原页信息 + 验证状态</text>
+  <path d="M872 488H884m-7-6 7 6-7 6" fill="none" stroke="#286d58" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="890" y="424" width="254" height="128" rx="18" fill="#e8f5ee" stroke="#e3d3c9" />
+  <text x="912" y="475" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="26" font-weight="700" fill="#286d58">导出与保存</text>
+  <text x="912" y="512" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">JSON / CSV / 文本</text>
+  <text x="56" y="596" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="18" font-weight="400" fill="#776960">小红书口播保留验证状态；未验证完整性，也不推算后台指标。</text>
 </svg>

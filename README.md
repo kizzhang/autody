@@ -13,7 +13,7 @@ Autody 是一组给 Codex 使用的创作者分析 skills，通过 Codex Chrome 
 
 小红书有独立的 Skill 和数据口径。现有六个短命令与指标、评分、报告脚本仍用于抖音。
 
-![Autody 顶图](assets/hero.png)
+![Autody：抖音深度复盘与小红书点点提取，两条独立处理流程](assets/hero.png)
 
 ## 只分析自己的账号
 
@@ -46,7 +46,7 @@ cp -R skills/{douyin-analysis,kaishi,gengxin,buchong,tijian,baogao,html,xiaohong
 npx autody@latest install --force
 ```
 
-![Autody quickstart](assets/quickstart.svg)
+![Autody 快速上手：统一安装，按平台选择 Skill 入口](assets/quickstart.svg)
 
 ## 小红书：链接交给首页点点
 
@@ -74,6 +74,10 @@ evidence/
 
 详见 [小红书 Skill](skills/xiaohongshu-analysis/SKILL.md) 与 [点点提示词及数据口径](skills/xiaohongshu-analysis/references/diandian-workflow.md)。
 
+## 两条处理路径
+
+![Autody 流程：抖音经豆包和分析生成报告，小红书经点点和原页核对导出文本](assets/pipeline.svg)
+
 ## 抖音：Codex 命令入口
 
 ```text
@@ -100,8 +104,6 @@ Autody 会要求 agent：
 - Chrome 页面拿不到的字段标记为 `dataGap`，不再启动第二套浏览器采集器。
 - 低播放但被隐藏/限流的样本只做文案诊断，不参与曝光归因。
 - HTML 报告必须有可读结构：气泡图、因子地图、关键样本复盘、逐条表格和下一批建议。
-
-![Agent pipeline](assets/pipeline.svg)
 
 ## 抖音会抓哪些数据
 
@@ -134,7 +136,9 @@ report_lumina_payload.json
 report_lumina.html
 ```
 
-![Outputs](assets/outputs.svg)
+## 输出对照
+
+![Autody 输出：抖音底账与报告、小红书候选口播与证据分开保存](assets/outputs.svg)
 
 ## Agent 入口
 
