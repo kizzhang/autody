@@ -1,0 +1,8 @@
+interface:
+  display_name: "小红书点点提取"
+  short_description: "用首页点点提取小红书笔记口播，核对原页正文与互动数并导出内容底账"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  default_prompt: "使用 $xiaohongshu-analysis 处理我授权的小红书笔记链接，通过点点提取口播，核对原页信息并保存带来源和验证状态的结果。"
+policy:
+  allow_implicit_invocation: true
