@@ -1,5 +1,12 @@
 # unreleased
 
+Public topic radar (GitHub preview; no npm release in this change):
+
+- Adds `social-radar` for public Douyin/Xiaohongshu discovery, preserved originals/comments, X provenance, timed revisits and user-selected spoken-script drafts.
+- Includes a local append-only event ledger, file hashes, resumable rounds, due/backfill tasks, growth checks and a searchable HTML/JSON/Excel-readable CSV report. Reports prepare agent instructions; they do not mutate the ledger in-browser.
+- Extends the installer to nine skills and keeps own-account analytics separate from public research. Scheduling remains host-managed and requires a user request.
+- Local synthetic tests cover recording/replay, interrupted rounds, exact/rounded counts, timing boundaries, source integrity, selection-gated drafts and rendering. Live multi-platform collection, media capture and full transcript accuracy remain unverified for this new module.
+
 Xiaohongshu prerelease `0.0.4-xhs.1`:
 
 - Adds `xiaohongshu-analysis` for note links submitted to the homepage Diandian AI in the existing Chrome session.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "选题雷达"
+  short_description: "发现抖音小红书选题，保存原文、评论与来源，跟踪增长并生成选定题目的口播初稿"
+  default_prompt: "使用 $social-radar 发现适合我的公开内容选题，先保存素材再精读和复看，在我选择题目后生成有来源的口播初稿。"

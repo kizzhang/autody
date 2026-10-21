@@ -1,0 +1,96 @@
+# Local record contract and commands
+
+Node.js 18+; no runtime dependencies. Commands below use a checkout-relative script path; after installation resolve it with `autody skill-path social-radar`. Keep the store outside the installed skill/package and out of git.
+
+```text
+outputs/social-radar/
+  events/                 immutable, ordered JSON events
+  materials/<work-key>/   caption.md, capture inputs, originals and text sources
+  drafts/<work-key>/<rev>/ brief.md, script.md, evidence.md
+  reports/<run>/          report.html, tracking.csv, snapshot.json
+```
+
+Every event has a stable `id` (letters/digits/dot/underscore/hyphen, max 120), `type` and timezone-qualified `recordedAt` (actual save time). Repeating the same ID and content is a no-op; changing it is rejected. The ledger embeds hashes for registered files. New reads/corrections use new event IDs and asset paths. Only the collector writes; offline readers submit payloads to it. `events/` is authoritative; reports are regenerable views. Do not edit journal files, old assets or registered drafts.
+
+```bash
+node skills/social-radar/scripts/radar.cjs append --store outputs/social-radar --input capture.json
+node skills/social-radar/scripts/radar.cjs status --store outputs/social-radar
+node skills/social-radar/scripts/radar.cjs render --store outputs/social-radar --out outputs/social-radar/reports/latest
+```
+
+`status` and `render` optionally accept `--now <ISO-time>` for reproducible inspection. The CSV opens in Excel and protects formula-leading text; it is an export, not an editable database or XLSX workbook. Dashboard buttons prepare instructions for the agent, with clipboard/manual-copy fallback; they do not mutate records or claim to have run a task. Use a new report directory to retain past reports.
+
+## Events
+
+Below are schema examples, **not real observations**. Replace all sample identifiers, times and material paths with actual captured values. Asset files must exist and be nonempty before `append`.
+
+### Round and attempts
+
+```json
+{
+  "id": "round-20261021-am", "type": "round_started", "recordedAt": "2026-10-21T09:00:00+08:00",
+  "roundId": "20261021-am", "timezone": "Asia/Taipei",
+  "profile": "AI、科学、数学；希望有具体例子、独立观点及可复现方法",
+  "config": {"targets": {"douyin": 25, "xiaohongshu": 25}}
+}
+```
+
+Default config: `minNew:35`, `minRecommended:15` per active platform, `practicalSlots:10`, `minIntervalMinutes:20`, `shortWindowHours:6`, `lowFollowerCeiling:5000`, `lowLikeCeiling:1000`, `minNewLikes:10`, `minRelativeGrowth:0.5`, `fastLikesPerHour:100`, `accelerationRatio:2`. These are configurable working heuristics, not predictions. For a focused run also lower `minNew`, `minRecommended` and `practicalSlots` explicitly; they do not silently scale with targets.
+
+An `attempt` adds `roundId`, `attemptId`, `status` (`running`, `paused`, `partial`, `completed`), `reason` and optional affected `platform`. A continuation reuses `roundId` with a new `attemptId`. `completed` is rejected until count and configured coverage are met. Counts remain derived from evidence, even if an attempt is marked paused/partial. Store each interruption and completion as its own event; do not modify the start event.
+
+### Capture
+
+```json
+{
+  "id": "capture-example-01", "type": "capture", "recordedAt": "2026-10-21T09:05:10+08:00", "roundId": "20261021-am",
+  "work": {"id": "xiaohongshu:example", "platform": "xiaohongshu", "url": "https://www.xiaohongshu.com/explore/example", "title": "示例标题", "author": "示例作者", "dateKind": "unknown", "dateLabel": "昨天", "publishedAt": null},
+  "route": "recommendation", "practicalMethod": true,
+  "readKinds": ["caption_body", "image_text"], "coverage": "原页正文和第1页已读；总共3页", "gaps": ["第2–3页待补"],
+  "assets": [
+    {"kind": "caption", "path": "materials/xhs-example/caption.md", "sourceUrl": "https://www.xiaohongshu.com/explore/example", "capturedAt": "2026-10-21T09:04:51+08:00", "coverage": "作者标题与正文"},
+    {"kind": "page_screenshot", "path": "materials/xhs-example/page-01.png", "sourceUrl": "https://www.xiaohongshu.com/explore/example", "capturedAt": "2026-10-21T09:04:52+08:00", "coverage": "实际作品页，作者、内容及互动栏"}
+  ]
+}
+```
+
+`work.id` is platform plus native ID; preserve it across all rounds. `dateKind` is `published`, `edited` or `unknown`; only a confirmed original publication date sets `publishedAt`. Capture routes: `recommendation`, `related`, `search`, `direct`. `readKinds`: `caption_body` (substantive body, not title), `image_text`, `video_fragment`, `original_subtitles`, `verified_transcript`; an empty array is a saved lead, not a counted read. Eligible captures require a substantive read, caption asset and real page screenshot/video/clip. Counts use unique works; repeated reads and newness are shown separately. A lead discovered earlier only becomes previously read after eligible evidence is saved.
+
+Asset kinds: `caption`, `page_screenshot`, `original_image`, `video`, `clip`, `frame`, `original_subtitles`, `transcript_candidate`, `platform_summary`, `image_text`, `comments`, `source_page`, `source_image`, `research_note`. Every asset has a store-relative `path`, `sourceUrl`, `capturedAt`, `coverage`; the helper adds/verifies `sha256`. A `clip` also needs actual `startSeconds`/`endSeconds`. A `transcript_candidate` needs `status: ai_extracted_unverified|partial|verified`; `verified_transcript` reading requires a verified transcript asset. `verified` is an agent attestation backed by comparison to original audio/subtitles, not a helper-generated guarantee. Detailed page/interval annotations belong in the pack's capture JSON and `coverage` text. Do not use old screenshots as proof of newly sampled changing metrics.
+
+### Observation
+
+```json
+{
+  "id": "obs-example-01", "type": "observation", "recordedAt": "2026-10-21T09:06:00+08:00", "roundId": "20261021-am", "workId": "xiaohongshu:example",
+  "sampledAt": "2026-10-21T09:04:52+08:00", "evidencePaths": ["materials/xhs-example/page-01.png"],
+  "metrics": {"likes": {"value": 17, "raw": "17", "precision": "exact"}, "favorites": {"value": null, "raw": "1.1万", "precision": "rounded"}}
+}
+```
+
+Supported public metrics: `likes`, `favorites`, `comments`, `shares`, `followers`. Each uses `value`, literal `raw` count and `precision: exact|rounded|unavailable`. Unknown/rounded numeric values are null. Exact displays accept integers and comma grouping; keep labels separately in evidence. A homepage follower reading at another time gets its own observation. The latest available reading is tracked separately per metric; an unavailable later reading does not erase earlier data or refresh its timestamp. If the later value is rounded, show it as rounded rather than reusing an older exact number.
+
+Growth uses adjacent available like observations by **sampling** time. Both must be exact, at least `minIntervalMinutes` apart and at most `shortWindowHours` apart to flag short-term growth. Shorter windows retain delta but no hourly rate; longer ones display a cross-round average without short-term flags. Decreases are flagged, never converted to growth. Rounded intermediate samples break exact comparison. Zero-to-positive changes have null relative percentage, not infinity. Acceleration needs three eligible consecutive points and a positive earlier speed; a zero earlier speed is not an infinite acceleration claim. The chart always preserves the original points and times.
+
+### Review
+
+A `review` adds `workId`, `captureIds` (saved captures actually read), `summary`, `opportunity`, `angle`, `recommendation: shortlist|watch|archive`, `evidencePaths` and arrays:
+
+- `gaps`: remaining missing material/verification.
+- `sourceRefs`: `{url, status: exact|account_clue|unverified, note}`. Store original text/translation in assets, and explain source clusters in `note`.
+- `claims`: `{text, status: verified|author_report|inference|unresolved, evidencePaths}`. Evidence paths refer to captured assets, including primary-source checks saved as research notes.
+- `comments`: `{platform: douyin|xiaohongshu|x, kind: disagreement|request|meme|support|ai|other, sampledCount, summary, evidencePaths}`. Empty means no verified discussion, not zero total comments. The detailed reply structure lives in the comments asset.
+
+All referenced evidence must already be registered for that work. Reader payloads are proposed reviews; the collector reconciles them and appends them. Latest review drives the report; all older reviews remain.
+
+### Tasks, selection and drafts
+
+A `task` adds `roundId`, `workId`, stable `taskId`, `kind: revisit|backfill`, `status: pending|done|cancelled`, `reason`, and `dueAt` (nullable for backfill). Revisit tasks also reference `baselineObservationId`; due time must be at least the configured interval after that saved like observation. Marking a revisit done requires a later saved like observation at/after its due time. Updating a task appends a new event with the same `taskId`. Status exposes due tasks; it does not run a scheduler.
+
+A `decision` adds `workId`, `decision: selected|watch|rejected`, `reason` and `userRequest` preserving the real user instruction. Never fabricate a selection from a model's shortlist.
+
+A `draft` adds `workId`, `selectionEventId`, `reviewId`, `status: draft`, `briefPath`, `scriptPath`, `evidencePath`. All three files must already exist. The helper rejects registration unless the latest user decision selects that work; hashes protect saved draft revisions. The helper records drafts generated by the agent; it does not generate text or mark it published. A later rejection preserves historical drafts while preventing new ones.
+
+## Limits
+
+The helper validates structure, identity, file presence/hashes, reference integrity and arithmetic. It cannot determine whether a screenshot really contains a work, an image was actually read, a source claim is true, a userRequest is authentic or a transcript is complete. The browser collector and reviewer must verify those facts. Synthetic tests do not establish live platform capability.
