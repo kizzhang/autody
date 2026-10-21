@@ -6,6 +6,7 @@ Public topic radar (GitHub preview; no npm release in this change):
 - Includes a local append-only event ledger, file hashes, resumable rounds, due/backfill tasks, growth checks and a searchable HTML/JSON/Excel-readable CSV report. Reports prepare agent instructions; they do not mutate the ledger in-browser.
 - Extends the installer to nine skills and keeps own-account analytics separate from public research. Scheduling remains host-managed and requires a user request.
 - Local synthetic tests cover recording/replay, interrupted rounds, exact/rounded counts, timing boundaries, source integrity, selection-gated drafts and rendering. Live multi-platform collection, media capture and full transcript accuracy remain unverified for this new module.
+- Review hardening binds each observation to fresh metric-bearing evidence and immutable capture metadata, excludes unsupported legacy readings from derived growth, rejects impossible calendar dates, keeps public titles out of copied commands, honors watch/reject decisions, and requires new drafts to use the latest review revision.
 
 Xiaohongshu prerelease `0.0.4-xhs.1`:
 

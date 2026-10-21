@@ -36,6 +36,6 @@ Create three files under `drafts/<work-key>/<revision>/`:
 
 Do not turn translations into unattributed copying. Quote only what is necessary and attribute the source. Add the creator's reasoning or proposed test. A proposed test stays a proposal until performed. Do not write invented first-person earnings, experiences, experiments or opinions as though the user confirmed them; offer uncertain positions as draft framing.
 
-Before registering the draft, check numbers, attribution, scope, originality, scientific claims and whether the supposed counterargument was already addressed by the source. Save `status: draft`, the `reviewId` and `selectionEventId`. An explicit rejection/watch decision blocks new drafts until a later selection. Existing drafts remain history.
+Before registering the draft, check numbers, attribution, scope, originality, scientific claims and whether the supposed counterargument was already addressed by the source. Recheck that the review you used is still the latest for this work; if another review corrected it while drafting, reconcile the draft against that correction first. Save `status: draft`, that current `reviewId` and `selectionEventId`. An explicit rejection/watch decision blocks new drafts until a later selection. Existing drafts remain history, tied to their original review revisions.
 
 After the user publishes through a separately authorized workflow, they may associate the resulting own-account work with the source topic for later Autody analytics. Never infer published status or results from a generated script.

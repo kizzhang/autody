@@ -13,7 +13,8 @@ const DEFAULTS = Object.freeze({
 });
 const ASSET_KINDS = new Set(['caption', 'page_screenshot', 'original_image', 'video', 'clip',
   'frame', 'original_subtitles', 'transcript_candidate', 'platform_summary', 'image_text',
-  'comments', 'source_page', 'source_image', 'research_note']);
+  'comments', 'source_page', 'source_image', 'research_note', 'metric_snapshot']);
+const METRIC_ASSET_KINDS = new Set(['page_screenshot', 'metric_snapshot']);
 const READ_KINDS = new Set(['caption_body', 'image_text', 'video_fragment', 'original_subtitles', 'verified_transcript']);
 const METRICS = new Set(['likes', 'favorites', 'comments', 'shares', 'followers']);
 const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,119}$/;
@@ -21,8 +22,20 @@ function check(ok, message) { if (!ok) throw new Error(message); }
 function nonempty(s) { return typeof s === 'string' && s.trim().length > 0; }
 function id(s) { check(typeof s === 'string' && SAFE_ID.test(s), `Invalid ID: ${s}`); }
 function time(s) {
-  check(typeof s === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(s) && Number.isFinite(Date.parse(s)), `Timezone-qualified timestamp required: ${s}`);
+  const parts = typeof s === 'string' && /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(s);
+  check(parts, `Timezone-qualified timestamp required: ${s}`);
+  const [, y, mo, d, h, mi, sec, oh = 0, om = 0] = parts.map((v, i) => i === 0 ? v : v === undefined ? undefined : Number(v));
+  const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  check(mo >= 1 && mo <= 12 && d >= 1 && d <= days[mo - 1] && h <= 23 && mi <= 59 && sec <= 59 && oh <= 23 && om <= 59 && Number.isFinite(Date.parse(s)), `Invalid calendar timestamp: ${s}`);
   return Date.parse(s);
+}
+function validateMetric(k, m) {
+  check(METRICS.has(k), `Unknown public metric: ${k}`);
+  check(m && ['exact', 'rounded', 'unavailable'].includes(m.precision) && typeof m.raw === 'string', 'Metric precision/raw required');
+  if (m.precision === 'exact') {
+    check(Number.isSafeInteger(m.value) && m.value >= 0 && /^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(m.raw) && Number(m.raw.replaceAll(',', '')) === m.value, `Exact ${k} needs a matching integer display`);
+  } else check(m.value === null, 'Rounded/unavailable metrics must have value:null');
 }
 function url(s) { const u = new URL(s); check(['http:', 'https:'].includes(u.protocol) && !u.username && !u.password, 'Expected public HTTP(S) URL'); return s; }
 function relativeFile(root, file) {
@@ -53,6 +66,20 @@ function files(root) {
 }
 function load(root) { return files(root).map(n => JSON.parse(fs.readFileSync(path.join(root, 'events', n), 'utf8'))); }
 function assetsFor(events, workId) { return events.filter(e => e.type === 'capture' && e.work.id === workId).flatMap(e => e.assets); }
+function observationEvidence(e, prior) {
+  const known = new Map();
+  // The first registration owns the timestamp/metric readings for a path.
+  for (const a of assetsFor(prior, e.workId)) if (!known.has(a.path)) known.set(a.path, a);
+  check(Array.isArray(e.evidencePaths) && e.evidencePaths.length > 0, 'Fresh metric evidence required');
+  const referenced = e.evidencePaths.map(p => known.get(p));
+  for (const a of referenced) {
+    check(a && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && time(a.capturedAt) === time(e.sampledAt), 'Observation requires metric-bearing evidence captured at its sampling time');
+  }
+  for (const [k, m] of Object.entries(e.metrics)) {
+    const sources = referenced.filter(a => Object.hasOwn(a.metrics, k));
+    check(sources.length > 0 && sources.every(a => isDeepStrictEqual(a.metrics[k], m)), `Observation ${k} does not match its captured metric reading`);
+  }
+}
 function eligible(e) {
   return e.type === 'capture' && e.readKinds.some(k => READ_KINDS.has(k)) && e.assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && e.assets.some(a => a.kind === 'caption');
 }
@@ -90,24 +117,26 @@ function validate(root, e, prior) {
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
       check(time(a.capturedAt) <= recorded, 'Asset capture time is after event time');
       check(nonempty(a.coverage), 'Asset coverage required');
+      if (a.metrics !== undefined) {
+        check(METRIC_ASSET_KINDS.has(a.kind) && a.metrics && Object.keys(a.metrics).length > 0, 'Metric readings require a page screenshot or visible-page metric snapshot');
+        for (const [k, m] of Object.entries(a.metrics)) validateMetric(k, m);
+      }
+      if (a.kind === 'metric_snapshot') check(a.metrics !== undefined, 'Metric snapshot readings required');
       if (a.kind === 'clip') check(Number.isFinite(a.startSeconds) && a.startSeconds >= 0 && Number.isFinite(a.endSeconds) && a.endSeconds > a.startSeconds, 'Clip needs actual start/end seconds');
       if (a.kind === 'transcript_candidate') check(['ai_extracted_unverified', 'partial', 'verified'].includes(a.status), 'Transcript status required');
       const hash = digest(root, a.path); if (a.sha256) check(a.sha256 === hash, `Asset changed: ${a.path}`); a.sha256 = hash;
       const old = prior.filter(x => x.type === 'capture').flatMap(x => x.assets).find(x => x.path === a.path);
-      if (old) check(old.sha256 === hash && old.kind === a.kind, 'Registered asset cannot be replaced or retyped; use a new path');
+      if (old) check(isDeepStrictEqual(old, a), 'Registered asset and its metadata are immutable; use a new path');
     }
     if (e.readKinds.includes('verified_transcript')) check(e.assets.some(a => a.kind === 'transcript_candidate' && a.status === 'verified'), 'Verified transcript evidence required');
   } else if (e.type === 'observation') {
     requireWork(); check(round, 'Unknown round'); check(time(e.sampledAt) <= recorded, 'Sample time is after event time');
-    check(e.metrics && Object.keys(e.metrics).length > 0, 'Metrics required'); evidence(e.evidencePaths);
+    check(e.metrics && Object.keys(e.metrics).length > 0, 'Metrics required');
     for (const [k, m] of Object.entries(e.metrics)) {
-      check(METRICS.has(k), `Unknown public metric: ${k}`);
-      check(m && ['exact', 'rounded', 'unavailable'].includes(m.precision) && typeof m.raw === 'string', 'Metric precision/raw required');
-      if (m.precision === 'exact') {
-        check(Number.isSafeInteger(m.value) && m.value >= 0 && /^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(m.raw) && Number(m.raw.replaceAll(',', '')) === m.value, `Exact ${k} needs a matching integer display`);
-      } else check(m.value === null, 'Rounded/unavailable metrics must have value:null');
+      validateMetric(k, m);
       check(!prior.some(x => x.type === 'observation' && x.workId === e.workId && time(x.sampledAt) === time(e.sampledAt) && k in x.metrics), `Duplicate ${k} at sample time`);
     }
+    observationEvidence(e, prior);
   } else if (e.type === 'review') {
     requireWork(); evidence(e.evidencePaths);
     check(['shortlist', 'watch', 'archive'].includes(e.recommendation), 'Invalid recommendation');
@@ -131,8 +160,12 @@ function validate(root, e, prior) {
     if (e.kind === 'revisit') {
       const baseline = prior.find(x => x.id === e.baselineObservationId && x.type === 'observation' && x.workId === e.workId && x.metrics.likes);
       check(baseline, 'Revisit needs a saved like observation');
+      observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)));
       check(time(e.dueAt) >= time(baseline.sampledAt) + round.config.minIntervalMinutes * 60000, 'Revisit is earlier than the minimum interval');
-      if (e.status === 'done') check(prior.some(x => x.type === 'observation' && x.workId === e.workId && x.metrics.likes && time(x.sampledAt) >= time(e.dueAt)), 'No due-time revisit observation saved');
+      if (e.status === 'done') check(prior.some((x, i) => {
+        if (x.type !== 'observation' || x.workId !== e.workId || !x.metrics.likes || time(x.sampledAt) < time(e.dueAt)) return false;
+        try { observationEvidence(x, prior.slice(0, i)); return true; } catch { return false; }
+      }), 'No due-time revisit observation saved');
     }
   } else if (e.type === 'decision') {
     requireWork(); check(['selected', 'watch', 'rejected'].includes(e.decision), 'Invalid decision');
@@ -140,7 +173,8 @@ function validate(root, e, prior) {
   } else if (e.type === 'draft') {
     requireWork(); const selection = prior.findLast(x => x.type === 'decision' && x.workId === e.workId);
     check(selection && selection.decision === 'selected' && selection.id === e.selectionEventId, 'Draft requires the current explicit user selection');
-    check(prior.some(x => x.type === 'review' && x.workId === e.workId && x.id === e.reviewId), 'Draft review required');
+    const currentReview = prior.findLast(x => x.type === 'review' && x.workId === e.workId);
+    check(currentReview && currentReview.id === e.reviewId, 'Draft must reference the current review revision');
     check(e.status === 'draft', 'Generated script remains draft');
     e.hashes = e.hashes || {};
     check(new Set([e.briefPath, e.scriptPath, e.evidencePath]).size === 3, 'Brief, script and evidence must be separate files');
@@ -175,6 +209,9 @@ function append(root, input) {
     for (const old of events) if (old.type === 'capture') for (const a of old.assets) {
       if (refs.has(a.path)) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
     }
+    // Replaying an unchanged legacy record makes no new assertion. Unsupported
+    // historical observations remain excluded by snapshot's evidence checks.
+    if (existing && e.type === 'observation' && isDeepStrictEqual(existing, e)) return { appended: false, id: e.id };
     const normalized = validate(root, e, existing ? events.slice(0, events.indexOf(existing)) : events);
     if (existing) { check(isDeepStrictEqual(existing, normalized), `Conflicting replay: ${e.id}`); return { appended: false, id: e.id }; }
     const n = files(root).length + 1; check(n <= 99999999, 'Ledger sequence exhausted');
@@ -230,15 +267,22 @@ function growth(observations, c = DEFAULTS) {
 }
 function snapshot(events, now = new Date().toISOString()) {
   time(now); const works = new Map(), rounds = events.filter(e => e.type === 'round_started');
+  const observationChecks = new Map();
+  for (let i = 0; i < events.length; i++) if (events[i].type === 'observation') {
+    try { observationEvidence(events[i], events.slice(0, i)); observationChecks.set(events[i].id, null); }
+    catch (error) { observationChecks.set(events[i].id, error.message); }
+  }
   const taskMap = new Map(); for (const e of events) if (e.type === 'task') taskMap.set(e.taskId, e);
   for (const e of events) if (e.type === 'capture') works.set(e.work.id, e.work);
   const items = [...works].map(([workId, work]) => {
     const captures = events.filter(e => e.type === 'capture' && e.work.id === workId);
-    const observations = events.filter(e => e.type === 'observation' && e.workId === workId).sort((a, b) => time(a.sampledAt) - time(b.sampledAt));
+    const allObservations = events.filter(e => e.type === 'observation' && e.workId === workId);
+    const evidenceGaps = allObservations.filter(e => observationChecks.get(e.id)).map(e => ({ observationId: e.id, sampledAt: e.sampledAt, reason: observationChecks.get(e.id) }));
+    const observations = allObservations.filter(e => !observationChecks.get(e.id)).sort((a, b) => time(a.sampledAt) - time(b.sampledAt));
     const latest = {}; for (const o of observations) for (const [k, v] of Object.entries(o.metrics)) if (v.precision !== 'unavailable') latest[k] = { ...v, sampledAt: o.sampledAt, observationId: o.id };
     const currentRound = rounds.find(r => r.roundId === captures.at(-1).roundId);
     const review = events.findLast(e => e.type === 'review' && e.workId === workId) || null;
-    return { work, captures, latest, growth: growth(observations, currentRound?.config || DEFAULTS),
+    return { work, captures, latest, evidenceGaps, growth: growth(observations, currentRound?.config || DEFAULTS),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= (currentRound?.config.lowFollowerCeiling ?? DEFAULTS.lowFollowerCeiling) : null,
       review, decision: events.findLast(e => e.type === 'decision' && e.workId === workId) || null,
       drafts: events.filter(e => e.type === 'draft' && e.workId === workId) };
