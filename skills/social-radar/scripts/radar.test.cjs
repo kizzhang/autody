@@ -205,7 +205,7 @@ test('registered metric assets cannot be relabelled with a new sample time or co
 });
 
 test('metric screenshots bind all displayed readings to the same instant across timezones', t => {
-  const root = fixture(t), c = capture('metric-page');
+  const root = fixture(t), c = capture('metric-page', { readKinds: [] });
   c.assets = [{ ...c.assets[1], metrics: { likes: { value: 17, raw: '17', precision: 'exact' }, followers: { value: 4, raw: '4', precision: 'exact' } } }];
   // A new filename is necessary; the original screenshot metadata is immutable.
   fs.copyFileSync(path.join(root, 'materials/page.png'), path.join(root, 'materials/metric-page.png'));
@@ -327,7 +327,7 @@ test('reviews require an eligible capture among the captures actually referenced
   const leads = [
     capture('title-lead', { readKinds: [] }),
     capture('caption-only', { assets: capture().assets.slice(0, 1) }),
-    capture('page-only', { assets: capture().assets.slice(1) }),
+    capture('page-only', { readKinds: [], assets: capture().assets.slice(1) }),
   ];
   for (const lead of leads) append(root, lead);
   const before = load(root);
@@ -824,6 +824,65 @@ test('draft files cannot become later raw evidence or power legacy observations'
   assert.equal(item.evidenceGaps[0].observationId, point.id);
   assert.ok(!item.assets.some(a => [draft.briefPath, 'materials/script-link.md'].includes(a.path)));
   assert.deepEqual(item.drafts.map(d => d.id), [draft.id]); verifyFiles(root, load(root));
+});
+
+test('event-shaped journal entries must be regular files rather than symbolic links or directories', t => {
+  const root = fixture(t), external = path.join(root, 'outside-event.json'), link = path.join(root, 'events/00000003-injected.json');
+  const content = JSON.stringify(round('external')); fs.writeFileSync(external, content);
+  try { fs.symlinkSync(external, link, 'file'); } catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    fs.writeFileSync(link, content); const lstat = fs.lstatSync;
+    t.mock.method(fs, 'lstatSync', (file, ...args) => path.resolve(file) === link ? { isSymbolicLink: () => true, isFile: () => false } : lstat(file, ...args));
+    t.diagnostic('Windows file-symlink creation unavailable; mocked only its lstat directory entry.');
+  }
+  assert.throws(() => load(root), /Journal entries.*regular files/);
+  assert.throws(() => append(root, round('must-not-append')), /Journal entries.*regular files/);
+  assert.equal(fs.readFileSync(external, 'utf8'), content); assert.ok(!fs.existsSync(path.join(root, '.writer.lock')));
+  fs.unlinkSync(link); t.mock.restoreAll();
+  fs.mkdirSync(link); assert.throws(() => load(root), /Journal entries.*regular files/); fs.rmdirSync(link);
+  assert.equal(load(root).length, 2);
+});
+
+test('each substantive read kind requires compatible saved material including in legacy eligibility', t => {
+  const root = fixture(t), before = load(root);
+  for (const kind of ['original_subtitles', 'video_fragment', 'image_text', 'verified_transcript']) {
+    const assets = kind === 'image_text' ? capture().assets.slice(0, 1) : capture().assets;
+    assert.throws(() => append(root, capture('missing-read-evidence', { readKinds: [kind], assets })), /compatible saved evidence|Verified transcript evidence/);
+    assert.deepEqual(load(root), before);
+  }
+  for (const [kind, assetKind] of [['original_subtitles', 'original_subtitles'], ['video_fragment', 'clip'], ['image_text', 'image_text'], ['verified_transcript', 'transcript_candidate']]) {
+    const file = `materials/read-${kind}.txt`; fs.writeFileSync(path.join(root, file), `Synthetic ${kind} material`);
+    const asset = { ...capture().assets[0], kind: assetKind, path: file, ...(assetKind === 'clip' ? { startSeconds: 0, endSeconds: 1 } : {}), ...(assetKind === 'transcript_candidate' ? { status: 'verified' } : {}) };
+    append(root, capture(`read-${kind}`, { readKinds: [kind], assets: [...capture().assets, asset] }));
+    append(root, { ...review(`review-${kind}`), captureIds: [`read-${kind}`] });
+  }
+  append(root, round('r2'));
+  const legacy = { ...load(root).find(e => e.id === 'capture1'), id: 'legacy-missing-subtitles', roundId: 'r2', readKinds: ['original_subtitles'] };
+  const name = `${String(load(root).length + 1).padStart(8, '0')}-${legacy.id}.json`; fs.writeFileSync(path.join(root, 'events', name), JSON.stringify(legacy));
+  assert.equal(snapshot(load(root), undefined, root).rounds[1].unique, 0);
+  assert.throws(() => append(root, { ...review('legacy-read-review'), captureIds: [legacy.id] }), /substantive.*capture/);
+});
+
+test('publication cannot follow work evidence while older external source material remains usable', t => {
+  const root = fixture(t), before = load(root);
+  for (const publishedAt of ['2026-10-21T12:00:01+08:00', '2026-10-21T09:00:01+08:00']) {
+    const work = { ...capture().work, dateKind: 'published', dateLabel: 'Synthetic publication', publishedAt };
+    assert.throws(() => append(root, capture('future-publication', { work })), /Publication.*capture|Publication.*event/);
+    assert.deepEqual(load(root), before);
+  }
+  const work = { ...capture().work, dateKind: 'published', dateLabel: 'Synthetic publication', publishedAt: '2026-10-21T09:00:00+08:00' };
+  append(root, capture('published', { work }));
+  fs.writeFileSync(path.join(root, 'materials/older-source.md'), 'Synthetic source published before adaptation');
+  append(root, capture('older-source', { work, readKinds: [], assets: [{ ...capture().assets[0], kind: 'source_page', path: 'materials/older-source.md', sourceUrl: 'https://x.com/example/status/1', capturedAt: '2026-10-21T08:00:00+08:00' }] }));
+  const authorUrl = 'https://www.xiaohongshu.com/user/profile/synthetic-author', metrics = { followers: { value: 4, raw: '4', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/older-profile.json'), JSON.stringify(metrics));
+  append(root, capture('older-profile', { work: { ...work, authorUrl }, readKinds: [], assets: [{ ...capture().assets[0], kind: 'metric_snapshot', path: 'materials/older-profile.json', sourceUrl: authorUrl, capturedAt: '2026-10-21T08:00:00+08:00', metrics }] }));
+  append(root, event('observation', 'older-follower-reading', { roundId: 'r1', workId: work.id, sampledAt: '2026-10-21T08:00:00+08:00', metrics, evidencePaths: ['materials/older-profile.json'] }));
+  assert.equal(snapshot(load(root), undefined, root).items[0].latest.followers.value, 4);
+  append(root, round('r2'));
+  const legacy = { ...load(root).find(e => e.id === 'capture1'), id: 'legacy-future-publication', roundId: 'r2', work: { ...work, publishedAt: '2026-10-21T10:00:00+08:00' } };
+  const name = `${String(load(root).length + 1).padStart(8, '0')}-${legacy.id}.json`; fs.writeFileSync(path.join(root, 'events', name), JSON.stringify(legacy));
+  assert.equal(snapshot(load(root), undefined, root).rounds[1].unique, 0);
 });
 
 test('draft file separation uses resolved paths instead of three distinct strings', t => {

@@ -17,6 +17,7 @@ const ASSET_KINDS = new Set(['caption', 'page_screenshot', 'original_image', 'vi
 const METRIC_ASSET_KINDS = new Set(['page_screenshot', 'metric_snapshot']);
 const EXTERNAL_ASSET_KINDS = new Set(['source_page', 'source_image', 'source_comments', 'research_note']);
 const READ_KINDS = new Set(['caption_body', 'image_text', 'video_fragment', 'original_subtitles', 'verified_transcript']);
+const READ_EVIDENCE = { caption_body: ['caption'], image_text: ['original_image', 'image_text', 'page_screenshot'], video_fragment: ['video', 'clip'], original_subtitles: ['original_subtitles'], verified_transcript: ['transcript_candidate'] };
 const METRICS = new Set(['likes', 'favorites', 'comments', 'shares', 'followers']);
 const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,119}$/;
 function check(ok, message) { if (!ok) throw new Error(message); }
@@ -61,6 +62,7 @@ function sourcePlatform(sourceUrl) {
 }
 function assetMatchesWork(a, work) {
   try { url(a.sourceUrl); } catch { return false; }
+  if (!publicationAllowsAsset(a, work)) return false;
   if (EXTERNAL_ASSET_KINDS.has(a.kind)) return true;
   try { workUrl(work); workUrl({ ...work, url: a.sourceUrl }); return true; } catch {
     if (nonempty(work.authorUrl) && a.sourceUrl === work.authorUrl && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && Object.keys(a.metrics).length && Object.keys(a.metrics).every(k => k === 'followers')) {
@@ -68,6 +70,14 @@ function assetMatchesWork(a, work) {
     }
     return false;
   }
+}
+function publicationAllowsAsset(a, work) {
+  if (work.publishedAt == null) return true;
+  try { workUrl({ ...work, url: a.sourceUrl }); } catch { return true; }
+  try { return work.dateKind === 'published' && time(work.publishedAt) <= time(a.capturedAt); } catch { return false; }
+}
+function supportsRead(kind, assets) {
+  return assets.some(a => READ_EVIDENCE[kind]?.includes(a.kind) && (kind !== 'verified_transcript' || a.status === 'verified'));
 }
 function storagePath(file) {
   const key = assetKey(file.replaceAll('\\', '/'));
@@ -134,7 +144,9 @@ function eventDirectory(root) {
 }
 function files(root) {
   const dir = eventDirectory(root);
-  return fs.existsSync(dir) ? fs.readdirSync(dir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).sort() : [];
+  const names = fs.existsSync(dir) ? fs.readdirSync(dir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).sort() : [];
+  for (const name of names) { const entry = fs.lstatSync(path.join(dir, name)); check(entry.isFile() && !entry.isSymbolicLink(), `Journal entries must be regular files: ${name}`); }
+  return names;
 }
 function load(root) { const dir = eventDirectory(root); return files(root).map(n => JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))); }
 function assetKey(file) {
@@ -181,7 +193,7 @@ function eligible(e, registered, resolve = assetKey) {
     const first = known.get(resolve(a.path));
     return first?.workId === e.work.id && !first.fromDraft && isDeepStrictEqual(first.asset, a) && assetMatchesWork(a, e.work);
   });
-  return new Set(assets.map(a => resolve(a.path))).size === assets.length && e.readKinds.some(k => READ_KINDS.has(k)) && assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && assets.some(a => a.kind === 'caption');
+  return new Set(assets.map(a => resolve(a.path))).size === assets.length && e.readKinds.length > 0 && e.readKinds.every(k => READ_KINDS.has(k) && supportsRead(k, assets)) && assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && assets.some(a => a.kind === 'caption');
 }
 function validate(root, e, prior, resolve = fileResolver(root), internals) {
   check(e && typeof e === 'object' && !Array.isArray(e), 'Event object required');
@@ -209,7 +221,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
     check(typeof e.work.id === 'string' && new RegExp(`^${e.work.platform}:[a-zA-Z0-9_-]+$`).test(e.work.id), 'Use platform:native-id');
     workUrl(e.work); authorUrl(e.work); check(nonempty(e.work.title) && nonempty(e.work.author), 'Work title and author required');
     check(['published', 'edited', 'unknown'].includes(e.work.dateKind) && typeof e.work.dateLabel === 'string', 'Date kind/label required');
-    if (e.work.publishedAt != null) { check(e.work.dateKind === 'published', 'Edited/unknown dates cannot become publication dates'); time(e.work.publishedAt); }
+    if (e.work.publishedAt != null) { check(e.work.dateKind === 'published', 'Edited/unknown dates cannot become publication dates'); check(time(e.work.publishedAt) <= recorded, 'Publication timestamp cannot follow its capture event'); }
     check(['recommendation', 'related', 'search', 'direct'].includes(e.route), 'Invalid discovery route');
     check(Array.isArray(e.readKinds) && e.readKinds.every(k => READ_KINDS.has(k)), 'Invalid substantive read kind (summaries/title cards do not count)');
     check(typeof e.coverage === 'string' && Array.isArray(e.gaps), 'Coverage and gaps required');
@@ -220,6 +232,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
     for (const a of e.assets) {
       check(!generated.has(resolve(a.path)), 'Captured sources cannot reuse registered draft files');
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
+      check(publicationAllowsAsset(a, e.work), 'Publication timestamp cannot follow work capture evidence');
       check(assetMatchesWork(a, e.work), 'Asset source must identify the declared work (or its saved follower profile)');
       check(time(a.capturedAt) <= recorded, 'Asset capture time is after event time');
       check(nonempty(a.coverage), 'Asset coverage required');
@@ -238,6 +251,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
       }
     }
     if (e.readKinds.includes('verified_transcript')) check(e.assets.some(a => a.kind === 'transcript_candidate' && a.status === 'verified'), 'Verified transcript evidence required');
+    for (const kind of e.readKinds) check(supportsRead(kind, e.assets), `Read kind ${kind} requires compatible saved evidence`);
   } else if (e.type === 'observation') {
     requireWork(); check(round, 'Unknown round'); check(time(e.sampledAt) <= recorded, 'Sample time is after event time');
     check(e.metrics && Object.keys(e.metrics).length > 0, 'Metrics required');
