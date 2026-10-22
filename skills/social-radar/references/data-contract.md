@@ -20,6 +20,8 @@ node skills/social-radar/scripts/radar.cjs render --store outputs/social-radar -
 
 `status` and `render` optionally accept `--now <ISO-time>` for reproducible inspection. The CSV opens in Excel and protects formula-leading text; it is an export, not an editable database or XLSX workbook. Dashboard buttons prepare instructions using only a validated work ID and the store path; public titles/authors are not interpolated into commands. They provide clipboard/manual-copy fallback and do not mutate records or claim to have run a task. Use a new report directory to retain past reports.
 
+Appending verifies directly referenced registered files and expands event-ID references, including review capture IDs, revisit baselines and draft review revisions, into their backing files. Completed rounds verify their eligible captures, and completed revisits require an intact due-time observation. Unrelated historical videos are not rehashed on every append; `status` and `render` still perform the full integrity pass.
+
 ## Events
 
 Below are schema examples, **not real observations**. Replace all sample identifiers, times and material paths with actual captured values. Asset files must exist and be nonempty before `append`.
@@ -58,6 +60,8 @@ An `attempt` adds `roundId`, `attemptId`, `status` (`running`, `paused`, `partia
 
 Asset kinds: `caption`, `page_screenshot`, `original_image`, `video`, `clip`, `frame`, `original_subtitles`, `transcript_candidate`, `platform_summary`, `image_text`, `comments`, `source_page`, `source_image`, `research_note`, `metric_snapshot`. Every asset has a store-relative `path`, `sourceUrl`, `capturedAt`, `coverage`; the helper adds/verifies `sha256`. A registered path belongs to its first work and cannot be reused for another work, including normalized path aliases. Save a separate file for each work. Registered paths retain both their original bytes and metadata, including capture time and metric readings. Reusing a path for the same work cannot change that metadata. Legacy cross-work reuse remains in history but cannot supply the later work's observation evidence.
 
+A capture cannot list one file more than once, even through dot-segment aliases, symlinks or hard links. Duplicate normalized paths in legacy captures do not qualify for round counts or new substantive reviews; keep that history and save a new valid capture.
+
 Only `page_screenshot` and `metric_snapshot` assets can supply observation metrics. A `metric_snapshot` is the saved visible-page/DOM reading, including the displayed labels, values and page identity, not a reconstructed researcher summary. Each metric-bearing asset has a `metrics` object with the exact same value/raw/precision schema as observations. Metric snapshots require it; screenshots used only for content do not. Readings must actually be visible in that asset. `capturedAt` is the actual screenshot/snapshot instant; do not backdate it or relabel an old capture to match a desired sample time.
 
 A `clip` also needs actual `startSeconds`/`endSeconds`. A `transcript_candidate` needs `status: ai_extracted_unverified|partial|verified`; `verified_transcript` reading requires a verified transcript asset. `verified` is an agent attestation backed by comparison to original audio/subtitles, not a helper-generated guarantee. Detailed page/interval annotations belong in the pack's capture JSON and `coverage` text.
@@ -80,6 +84,8 @@ Legacy observations lacking this binding are preserved in the ledger but exclude
 
 Growth uses adjacent available like observations by **sampling** time. Both must be exact, at least `minIntervalMinutes` apart and at most `shortWindowHours` apart to flag short-term growth. Shorter windows retain delta but no hourly rate; longer ones display a cross-round average without short-term flags. Decreases are flagged, never converted to growth. Rounded intermediate samples break exact comparison. Zero-to-positive changes have null relative percentage, not infinity. Acceleration needs three eligible consecutive points and a positive earlier speed; a zero earlier speed is not an infinite acceleration claim. The chart always preserves the original points and times.
 
+Growth thresholds come from the round of the latest valid, available like sample; the low-follower threshold separately comes from the round of the latest available follower sample. Content-only captures, old-round backfills and unavailable readings do not select a new metric configuration.
+
 ### Review
 
 A `review` adds `workId`, `captureIds` (saved captures actually read), `summary`, `opportunity`, `angle`, `recommendation: shortlist|watch|archive`, `evidencePaths` and arrays:
@@ -100,6 +106,8 @@ A `decision` adds `workId`, `decision: selected|watch|rejected`, `reason` and `u
 A `draft` adds `workId`, `selectionEventId`, `reviewId`, `status: draft`, `briefPath`, `scriptPath`, `evidencePath`. All three files must already exist. The helper rejects registration unless the latest user decision selects that work and `reviewId` names the latest review for it at registration time. After a correction, reread the latest review and update the new draft; do not use a superseded review. Historical drafts retain their original review IDs and can be replayed unchanged. Hashes protect saved draft revisions. The helper records drafts generated by the agent; it does not generate text or mark it published. A later rejection preserves historical drafts while preventing new ones.
 
 The optional `hashes` field must be a JSON object when supplied, including when empty; arrays, null and primitives are rejected before saving. Omit it to let the helper calculate all three hashes, or supply existing hashes to verify them.
+
+Brief, script and evidence paths must resolve to three different files; aliases and hard links do not create separate documents. Historical draft hash protection also compares resolved file identities, so an alternative spelling cannot overwrite an earlier registered document.
 
 ## Limits
 

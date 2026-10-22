@@ -379,3 +379,137 @@ test('invalid draft hash maps are rejected before saving and do not poison statu
     assert.equal(result.status, 0, result.stderr);
   }
 });
+
+test('current captures reject file aliases before one file can fill multiple asset roles', t => {
+  const root = fixture(t), before = load(root);
+  fs.copyFileSync(path.join(root, 'materials/page.png'), path.join(root, 'materials/unseen.png'));
+  const other = { ...capture().work, id: 'xiaohongshu:other' };
+  const aliases = ['materials/./unseen.png', 'materials/sub/../unseen.png'];
+  if (process.platform === 'win32') aliases.push('materials/UNSEEN.PNG');
+  for (const alias of aliases) {
+    const assets = capture().assets.map((a, i) => ({ ...a, path: i ? alias : 'materials/unseen.png' }));
+    assert.throws(() => append(root, capture('aliased', { work: other, assets })), /Duplicate asset path/);
+    assert.deepEqual(load(root), before);
+  }
+  fs.linkSync(path.join(root, 'materials/unseen.png'), path.join(root, 'materials/linked.png'));
+  const linked = capture().assets.map((a, i) => ({ ...a, path: i ? 'materials/linked.png' : 'materials/unseen.png' }));
+  assert.throws(() => append(root, capture('linked', { work: other, assets: linked })), /Duplicate asset path/);
+  assert.deepEqual(load(root), before);
+});
+
+test('legacy aliased captures cannot count toward quotas or qualify a new review', t => {
+  const root = fixture(t);
+  const file = 'materials/legacy.png';
+  fs.copyFileSync(path.join(root, 'materials/page.png'), path.join(root, file));
+  const sha256 = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex');
+  const legacy = capture('legacy-alias', { work: { ...capture().work, id: 'xiaohongshu:other' }, assets: capture().assets.map((a, i) => ({ ...a, path: i ? 'materials/./legacy.png' : file, sha256 })) });
+  fs.writeFileSync(path.join(root, 'events/00000003-legacy-alias.json'), JSON.stringify(legacy));
+  assert.equal(snapshot(load(root)).rounds[0].unique, 1);
+  assert.throws(() => append(root, { ...review(), workId: legacy.work.id, captureIds: [legacy.id], evidencePaths: [file], claims: [] }), /substantive.*capture/);
+});
+
+function selectedDraft(t) {
+  const root = fixture(t); append(root, review());
+  append(root, event('decision', 'selected', { workId: 'xiaohongshu:example', decision: 'selected', userRequest: 'Synthetic user: select', reason: 'Useful' }));
+  for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  return { root, draft: event('draft', 'draft1', { workId: 'xiaohongshu:example', selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' }) };
+}
+
+test('draft file separation uses resolved paths instead of three distinct strings', t => {
+  const { root, draft } = selectedDraft(t), before = load(root);
+  assert.throws(() => append(root, { ...draft, briefPath: 'script.md', scriptPath: './script.md', evidencePath: 'sub/../script.md' }), /separate files/);
+  fs.linkSync(path.join(root, 'script.md'), path.join(root, 'script-link.md'));
+  assert.throws(() => append(root, { ...draft, briefPath: 'script-link.md' }), /separate files/);
+  assert.deepEqual(load(root), before);
+  append(root, draft); verifyFiles(root, load(root));
+});
+
+test('draft aliases cannot overwrite a historical file under a different path spelling', t => {
+  const { root, draft } = selectedDraft(t); append(root, draft);
+  fs.linkSync(path.join(root, 'script.md'), path.join(root, 'script-link.md'));
+  fs.writeFileSync(path.join(root, 'script.md'), 'Overwritten historical script');
+  for (const scriptPath of ['./script.md', 'sub/../script.md', 'script-link.md']) {
+    assert.throws(() => append(root, { ...draft, id: 'draft2', scriptPath }), /Registered draft.*(changed|overwritten)/);
+  }
+  assert.equal(load(root).filter(e => e.type === 'draft').length, 1);
+  fs.writeFileSync(path.join(root, 'script.md'), 'Synthetic script.md');
+  verifyFiles(root, load(root));
+});
+
+test('indirect review and draft references verify all files in referenced captures', t => {
+  const { root, draft } = selectedDraft(t), image = path.join(root, 'materials/page.png'), original = fs.readFileSync(image), before = load(root);
+  fs.writeFileSync(image, 'Overwritten screenshot behind capture1');
+  assert.throws(() => append(root, review('review2')), /Registered asset changed/);
+  assert.deepEqual(load(root), before);
+  // The draft references review1, which references capture1, rather than the image path.
+  assert.throws(() => append(root, draft), /Registered asset changed/);
+  assert.deepEqual(load(root), before);
+  fs.writeFileSync(image, original);
+  append(root, draft); verifyFiles(root, load(root));
+});
+
+test('revisit task verifies both the baseline and the due-time observation files', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'pending', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Synthetic revisit', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  const baseline = path.join(root, 'materials/metrics-baseline.json'), original = fs.readFileSync(baseline), before = load(root);
+  fs.writeFileSync(baseline, 'Overwritten baseline');
+  assert.throws(() => append(root, task), /Registered asset changed/);
+  assert.deepEqual(load(root), before);
+  fs.writeFileSync(baseline, original); append(root, task);
+  saveObservation(root, obs('later', '09:20:00', 27));
+  const later = path.join(root, 'materials/metrics-later.json'), saved = fs.readFileSync(later), after = load(root);
+  fs.writeFileSync(later, 'Overwritten due-time snapshot');
+  assert.throws(() => append(root, { ...task, id: 'done', status: 'done' }), /No due-time/);
+  assert.deepEqual(load(root), after);
+  fs.writeFileSync(later, saved); append(root, { ...task, id: 'done', status: 'done' });
+  verifyFiles(root, load(root));
+});
+
+test('unreferenced media is not rehashed on every append', t => {
+  const root = fixture(t), file = path.join(root, 'materials/unrelated.mp4');
+  fs.writeFileSync(file, 'Synthetic unrelated video');
+  append(root, capture('unrelated-media', { readKinds: [], assets: [{ kind: 'video', path: 'materials/unrelated.mp4', sourceUrl: capture().work.url, capturedAt: '2026-10-21T09:00:00+08:00', coverage: 'Unreferenced synthetic video' }] }));
+  fs.writeFileSync(file, 'Changed unrelated video');
+  append(root, review());
+  assert.throws(() => verifyFiles(root, load(root)), /Registered asset changed/);
+  fs.writeFileSync(file, 'Synthetic unrelated video'); verifyFiles(root, load(root));
+});
+
+test('round completion verifies the captures used for its coverage claim', t => {
+  const root = fixture(t), file = path.join(root, 'materials/page.png'), original = fs.readFileSync(file), before = load(root);
+  const done = event('attempt', 'complete', { roundId: 'r1', attemptId: 'a1', status: 'completed', reason: 'Synthetic completion' });
+  fs.writeFileSync(file, 'Changed counted screenshot');
+  assert.throws(() => append(root, done), /Registered asset changed/);
+  assert.deepEqual(load(root), before);
+  fs.writeFileSync(file, original); append(root, done);
+  assert.equal(snapshot(load(root)).rounds[0].attempts.at(-1).status, 'completed');
+});
+
+test('content backfills cannot change metric thresholds or growth windows', t => {
+  for (const config of [{ fastLikesPerHour: 1000, lowLikeCeiling: 20, lowFollowerCeiling: 10 }, { minIntervalMinutes: 30 }, { shortWindowHours: 0.5 }]) {
+    const root = fixture(t), a = obs('first', '09:00:00', 10);
+    a.metrics.followers = { value: 40, raw: '40', precision: 'exact' }; saveObservation(root, a);
+    append(root, round('r2', config));
+    const b = { ...obs('second', config.shortWindowHours ? '09:40:00' : '09:20:00', 50), roundId: 'r2' };
+    b.metrics.followers = a.metrics.followers; saveObservation(root, b);
+    const previous = snapshot(load(root)).items[0];
+    append(root, capture('old-round-backfill', { readKinds: [], coverage: 'Content-only old-round backfill' }));
+    const current = snapshot(load(root)).items[0];
+    assert.deepEqual(current.growth, previous.growth);
+    assert.equal(current.lowFollower, previous.lowFollower);
+  }
+});
+
+test('growth and follower thresholds follow their own latest available metric samples', t => {
+  const root = fixture(t), a = obs('first', '09:00:00', 10); saveObservation(root, a);
+  append(root, round('r2', { fastLikesPerHour: 1000, lowFollowerCeiling: 10 }));
+  saveObservation(root, { ...obs('second', '09:20:00', 50), roundId: 'r2' });
+  append(root, round('r3', { lowFollowerCeiling: 50 }));
+  saveObservation(root, event('observation', 'profile', { roundId: 'r3', workId: a.workId, sampledAt: '2026-10-21T09:25:00+08:00', metrics: { followers: { value: 40, raw: '40', precision: 'exact' } }, evidencePaths: [] }));
+  let item = snapshot(load(root)).items[0];
+  assert.equal(item.growth.fast, false); assert.equal(item.lowFollower, true);
+  append(root, round('r4', { fastLikesPerHour: 0, lowFollowerCeiling: 0 }));
+  saveObservation(root, { ...obs('unavailable-both', '09:30:00', null, 'unavailable', ''), roundId: 'r4', metrics: { likes: { value: null, raw: '', precision: 'unavailable' }, followers: { value: null, raw: '', precision: 'unavailable' } } });
+  item = snapshot(load(root)).items[0];
+  assert.equal(item.growth.fast, false); assert.equal(item.lowFollower, true);
+});

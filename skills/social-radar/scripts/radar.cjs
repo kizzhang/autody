@@ -48,6 +48,10 @@ function relativeFile(root, file) {
   return realFile;
 }
 function digest(root, file) { return crypto.createHash('sha256').update(fs.readFileSync(relativeFile(root, file))).digest('hex'); }
+function fileKey(root, file) {
+  const real = relativeFile(root, file), stat = fs.statSync(real, { bigint: true });
+  return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${assetKey(real)}`;
+}
 function config(input = {}) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Invalid config');
   for (const k of Object.keys(input)) check(k in DEFAULTS, `Unknown config key: ${k}`);
@@ -81,7 +85,7 @@ function assetsFor(events, workId) {
   // A legacy cross-work registration must not transfer the first owner's evidence.
   return [...registeredAssets(events).values()].filter(a => a.workId === workId).map(a => a.asset);
 }
-function observationEvidence(e, prior) {
+function observationEvidence(e, prior, root) {
   const known = new Map();
   // The first registration owns the timestamp/metric readings for a path.
   for (const a of assetsFor(prior, e.workId)) if (!known.has(a.path)) known.set(a.path, a);
@@ -94,9 +98,10 @@ function observationEvidence(e, prior) {
     const sources = referenced.filter(a => Object.hasOwn(a.metrics, k));
     check(sources.length > 0 && sources.every(a => isDeepStrictEqual(a.metrics[k], m)), `Observation ${k} does not match its captured metric reading`);
   }
+  if (root) for (const a of referenced) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
 }
 function eligible(e) {
-  return e.type === 'capture' && e.readKinds.some(k => READ_KINDS.has(k)) && e.assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && e.assets.some(a => a.kind === 'caption');
+  return e.type === 'capture' && new Set(e.assets.map(a => assetKey(a.path))).size === e.assets.length && e.readKinds.some(k => READ_KINDS.has(k)) && e.assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && e.assets.some(a => a.kind === 'caption');
 }
 function validate(root, e, prior) {
   check(e && typeof e === 'object' && !Array.isArray(e), 'Event object required');
@@ -127,7 +132,7 @@ function validate(root, e, prior) {
     check(Array.isArray(e.readKinds) && e.readKinds.every(k => READ_KINDS.has(k)), 'Invalid substantive read kind (summaries/title cards do not count)');
     check(typeof e.coverage === 'string' && Array.isArray(e.gaps), 'Coverage and gaps required');
     check(Array.isArray(e.assets) && e.assets.length > 0, 'Assets required');
-    check(new Set(e.assets.map(a => a.path)).size === e.assets.length, 'Duplicate asset path');
+    check(new Set(e.assets.map(a => fileKey(root, a.path))).size === e.assets.length, 'Duplicate asset path');
     const registered = registeredAssets(prior);
     for (const a of e.assets) {
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
@@ -190,7 +195,7 @@ function validate(root, e, prior) {
       check(time(e.dueAt) >= time(baseline.sampledAt) + round.config.minIntervalMinutes * 60000, 'Revisit is earlier than the minimum interval');
       if (e.status === 'done') check(prior.some((x, i) => {
         if (x.type !== 'observation' || x.workId !== e.workId || !x.metrics.likes || time(x.sampledAt) < time(e.dueAt)) return false;
-        try { observationEvidence(x, prior.slice(0, i)); return true; } catch { return false; }
+        try { observationEvidence(x, prior.slice(0, i), root); return true; } catch { return false; }
       }), 'No due-time revisit observation saved');
     }
   } else if (e.type === 'decision') {
@@ -204,11 +209,13 @@ function validate(root, e, prior) {
     check(e.status === 'draft', 'Generated script remains draft');
     if (e.hashes === undefined) e.hashes = {};
     check(e.hashes && typeof e.hashes === 'object' && !Array.isArray(e.hashes), 'Draft hashes must be a plain object');
-    check(new Set([e.briefPath, e.scriptPath, e.evidencePath]).size === 3, 'Brief, script and evidence must be separate files');
+    const draftKeys = ['briefPath', 'scriptPath', 'evidencePath'];
+    const resolved = Object.fromEntries(draftKeys.map(k => [k, fileKey(root, e[k])]));
+    check(new Set(Object.values(resolved)).size === 3, 'Brief, script and evidence must be separate files');
     for (const k of ['briefPath', 'scriptPath', 'evidencePath']) {
       const hash = digest(root, e[k]); if (e.hashes[k]) check(e.hashes[k] === hash, `Draft file changed: ${e[k]}`);
       for (const old of prior.filter(x => x.type === 'draft')) for (const oldKey of ['briefPath', 'scriptPath', 'evidencePath']) {
-        if (old[oldKey] === e[k]) check(old.hashes[oldKey] === hash, `Registered draft cannot be overwritten: ${e[k]}`);
+        if (fileKey(root, old[oldKey]) === resolved[k]) check(old.hashes[oldKey] === hash, `Registered draft cannot be overwritten: ${e[k]}`);
       }
       e.hashes[k] = hash;
     }
@@ -221,6 +228,22 @@ function verifyFiles(root, events) {
     if (e.type === 'draft') for (const k of ['briefPath', 'scriptPath', 'evidencePath']) check(digest(root, e[k]) === e.hashes[k], `Registered draft changed: ${e[k]}`);
   }
 }
+function referencedPaths(input, events) {
+  const byId = new Map(events.map(e => [e.id, e])), seen = new Set(), refs = new Set(), pending = [input];
+  const add = paths => { if (Array.isArray(paths)) for (const p of paths) if (typeof p === 'string') refs.add(assetKey(p)); };
+  while (pending.length) {
+    const e = pending.pop(); if (seen.has(e.id)) continue; seen.add(e.id);
+    add(e.evidencePaths); add(e.assets?.map(a => a.path));
+    for (const c of [...(e.claims || []), ...(e.comments || [])]) add(c.evidencePaths);
+    add([e.briefPath, e.scriptPath, e.evidencePath]);
+    const ids = [...(Array.isArray(e.captureIds) ? e.captureIds : []), e.baselineObservationId, e.reviewId, e.selectionEventId];
+    for (const id of ids) if (byId.has(id)) pending.push(byId.get(id));
+    if (e.type === 'attempt' && e.status === 'completed') {
+      pending.push(...events.filter(c => c.type === 'capture' && c.roundId === e.roundId && eligible(c)));
+    }
+  }
+  return refs;
+}
 function append(root, input) {
   root = path.resolve(root); fs.mkdirSync(path.join(root, 'events'), { recursive: true });
   const lock = path.join(root, '.writer.lock');
@@ -231,10 +254,14 @@ function append(root, input) {
     const e = JSON.parse(JSON.stringify(input)), existing = events.find(x => x.id === e.id);
     // Hash only reused/referenced files on append; do not reread every historical
     // video for each metric sample. status/render perform the full integrity pass.
-    const refs = new Set([...(e.evidencePaths || []), ...(e.assets || []).map(a => a.path),
-      ...(e.claims || []).flatMap(c => c.evidencePaths || []), ...(e.comments || []).flatMap(c => c.evidencePaths || [])]);
-    for (const old of events) if (old.type === 'capture') for (const a of old.assets) {
-      if (refs.has(a.path)) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
+    const refs = referencedPaths(e, events);
+    for (const old of events) {
+      if (old.type === 'capture') for (const a of old.assets) {
+        if (refs.has(assetKey(a.path))) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
+      }
+      if (old.type === 'draft') for (const k of ['briefPath', 'scriptPath', 'evidencePath']) {
+        if (refs.has(assetKey(old[k]))) check(digest(root, old[k]) === old.hashes[k], `Registered draft cannot be overwritten: ${old[k]}`);
+      }
     }
     // Replaying an unchanged legacy record makes no new assertion. Unsupported
     // historical observations remain excluded by snapshot's evidence checks.
@@ -307,10 +334,13 @@ function snapshot(events, now = new Date().toISOString()) {
     const evidenceGaps = allObservations.filter(e => observationChecks.get(e.id)).map(e => ({ observationId: e.id, sampledAt: e.sampledAt, reason: observationChecks.get(e.id) }));
     const observations = allObservations.filter(e => !observationChecks.get(e.id)).sort((a, b) => time(a.sampledAt) - time(b.sampledAt));
     const latest = {}; for (const o of observations) for (const [k, v] of Object.entries(o.metrics)) if (v.precision !== 'unavailable') latest[k] = { ...v, sampledAt: o.sampledAt, observationId: o.id };
-    const currentRound = rounds.find(r => r.roundId === captures.at(-1).roundId);
+    const metricConfig = metric => {
+      const sample = observations.find(o => o.id === latest[metric]?.observationId);
+      return rounds.find(r => r.roundId === sample?.roundId)?.config || DEFAULTS;
+    };
     const review = events.findLast(e => e.type === 'review' && e.workId === workId) || null;
-    return { work, captures, latest, evidenceGaps, growth: growth(observations, currentRound?.config || DEFAULTS),
-      lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= (currentRound?.config.lowFollowerCeiling ?? DEFAULTS.lowFollowerCeiling) : null,
+    return { work, captures, latest, evidenceGaps, growth: growth(observations, metricConfig('likes')),
+      lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
       review, decision: events.findLast(e => e.type === 'decision' && e.workId === workId) || null,
       drafts: events.filter(e => e.type === 'draft' && e.workId === workId) };
   });
