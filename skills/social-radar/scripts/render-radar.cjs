@@ -53,7 +53,21 @@ function render(state, store, out) {
   function reveal(){const el=document.getElementById(decodeURIComponent(location.hash.slice(1)));if(el&&el.tagName==='DETAILS')el.open=true;}addEventListener('hashchange',reveal);reveal();
   </script></body></html>`;
 }
+function physicalPath(file) {
+  let current = path.resolve(file); const suffix = [];
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) throw new Error('Cannot resolve report path');
+    suffix.unshift(path.basename(current)); current = parent;
+  }
+  return path.resolve(fs.realpathSync(current), ...suffix);
+}
 function writeReport(state, store, out) {
+  const eventsDir = path.resolve(store, 'events');
+  for (const [base, target] of [[eventsDir, path.resolve(out)], [physicalPath(eventsDir), physicalPath(out)]]) {
+    const relative = path.relative(base, target);
+    if (!relative || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) throw new Error('Report output cannot be inside the ledger events directory');
+  }
   fs.mkdirSync(out, { recursive: true });
   const pathKey = file => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
   const identity = file => {
@@ -66,7 +80,6 @@ function writeReport(state, store, out) {
     ...i.captures.flatMap(c => c.assets.map(a => path.resolve(store, a.path))),
     ...i.drafts.flatMap(d => [d.briefPath, d.scriptPath, d.evidencePath].map(p => path.resolve(store, p))),
   ]);
-  const eventsDir = path.join(store, 'events');
   if (fs.existsSync(eventsDir)) protectedFiles.push(...fs.readdirSync(eventsDir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).map(n => path.join(eventsDir, n)));
   const protectedKeys = new Set(protectedFiles.flatMap(file => [pathKey(file), identity(file)]).filter(Boolean));
   const targets = new Set();

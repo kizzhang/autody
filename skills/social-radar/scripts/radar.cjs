@@ -126,22 +126,23 @@ function registeredAssets(events, resolve = assetKey) {
   const known = new Map();
   for (const e of events) if (e.type === 'capture') for (const asset of e.assets) {
     const key = resolve(asset.path);
-    if (!known.has(key)) known.set(key, { workId: e.work.id, work: e.work, asset });
+    if (!known.has(key)) known.set(key, { workId: e.work.id, work: e.work, roundId: e.roundId, asset });
   }
   return known;
 }
-function assetsFor(events, workId, resolve = assetKey) {
+function assetsFor(events, workId, resolve = assetKey, roundId) {
   // A legacy cross-work registration must not transfer the first owner's evidence.
-  return [...registeredAssets(events, resolve).values()].filter(a => a.workId === workId && assetMatchesWork(a.asset, a.work)).map(a => a.asset);
+  return [...registeredAssets(events, resolve).values()].filter(a => a.workId === workId && (roundId === undefined || a.roundId === roundId) && assetMatchesWork(a.asset, a.work)).map(a => a.asset);
 }
 function observationEvidence(e, prior, root, resolve = assetKey) {
+  check(prior.some(r => r.type === 'round_started' && r.roundId === e.roundId), 'Unknown observation round');
   const known = new Map();
   // The first registration owns the timestamp/metric readings for a path.
-  for (const a of assetsFor(prior, e.workId, resolve)) if (!known.has(a.path)) known.set(a.path, a);
+  for (const a of assetsFor(prior, e.workId, resolve, e.roundId)) if (!known.has(a.path)) known.set(a.path, a);
   check(Array.isArray(e.evidencePaths) && e.evidencePaths.length > 0, 'Fresh metric evidence required');
   const referenced = e.evidencePaths.map(p => known.get(p));
   for (const a of referenced) {
-    check(a && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && time(a.capturedAt) === time(e.sampledAt), 'Observation requires metric-bearing evidence captured at its sampling time');
+    check(a && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && time(a.capturedAt) === time(e.sampledAt), 'Observation requires metric-bearing evidence captured at its sampling time and in its round');
   }
   for (const [k, m] of Object.entries(e.metrics)) {
     validateMetric(k, m);

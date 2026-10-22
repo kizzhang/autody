@@ -22,6 +22,8 @@ node skills/social-radar/scripts/radar.cjs render --store outputs/social-radar -
 
 Appending verifies directly referenced registered files and expands event-ID references, including review capture IDs, revisit baselines and draft review revisions, into their backing files. Completed rounds verify their eligible captures, and completed revisits require an intact due-time observation. Unrelated historical files may be missing or empty without blocking replacement captures under new paths or other intact evidence; `status` and `render` still perform the full integrity pass and report those losses.
 
+Report directories cannot be `events/` or any descendant, including directory symlink/junction aliases. This check runs before creating directories so an event-shaped output directory cannot corrupt the journal namespace.
+
 ## Events
 
 Below are schema examples, **not real observations**. Replace all sample identifiers, times and material paths with actual captured values. Asset files must exist and be nonempty before `append`.
@@ -80,7 +82,7 @@ A `clip` also needs actual `startSeconds`/`endSeconds`. A `transcript_candidate`
 
 Supported public metrics: `likes`, `favorites`, `comments`, `shares`, `followers`. Each uses `value`, literal `raw` count and `precision: exact|rounded|unavailable`. Unknown/rounded numeric values are null. Rounded readings require a nonempty visible display; use `unavailable` when nothing was shown. Exact displays accept integers and comma grouping; keep labels separately in evidence. A homepage follower reading at another time gets its own observation. The latest available reading is tracked separately per metric; an unavailable later reading does not erase earlier data or refresh its timestamp. If the later value is rounded, show it as rounded rather than reusing an older exact number.
 
-Every `evidencePaths` entry must be a saved metric-bearing screenshot/snapshot for this work, captured at the same instant as `sampledAt` (equivalent timezone offsets are accepted). Each observation metric must match at least one referenced asset's reading; multiple referenced readings for that metric must agree. A caption, screenshot without metrics, stale capture or mismatched count is rejected. For a fresh revisit, save fresh evidence before appending the observation. Do not include unrelated content assets in observation evidence.
+Every `evidencePaths` entry must be a saved metric-bearing screenshot/snapshot for this work, captured at the same instant as `sampledAt` (equivalent timezone offsets are accepted) and first registered in the observation's `roundId`. Re-registering an old asset in another round does not transfer its sampling round. Each observation metric must match at least one referenced asset's reading; multiple referenced readings for that metric must agree. A caption, screenshot without metrics, stale capture, wrong round or mismatched count is rejected. For a fresh revisit, save fresh evidence before appending the observation. Do not include unrelated content assets in observation evidence.
 
 Legacy observations lacking this binding are preserved in the ledger but excluded from latest metrics and growth. `snapshot.json` exposes per-work `evidenceGaps`, also shown in HTML and CSV. Such observations cannot serve as revisit baselines or satisfy revisit completion. Replaying an unchanged legacy observation is a no-op, not a new endorsement; collect a new sample instead of changing old timestamps/values to repair it.
 

@@ -718,6 +718,37 @@ test('ledger internal paths cannot be registered as assets or draft components',
   append(root, draft); verifyFiles(root, load(root));
 });
 
+test('metric observations use the round that first registered their evidence', t => {
+  const root = fixture(t); saveObservation(root, obs('first', '09:00:00', 10));
+  append(root, round('r2', { fastLikesPerHour: 1000 }));
+  const point = captureMetricEvidence(root, { ...obs('second', '09:20:00', 50), roundId: 'r2' });
+  const wrong = { ...point, id: 'wrong-round', roundId: 'r1' }, before = load(root);
+  assert.throws(() => append(root, wrong), /metric-bearing evidence.*round/);
+  assert.deepEqual(load(root), before);
+  append(root, point);
+  const legacy = path.join(root, 'events/00000008-legacy-wrong-round.json'); fs.writeFileSync(legacy, JSON.stringify(wrong));
+  const bytes = fs.readFileSync(legacy), item = snapshot(load(root), undefined, root).items[0];
+  assert.equal(item.latest.likes.observationId, point.id); assert.equal(item.growth.fast, false);
+  assert.deepEqual(item.growth.points.map(p => p.id), ['first', 'second']);
+  assert.equal(item.evidenceGaps[0].observationId, wrong.id);
+  assert.deepEqual(fs.readFileSync(legacy), bytes);
+});
+
+test('report directories cannot enter the event namespace even through directory aliases', t => {
+  const root = fixture(t), state = snapshot(load(root)), events = path.join(root, 'events');
+  const before = fs.readdirSync(events);
+  for (const suffix of ['', '20261022-report.json', 'nested/weekly']) {
+    assert.throws(() => writeReport(state, root, path.join(events, suffix)), /Report output.*events/);
+    assert.deepEqual(fs.readdirSync(events), before);
+  }
+  const alias = path.join(root, 'event-alias'); fs.symlinkSync(events, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  assert.throws(() => writeReport(state, root, path.join(alias, '20261022-report.json')), /Report output.*events/);
+  assert.deepEqual(fs.readdirSync(events), before);
+  assert.equal(load(root).length, state.eventCount);
+  writeReport(state, root, path.join(root, 'events-sibling'));
+  assert.equal(load(root).length, state.eventCount); verifyFiles(root, load(root));
+});
+
 test('draft file separation uses resolved paths instead of three distinct strings', t => {
   const { root, draft } = selectedDraft(t), before = load(root);
   assert.throws(() => append(root, { ...draft, briefPath: 'script.md', scriptPath: './script.md', evidencePath: 'sub/../script.md' }), /separate files/);
