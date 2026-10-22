@@ -13,8 +13,9 @@ const DEFAULTS = Object.freeze({
 });
 const ASSET_KINDS = new Set(['caption', 'page_screenshot', 'original_image', 'video', 'clip',
   'frame', 'original_subtitles', 'transcript_candidate', 'platform_summary', 'image_text',
-  'comments', 'source_page', 'source_image', 'research_note', 'metric_snapshot']);
+  'comments', 'source_comments', 'source_page', 'source_image', 'research_note', 'metric_snapshot']);
 const METRIC_ASSET_KINDS = new Set(['page_screenshot', 'metric_snapshot']);
+const EXTERNAL_ASSET_KINDS = new Set(['source_page', 'source_image', 'source_comments', 'research_note']);
 const READ_KINDS = new Set(['caption_body', 'image_text', 'video_fragment', 'original_subtitles', 'verified_transcript']);
 const METRICS = new Set(['likes', 'favorites', 'comments', 'shares', 'followers']);
 const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,119}$/;
@@ -48,12 +49,38 @@ function workUrl(work) {
   const nativeId = route.exec(u.pathname)?.[1];
   check(nativeId && [domain, `www.${domain}`].includes(u.hostname) && `${work.platform}:${nativeId}` === work.id, 'Work URL must match the declared platform and native ID; use a canonical work URL');
 }
+function authorUrl(work) {
+  if (work.authorUrl === undefined) return;
+  const u = new URL(url(work.authorUrl)), domain = work.platform === 'douyin' ? 'douyin.com' : 'xiaohongshu.com';
+  const route = work.platform === 'douyin' ? /^\/user\/[a-zA-Z0-9_-]+\/?$/ : /^\/user\/profile\/[a-zA-Z0-9_-]+\/?$/;
+  check([domain, `www.${domain}`].includes(u.hostname) && route.test(u.pathname), 'Author URL must identify a profile on the work platform');
+}
+function sourcePlatform(sourceUrl) {
+  const host = new URL(sourceUrl).hostname.replace(/^www\./, '');
+  return ({ 'douyin.com': 'douyin', 'xiaohongshu.com': 'xiaohongshu', 'x.com': 'x', 'twitter.com': 'x' })[host];
+}
+function assetMatchesWork(a, work) {
+  try { url(a.sourceUrl); } catch { return false; }
+  if (EXTERNAL_ASSET_KINDS.has(a.kind)) return true;
+  try { workUrl(work); workUrl({ ...work, url: a.sourceUrl }); return true; } catch {
+    if (nonempty(work.authorUrl) && a.sourceUrl === work.authorUrl && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && Object.keys(a.metrics).length && Object.keys(a.metrics).every(k => k === 'followers')) {
+      try { authorUrl(work); return true; } catch { /* Invalid profile provenance. */ }
+    }
+    return false;
+  }
+}
+function storagePath(file) {
+  const key = assetKey(file.replaceAll('\\', '/'));
+  check(key !== '.writer.lock' && key !== 'events' && !key.startsWith('events/'), `Ledger-internal path cannot be registered: ${file}`);
+}
 function relativeFile(root, file) {
   check(nonempty(file) && !path.isAbsolute(file) && !/^[A-Za-z]:|\\|\0/.test(file), 'Use a store-relative path with forward slashes');
+  storagePath(file);
   const resolved = path.resolve(root, file), rel = path.relative(path.resolve(root), resolved);
   check(rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel), `Path escapes store: ${file}`);
   const realRoot = fs.realpathSync(root), realFile = fs.realpathSync(resolved), realRel = path.relative(realRoot, realFile);
   check(realRel && realRel !== '..' && !realRel.startsWith(`..${path.sep}`) && !path.isAbsolute(realRel), `Symlink escapes store: ${file}`);
+  storagePath(realRel);
   check(fs.statSync(realFile).isFile() && fs.statSync(realFile).size > 0, `Missing/empty asset: ${file}`);
   return realFile;
 }
@@ -99,13 +126,13 @@ function registeredAssets(events, resolve = assetKey) {
   const known = new Map();
   for (const e of events) if (e.type === 'capture') for (const asset of e.assets) {
     const key = resolve(asset.path);
-    if (!known.has(key)) known.set(key, { workId: e.work.id, asset });
+    if (!known.has(key)) known.set(key, { workId: e.work.id, work: e.work, asset });
   }
   return known;
 }
 function assetsFor(events, workId, resolve = assetKey) {
   // A legacy cross-work registration must not transfer the first owner's evidence.
-  return [...registeredAssets(events, resolve).values()].filter(a => a.workId === workId).map(a => a.asset);
+  return [...registeredAssets(events, resolve).values()].filter(a => a.workId === workId && assetMatchesWork(a.asset, a.work)).map(a => a.asset);
 }
 function observationEvidence(e, prior, root, resolve = assetKey) {
   const known = new Map();
@@ -128,18 +155,17 @@ function eligible(e, registered, resolve = assetKey) {
   const known = registered || registeredAssets([e], resolve);
   const assets = e.assets.filter(a => {
     const first = known.get(resolve(a.path));
-    return first?.workId === e.work.id && isDeepStrictEqual(first.asset, a);
+    return first?.workId === e.work.id && isDeepStrictEqual(first.asset, a) && assetMatchesWork(a, e.work);
   });
   return new Set(assets.map(a => resolve(a.path))).size === assets.length && e.readKinds.some(k => READ_KINDS.has(k)) && assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && assets.some(a => a.kind === 'caption');
 }
-function validate(root, e, prior) {
+function validate(root, e, prior, resolve = fileResolver(root)) {
   check(e && typeof e === 'object' && !Array.isArray(e), 'Event object required');
   id(e.id); const recorded = time(e.recordedAt);
   if (prior.length) check(recorded >= time(prior.at(-1).recordedAt), 'Save time cannot precede the preceding committed event');
   const round = prior.find(x => x.type === 'round_started' && x.roundId === e.roundId);
   const work = prior.find(x => x.type === 'capture' && x.work.id === e.workId);
   const requireWork = () => check(work, `Unknown work: ${e.workId}`);
-  const resolve = fileResolver(root);
   const knownPaths = () => new Set(assetsFor(prior, e.workId, resolve).map(a => a.path));
   const evidence = (paths) => { check(Array.isArray(paths) && paths.length > 0, 'Evidence paths required'); const known = knownPaths(); for (const p of paths) check(known.has(p), `Evidence not captured for work: ${p}`); };
   if (e.type === 'round_started') {
@@ -156,7 +182,7 @@ function validate(root, e, prior) {
     check(round, 'Unknown round');
     check(e.work && ['douyin', 'xiaohongshu'].includes(e.work.platform), 'Invalid work platform');
     check(typeof e.work.id === 'string' && new RegExp(`^${e.work.platform}:[a-zA-Z0-9_-]+$`).test(e.work.id), 'Use platform:native-id');
-    workUrl(e.work); check(nonempty(e.work.title) && nonempty(e.work.author), 'Work title and author required');
+    workUrl(e.work); authorUrl(e.work); check(nonempty(e.work.title) && nonempty(e.work.author), 'Work title and author required');
     check(['published', 'edited', 'unknown'].includes(e.work.dateKind) && typeof e.work.dateLabel === 'string', 'Date kind/label required');
     if (e.work.publishedAt != null) { check(e.work.dateKind === 'published', 'Edited/unknown dates cannot become publication dates'); time(e.work.publishedAt); }
     check(['recommendation', 'related', 'search', 'direct'].includes(e.route), 'Invalid discovery route');
@@ -167,6 +193,7 @@ function validate(root, e, prior) {
     const registered = registeredAssets(prior, resolve);
     for (const a of e.assets) {
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
+      check(assetMatchesWork(a, e.work), 'Asset source must identify the declared work (or its saved follower profile)');
       check(time(a.capturedAt) <= recorded, 'Asset capture time is after event time');
       check(nonempty(a.coverage), 'Asset coverage required');
       if (a.metrics !== undefined) {
@@ -212,11 +239,11 @@ function validate(root, e, prior) {
     }
     for (const c of e.claims) { check(nonempty(c.text) && ['verified', 'author_report', 'inference', 'unresolved'].includes(c.status), 'Invalid claim'); evidence(c.evidencePaths); }
     check(Array.isArray(e.comments), 'Comments array required (empty means no verified discussion)');
-    const commentPaths = new Set(assetsFor(prior, e.workId, resolve).filter(a => a.kind === 'comments').map(a => a.path));
+    const commentAssets = assetsFor(prior, e.workId, resolve).filter(a => ['comments', 'source_comments'].includes(a.kind));
     for (const c of e.comments) {
       check(['douyin', 'xiaohongshu', 'x'].includes(c.platform) && ['disagreement', 'request', 'meme', 'support', 'ai', 'other'].includes(c.kind), 'Comment platform/kind required');
       check(Number.isSafeInteger(c.sampledCount) && c.sampledCount > 0 && nonempty(c.summary), 'Comment count/summary required'); evidence(c.evidencePaths);
-      check(c.evidencePaths.some(p => commentPaths.has(p)), 'Comment summary requires captured comments evidence');
+      check(commentAssets.some(a => c.evidencePaths.includes(a.path) && sourcePlatform(a.sourceUrl) === c.platform), 'Comment summary requires captured comments evidence on its stated platform');
     }
   } else if (e.type === 'task') {
     requireWork(); check(round, 'Unknown round'); id(e.taskId);
@@ -241,7 +268,7 @@ function validate(root, e, prior) {
   } else if (e.type === 'draft') {
     requireWork(); const selection = prior.findLast(x => x.type === 'decision' && x.workId === e.workId);
     check(selection && selection.decision === 'selected' && selection.id === e.selectionEventId, 'Draft requires the current explicit user selection');
-    const currentReview = prior.findLast(x => x.type === 'review' && x.workId === e.workId);
+    const currentReview = prior.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !reviewIssue(root, x, prior.slice(0, i), resolve));
     check(currentReview && currentReview.id === e.reviewId, 'Draft must reference the current review revision');
     check(e.status === 'draft', 'Generated script remains draft');
     if (e.hashes === undefined) e.hashes = {};
@@ -260,6 +287,9 @@ function validate(root, e, prior) {
     }
   } else throw new Error(`Unknown event type: ${e.type}`);
   return e;
+}
+function reviewIssue(root, e, prior, resolve) {
+  try { validate(root, e, prior, resolve); return null; } catch (error) { return error.message; }
 }
 function verifyFiles(root, events) {
   for (const e of events) {
@@ -363,11 +393,12 @@ function growth(observations, c = DEFAULTS) {
 function snapshot(events, now = new Date().toISOString(), root) {
   time(now); const works = new Map(), rounds = events.filter(e => e.type === 'round_started');
   const resolve = root ? fileResolver(root) : assetKey;
-  const observationChecks = new Map();
+  const observationChecks = new Map(), reviewChecks = new Map();
   for (let i = 0; i < events.length; i++) if (events[i].type === 'observation') {
     try { observationEvidence(events[i], events.slice(0, i), undefined, resolve); observationChecks.set(events[i].id, null); }
     catch (error) { observationChecks.set(events[i].id, error.message); }
   }
+  for (let i = 0; i < events.length; i++) if (events[i].type === 'review') reviewChecks.set(events[i].id, reviewIssue(root, events[i], events.slice(0, i), resolve));
   const taskMap = new Map(); for (const e of events) if (e.type === 'task') taskMap.set(e.taskId, e);
   for (const e of events) if (e.type === 'capture') works.set(e.work.id, e.work);
   const items = [...works].map(([workId, work]) => {
@@ -380,10 +411,12 @@ function snapshot(events, now = new Date().toISOString(), root) {
       const sample = observations.find(o => o.id === latest[metric]?.observationId);
       return rounds.find(r => r.roundId === sample?.roundId)?.config || DEFAULTS;
     };
-    const review = events.findLast(e => e.type === 'review' && e.workId === workId) || null;
+    const reviews = events.filter(e => e.type === 'review' && e.workId === workId);
+    const reviewGaps = reviews.filter(e => reviewChecks.get(e.id)).map(e => ({ reviewId: e.id, recordedAt: e.recordedAt, reason: reviewChecks.get(e.id) }));
+    const review = reviews.findLast(e => !reviewChecks.get(e.id)) || null;
     return { work, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
-      review, decision: events.findLast(e => e.type === 'decision' && e.workId === workId) || null,
+      review, reviews, reviewGaps, decision: events.findLast(e => e.type === 'decision' && e.workId === workId) || null,
       drafts: events.filter(e => e.type === 'draft' && e.workId === workId) };
   });
   return { generatedAt: now, eventCount: events.length, items,

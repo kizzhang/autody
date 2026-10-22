@@ -31,7 +31,7 @@ function captureMetricEvidence(root, o) {
   fs.writeFileSync(path.join(root, file), JSON.stringify({ synthetic: true, sampledAt: o.sampledAt, metrics: o.metrics }));
   const work = load(root).findLast(e => e.type === 'capture' && e.work.id === o.workId).work;
   append(root, capture(`capture-${o.id}`, { work, roundId: o.roundId, recordedAt: o.recordedAt, readKinds: [], practicalMethod: false,
-    assets: [{ kind: 'metric_snapshot', path: file, sourceUrl: capture().work.url, capturedAt: o.sampledAt,
+    assets: [{ kind: 'metric_snapshot', path: file, sourceUrl: work.url, capturedAt: o.sampledAt,
       coverage: 'Synthetic visible-page metric reading', metrics: o.metrics }] }));
   return { ...o, evidencePaths: [file] };
 }
@@ -292,7 +292,7 @@ test('registered asset paths belong to one work while same-work reuse remains re
   const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
   const before = load(root);
   for (const file of [original.assets[0].path, original.assets[0].path.replace('materials/', 'materials/./')]) {
-    assert.throws(() => append(root, capture('cross-work', { work: other, readKinds: [], assets: [{ ...original.assets[0], path: file }] })), /another work/);
+    assert.throws(() => append(root, capture('cross-work', { work: other, readKinds: [], assets: [{ ...original.assets[0], path: file, sourceUrl: other.url }] })), /another work/);
   }
   assert.deepEqual(load(root), before);
   append(root, { ...original, id: 'same-work' });
@@ -405,7 +405,7 @@ test('legacy aliased captures cannot count toward quotas or qualify a new review
   const legacy = capture('legacy-alias', { work: { ...capture().work, id: 'xiaohongshu:other' }, assets: capture().assets.map((a, i) => ({ ...a, path: i ? 'materials/./legacy.png' : file, sha256 })) });
   fs.writeFileSync(path.join(root, 'events/00000003-legacy-alias.json'), JSON.stringify(legacy));
   assert.equal(snapshot(load(root)).rounds[0].unique, 1);
-  assert.throws(() => append(root, { ...review(), workId: legacy.work.id, captureIds: [legacy.id], evidencePaths: [file], claims: [] }), /substantive.*capture/);
+  assert.throws(() => append(root, { ...review(), workId: legacy.work.id, captureIds: [legacy.id], evidencePaths: [file], claims: [] }), /not captured|substantive.*capture/);
 });
 
 function selectedDraft(t) {
@@ -423,11 +423,11 @@ test('later captures cannot transfer or relabel a registered file through a hard
   const linked = { ...original.assets[0], path: alias };
   const other = { ...original.work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
   const before = load(root);
-  assert.throws(() => append(root, capture('transferred-link', { work: other, readKinds: [], assets: [linked] })), /another work/);
+  assert.throws(() => append(root, capture('transferred-link', { work: other, readKinds: [], assets: [{ ...linked, sourceUrl: other.url }] })), /another work/);
   assert.throws(() => append(root, capture('relabeled-link', { readKinds: [], assets: [{ ...linked, capturedAt: '2026-10-21T09:20:00+08:00', metrics: { likes: { value: 90, raw: '90', precision: 'exact' } } }] })), /immutable/);
   assert.deepEqual(load(root), before);
   fs.copyFileSync(path.join(root, alias), path.join(root, 'materials/fresh-metrics.json'));
-  append(root, capture('separate-file', { work: other, readKinds: [], assets: [{ ...linked, path: 'materials/fresh-metrics.json' }] }));
+  append(root, capture('separate-file', { work: other, readKinds: [], assets: [{ ...linked, path: 'materials/fresh-metrics.json', sourceUrl: other.url }] }));
 });
 
 test('legacy linked metric registrations stay history without supplying new readings', t => {
@@ -638,7 +638,7 @@ test('legacy claim and comment links use only the work owned material set', t =>
     comments: [{ platform: 'xiaohongshu', kind: 'disagreement', sampledCount: 1, summary: 'Legacy comment', evidencePaths: ['materials/page.png', assets[1].path] }] };
   const file = path.join(root, 'events/00000004-legacy-review.json'); fs.writeFileSync(file, JSON.stringify(legacy)); const before = fs.readFileSync(file);
   const html = render(snapshot(load(root), undefined, root), root, path.join(root, 'reports')).split('<details id="material-xiaohongshu:other"')[1].split('</details>')[0];
-  assert.ok(!html.includes('materials/caption.md')); assert.ok(!html.includes('materials/page.png'));
+  assert.ok(!/href="[^"]*materials\/(?:caption\.md|page\.png)"/.test(html));
   for (const a of assets) assert.ok(html.includes(a.path));
   assert.ok(html.includes('历史引用')); assert.deepEqual(fs.readFileSync(file), before);
 });
@@ -669,6 +669,53 @@ test('an unavailable due like count keeps a revisit pending until a visible read
   saveObservation(root, obs('visible-rounded', '09:40:00', null, 'rounded', '1.1万'));
   append(root, { ...task, id: 'visible-done', status: 'done' });
   assert.equal(snapshot(load(root)).tasks[0].status, 'done');
+});
+
+test('unsupported historical reviews remain history without driving current recommendations', t => {
+  const { root, draft } = selectedDraft(t);
+  const invalid = { ...review('legacy-unsupported'), angle: 'UNSUPPORTED_CURRENT_ANGLE', claims: [{ text: 'Unsupported claim', status: 'verified', evidencePaths: ['materials/not-owned.md'] }] };
+  const file = path.join(root, 'events/00000005-legacy-unsupported.json'); fs.writeFileSync(file, JSON.stringify(invalid)); const before = fs.readFileSync(file);
+  const state = snapshot(load(root), undefined, root), item = state.items[0];
+  assert.equal(item.review.id, 'review1'); assert.equal(item.reviews.at(-1).id, invalid.id);
+  assert.equal(item.reviewGaps[0].reviewId, invalid.id);
+  assert.ok(!render(state, root, path.join(root, 'reports')).includes(invalid.angle));
+  append(root, draft);
+  assert.deepEqual(fs.readFileSync(file), before);
+});
+
+test('work-bound assets must identify their work while source and profile evidence stay usable', t => {
+  const root = fixture(t), work = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other', authorUrl: 'https://www.xiaohongshu.com/user/profile/synthetic-author' };
+  const assets = capture().assets.map((a, i) => { const file = `materials/bound-${i}`; fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  for (const kind of ['caption', 'page_screenshot', 'video', 'clip', 'comments', 'original_image', 'platform_summary']) {
+    const a = { ...assets[0], kind, ...(kind === 'clip' ? { startSeconds: 0, endSeconds: 1 } : {}) };
+    assert.throws(() => append(root, capture('wrong-source', { work, readKinds: [], assets: [a] })), /Asset source.*work/);
+  }
+  append(root, capture('bound-other', { work, assets: assets.map(a => ({ ...a, sourceUrl: work.url })) }));
+  fs.writeFileSync(path.join(root, 'materials/external.md'), 'Synthetic external source');
+  append(root, capture('external', { work, readKinds: [], assets: [{ ...assets[0], kind: 'source_page', path: 'materials/external.md', sourceUrl: 'https://x.com/example/status/1' }] }));
+  fs.writeFileSync(path.join(root, 'materials/source-comments.md'), 'Synthetic comments on the X source');
+  append(root, capture('source-comments', { work, readKinds: [], assets: [{ ...assets[0], kind: 'source_comments', path: 'materials/source-comments.md', sourceUrl: 'https://x.com/example/status/1' }] }));
+  const sourceReview = { ...review('source-discussion'), workId: work.id, captureIds: ['bound-other'], evidencePaths: [assets[0].path], claims: [], comments: [{ platform: 'x', kind: 'disagreement', sampledCount: 1, summary: 'Synthetic source discussion', evidencePaths: ['materials/source-comments.md'] }] };
+  append(root, sourceReview);
+  assert.throws(() => append(root, { ...sourceReview, id: 'wrong-comment-platform', comments: [{ ...sourceReview.comments[0], platform: 'douyin' }] }), /captured comments evidence/);
+  const metrics = { followers: { precision: 'exact', raw: '4', value: 4 } };
+  fs.writeFileSync(path.join(root, 'materials/profile.json'), JSON.stringify(metrics));
+  append(root, capture('profile-source', { work, readKinds: [], assets: [{ ...assets[0], kind: 'metric_snapshot', path: 'materials/profile.json', sourceUrl: work.authorUrl, metrics }] }));
+  append(root, event('observation', 'profile-count', { roundId: 'r1', workId: work.id, sampledAt: assets[0].capturedAt, metrics, evidencePaths: ['materials/profile.json'] }));
+  assert.equal(snapshot(load(root), undefined, root).items.find(i => i.work.id === work.id).latest.followers.value, 4);
+  const report = writeReport(snapshot(load(root), undefined, root), root, path.join(root, 'reports'));
+  assert.ok(fs.readFileSync(report.csv, 'utf8').includes('materials/source-comments.md'));
+});
+
+test('ledger internal paths cannot be registered as assets or draft components', t => {
+  const { root, draft } = selectedDraft(t), before = load(root);
+  const eventFile = 'events/' + fs.readdirSync(path.join(root, 'events')).sort()[0];
+  for (const file of ['.writer.lock', './.writer.lock', 'sub/../.writer.lock', eventFile]) {
+    assert.throws(() => append(root, capture('internal-asset', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'research_note', path: file }] })), /Ledger-internal/);
+    assert.throws(() => append(root, { ...draft, scriptPath: file }), /Ledger-internal/);
+    assert.deepEqual(load(root), before);
+  }
+  append(root, draft); verifyFiles(root, load(root));
 });
 
 test('draft file separation uses resolved paths instead of three distinct strings', t => {
