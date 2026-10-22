@@ -65,7 +65,22 @@ function files(root) {
   return fs.existsSync(dir) ? fs.readdirSync(dir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).sort() : [];
 }
 function load(root) { return files(root).map(n => JSON.parse(fs.readFileSync(path.join(root, 'events', n), 'utf8'))); }
-function assetsFor(events, workId) { return events.filter(e => e.type === 'capture' && e.work.id === workId).flatMap(e => e.assets); }
+function assetKey(file) {
+  const normalized = path.posix.normalize(file);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+function registeredAssets(events) {
+  const known = new Map();
+  for (const e of events) if (e.type === 'capture') for (const asset of e.assets) {
+    const key = assetKey(asset.path);
+    if (!known.has(key)) known.set(key, { workId: e.work.id, asset });
+  }
+  return known;
+}
+function assetsFor(events, workId) {
+  // A legacy cross-work registration must not transfer the first owner's evidence.
+  return [...registeredAssets(events).values()].filter(a => a.workId === workId).map(a => a.asset);
+}
 function observationEvidence(e, prior) {
   const known = new Map();
   // The first registration owns the timestamp/metric readings for a path.
@@ -113,6 +128,7 @@ function validate(root, e, prior) {
     check(typeof e.coverage === 'string' && Array.isArray(e.gaps), 'Coverage and gaps required');
     check(Array.isArray(e.assets) && e.assets.length > 0, 'Assets required');
     check(new Set(e.assets.map(a => a.path)).size === e.assets.length, 'Duplicate asset path');
+    const registered = registeredAssets(prior);
     for (const a of e.assets) {
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
       check(time(a.capturedAt) <= recorded, 'Asset capture time is after event time');
@@ -125,8 +141,11 @@ function validate(root, e, prior) {
       if (a.kind === 'clip') check(Number.isFinite(a.startSeconds) && a.startSeconds >= 0 && Number.isFinite(a.endSeconds) && a.endSeconds > a.startSeconds, 'Clip needs actual start/end seconds');
       if (a.kind === 'transcript_candidate') check(['ai_extracted_unverified', 'partial', 'verified'].includes(a.status), 'Transcript status required');
       const hash = digest(root, a.path); if (a.sha256) check(a.sha256 === hash, `Asset changed: ${a.path}`); a.sha256 = hash;
-      const old = prior.filter(x => x.type === 'capture').flatMap(x => x.assets).find(x => x.path === a.path);
-      if (old) check(isDeepStrictEqual(old, a), 'Registered asset and its metadata are immutable; use a new path');
+      const old = registered.get(assetKey(a.path));
+      if (old) {
+        check(old.workId === e.work.id, 'Asset path already registered for another work; use a new path');
+        check(isDeepStrictEqual(old.asset, a), 'Registered asset and its metadata are immutable; use a new path');
+      }
     }
     if (e.readKinds.includes('verified_transcript')) check(e.assets.some(a => a.kind === 'transcript_candidate' && a.status === 'verified'), 'Verified transcript evidence required');
   } else if (e.type === 'observation') {
@@ -142,14 +161,21 @@ function validate(root, e, prior) {
     check(['shortlist', 'watch', 'archive'].includes(e.recommendation), 'Invalid recommendation');
     for (const k of ['summary', 'opportunity', 'angle']) check(nonempty(e[k]), `Review ${k} required`);
     check(Array.isArray(e.captureIds) && e.captureIds.length > 0, 'Read capture IDs required');
-    for (const cid of e.captureIds) check(prior.some(x => x.type === 'capture' && x.id === cid && x.work.id === e.workId), 'Review capture not saved for this work');
+    const readCaptures = e.captureIds.map(cid => {
+      const capture = prior.find(x => x.type === 'capture' && x.id === cid && x.work.id === e.workId);
+      check(capture, 'Review capture not saved for this work');
+      return capture;
+    });
+    check(readCaptures.some(eligible), 'Review requires a substantive eligible capture');
     check(Array.isArray(e.gaps) && Array.isArray(e.sourceRefs) && Array.isArray(e.claims), 'Review gaps, claims and sourceRefs arrays required');
     for (const s of e.sourceRefs) { url(s.url); check(['exact', 'account_clue', 'unverified'].includes(s.status) && nonempty(s.note), 'Source status/note required'); }
     for (const c of e.claims) { check(nonempty(c.text) && ['verified', 'author_report', 'inference', 'unresolved'].includes(c.status), 'Invalid claim'); evidence(c.evidencePaths); }
     check(Array.isArray(e.comments), 'Comments array required (empty means no verified discussion)');
+    const commentPaths = new Set(assetsFor(prior, e.workId).filter(a => a.kind === 'comments').map(a => a.path));
     for (const c of e.comments) {
       check(['douyin', 'xiaohongshu', 'x'].includes(c.platform) && ['disagreement', 'request', 'meme', 'support', 'ai', 'other'].includes(c.kind), 'Comment platform/kind required');
       check(Number.isSafeInteger(c.sampledCount) && c.sampledCount > 0 && nonempty(c.summary), 'Comment count/summary required'); evidence(c.evidencePaths);
+      check(c.evidencePaths.some(p => commentPaths.has(p)), 'Comment summary requires captured comments evidence');
     }
   } else if (e.type === 'task') {
     requireWork(); check(round, 'Unknown round'); id(e.taskId);
@@ -176,7 +202,8 @@ function validate(root, e, prior) {
     const currentReview = prior.findLast(x => x.type === 'review' && x.workId === e.workId);
     check(currentReview && currentReview.id === e.reviewId, 'Draft must reference the current review revision');
     check(e.status === 'draft', 'Generated script remains draft');
-    e.hashes = e.hashes || {};
+    if (e.hashes === undefined) e.hashes = {};
+    check(e.hashes && typeof e.hashes === 'object' && !Array.isArray(e.hashes), 'Draft hashes must be a plain object');
     check(new Set([e.briefPath, e.scriptPath, e.evidencePath]).size === 3, 'Brief, script and evidence must be separate files');
     for (const k of ['briefPath', 'scriptPath', 'evidencePath']) {
       const hash = digest(root, e[k]); if (e.hashes[k]) check(e.hashes[k] === hash, `Draft file changed: ${e[k]}`);

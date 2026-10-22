@@ -284,3 +284,98 @@ test('new drafts must use the latest review while historical drafts remain repla
   append(root, { ...d, id: 'draft2', reviewId: 'corrected-review', briefPath: 'brief-v2.md', scriptPath: 'script-v2.md', evidencePath: 'evidence-v2.md' });
   assert.deepEqual(snapshot(load(root)).items[0].drafts.map(x => x.reviewId), ['review1', 'corrected-review']);
 });
+
+test('registered asset paths belong to one work while same-work reuse remains replayable', t => {
+  const root = fixture(t);
+  saveObservation(root, obs('baseline', '09:00:00', 17));
+  const original = load(root).find(e => e.id === 'capture-baseline');
+  const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  const before = load(root);
+  for (const file of [original.assets[0].path, original.assets[0].path.replace('materials/', 'materials/./')]) {
+    assert.throws(() => append(root, capture('cross-work', { work: other, readKinds: [], assets: [{ ...original.assets[0], path: file }] })), /another work/);
+  }
+  assert.deepEqual(load(root), before);
+  append(root, { ...original, id: 'same-work' });
+  assert.equal(append(root, { ...original, id: 'same-work' }).appended, false);
+  fs.copyFileSync(path.join(root, original.assets[0].path), path.join(root, 'materials/other-metrics.json'));
+  append(root, capture('other-own-copy', { work: other, readKinds: [], assets: [{ ...original.assets[0], path: 'materials/other-metrics.json', sourceUrl: other.url }] }));
+  append(root, { ...obs('other-point', '09:00:00', 17), workId: other.id, evidencePaths: ['materials/other-metrics.json'] });
+  assert.equal(snapshot(load(root)).items.find(i => i.work.id === other.id).latest.likes.value, 17);
+});
+
+test('legacy cross-work asset reuse stays history but cannot supply another work metrics', t => {
+  const root = fixture(t);
+  const baseline = obs('baseline', '09:00:00', 17);
+  baseline.metrics.followers = { value: 4, raw: '4', precision: 'exact' };
+  saveObservation(root, baseline);
+  const original = load(root).find(e => e.id === 'capture-baseline');
+  const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  const file = path.join(root, 'events/00000005-legacy-cross-work.json');
+  fs.writeFileSync(file, JSON.stringify({ ...original, id: 'legacy-cross-work', work: other }));
+  const point = { ...obs('legacy-other-point', '09:00:00', 17), workId: other.id, evidencePaths: original.assets.map(a => a.path) };
+  fs.writeFileSync(path.join(root, 'events/00000006-legacy-other-point.json'), JSON.stringify(point));
+  const before = fs.readFileSync(file), item = snapshot(load(root)).items.find(i => i.work.id === other.id);
+  assert.equal(item.latest.likes, undefined);
+  assert.equal(item.growth.points.length, 0);
+  assert.equal(item.evidenceGaps[0].observationId, point.id);
+  assert.throws(() => append(root, { ...point, id: 'new-other-point', metrics: { followers: baseline.metrics.followers } }), /metric-bearing evidence/);
+  assert.deepEqual(fs.readFileSync(file), before);
+});
+
+test('reviews require an eligible capture among the captures actually referenced', t => {
+  const root = fixture(t);
+  const leads = [
+    capture('title-lead', { readKinds: [] }),
+    capture('caption-only', { assets: capture().assets.slice(0, 1) }),
+    capture('page-only', { assets: capture().assets.slice(1) }),
+  ];
+  for (const lead of leads) append(root, lead);
+  const before = load(root);
+  for (const lead of leads) {
+    assert.throws(() => append(root, { ...review(`review-${lead.id}`), captureIds: [lead.id] }), /substantive.*capture/);
+  }
+  assert.throws(() => append(root, { ...review('all-leads'), captureIds: leads.map(c => c.id) }), /substantive.*capture/);
+  assert.deepEqual(load(root), before);
+  assert.equal(snapshot(load(root)).items[0].review, null);
+  append(root, { ...review(), captureIds: ['title-lead', 'capture1'] });
+  assert.equal(snapshot(load(root)).items[0].review.id, 'review1');
+});
+
+test('comment summaries require captured comments evidence and allow additional context', t => {
+  const root = fixture(t);
+  const comment = { platform: 'xiaohongshu', kind: 'disagreement', sampledCount: 1, summary: 'Synthetic disagreement, not real discussion.' };
+  const before = load(root);
+  for (const file of ['materials/caption.md', 'materials/page.png']) {
+    assert.throws(() => append(root, { ...review(), comments: [{ ...comment, evidencePaths: [file] }] }), /captured comments evidence/);
+  }
+  assert.deepEqual(load(root), before);
+  fs.writeFileSync(path.join(root, 'materials/comments.md'), 'Synthetic saved comment and author reply.');
+  append(root, capture('comments-capture', { readKinds: [], assets: [{ kind: 'comments', path: 'materials/comments.md', sourceUrl: capture().work.url, capturedAt: '2026-10-21T09:10:00+08:00', coverage: 'Synthetic comment thread' }] }));
+  append(root, { ...review(), comments: [{ ...comment, evidencePaths: ['materials/comments.md', 'materials/page.png'] }] });
+  assert.equal(snapshot(load(root)).items[0].review.comments.length, 1);
+  assert.ok(render(snapshot(load(root)), root, path.join(root, 'reports')).includes(comment.summary));
+});
+
+test('invalid draft hash maps are rejected before saving and do not poison status or render', t => {
+  const root = fixture(t); append(root, review());
+  append(root, event('decision', 'selected', { workId: 'xiaohongshu:example', decision: 'selected', userRequest: 'Synthetic user: select this', reason: 'Useful' }));
+  for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  const d = event('draft', 'draft1', { workId: 'xiaohongshu:example', selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' });
+  const before = load(root);
+  for (const hashes of [[], ['not-a-map'], 'not-a-map', 1, true, null, false, 0, '']) {
+    assert.throws(() => append(root, { ...d, hashes }), /hashes must be a plain object/);
+    assert.deepEqual(load(root), before);
+  }
+  append(root, d);
+  const saved = load(root).find(e => e.id === d.id);
+  assert.deepEqual(Object.keys(saved.hashes).sort(), ['briefPath', 'evidencePath', 'scriptPath']);
+  assert.ok(Object.values(saved.hashes).every(h => /^[0-9a-f]{64}$/.test(h)));
+  assert.equal(append(root, { ...d, hashes: { briefPath: saved.hashes.briefPath } }).appended, false);
+  verifyFiles(root, load(root));
+  for (const command of ['status', 'render']) {
+    const args = [path.join(__dirname, 'radar.cjs'), command, '--store', root];
+    if (command === 'render') args.push('--out', path.join(root, 'reports'));
+    const result = spawnSync(process.execPath, args, { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  }
+});
