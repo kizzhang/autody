@@ -115,6 +115,7 @@ function fileResolver(root) {
 function config(input = {}) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Invalid config');
   for (const k of Object.keys(input)) check(k in DEFAULTS, `Unknown config key: ${k}`);
+  if (input.targets !== undefined) check(input.targets && typeof input.targets === 'object' && !Array.isArray(input.targets), 'Targets must be a non-array object');
   const c = { ...DEFAULTS, ...input, targets: { ...DEFAULTS.targets, ...input.targets } };
   check(Object.keys(c.targets).every(k => ['douyin', 'xiaohongshu'].includes(k)), 'Unknown target platform');
   for (const v of Object.values(c.targets)) check(Number.isSafeInteger(v) && v >= 0, 'Targets must be nonnegative integers');
@@ -140,17 +141,21 @@ function assetKey(file) {
   const normalized = path.posix.normalize(file);
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
+function draftPaths(e) { return ['briefPath', 'scriptPath', 'evidencePath'].map(k => e[k]).filter(nonempty); }
 function registeredAssets(events, resolve = assetKey) {
-  const known = new Map();
-  for (const e of events) if (e.type === 'capture') for (const asset of e.assets) {
-    const key = resolve(asset.path);
-    if (!known.has(key)) known.set(key, { workId: e.work.id, work: e.work, roundId: e.roundId, asset });
+  const known = new Map(), generated = new Set();
+  for (const e of events) {
+    if (e.type === 'draft') for (const file of draftPaths(e)) generated.add(resolve(file));
+    if (e.type === 'capture') for (const asset of e.assets) {
+      const key = resolve(asset.path);
+      if (!known.has(key)) known.set(key, { workId: e.work.id, work: e.work, roundId: e.roundId, asset, fromDraft: generated.has(key) });
+    }
   }
   return known;
 }
 function assetsFor(events, workId, resolve = assetKey, roundId) {
   // A legacy cross-work registration must not transfer the first owner's evidence.
-  return [...registeredAssets(events, resolve).values()].filter(a => a.workId === workId && (roundId === undefined || a.roundId === roundId) && assetMatchesWork(a.asset, a.work)).map(a => a.asset);
+  return [...registeredAssets(events, resolve).values()].filter(a => !a.fromDraft && a.workId === workId && (roundId === undefined || a.roundId === roundId) && assetMatchesWork(a.asset, a.work)).map(a => a.asset);
 }
 function observationEvidence(e, prior, root, resolve = assetKey) {
   check(prior.some(r => r.type === 'round_started' && r.roundId === e.roundId), 'Unknown observation round');
@@ -174,7 +179,7 @@ function eligible(e, registered, resolve = assetKey) {
   const known = registered || registeredAssets([e], resolve);
   const assets = e.assets.filter(a => {
     const first = known.get(resolve(a.path));
-    return first?.workId === e.work.id && isDeepStrictEqual(first.asset, a) && assetMatchesWork(a, e.work);
+    return first?.workId === e.work.id && !first.fromDraft && isDeepStrictEqual(first.asset, a) && assetMatchesWork(a, e.work);
   });
   return new Set(assets.map(a => resolve(a.path))).size === assets.length && e.readKinds.some(k => READ_KINDS.has(k)) && assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && assets.some(a => a.kind === 'caption');
 }
@@ -211,7 +216,9 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
     check(Array.isArray(e.assets) && e.assets.length > 0, 'Assets required');
     check(new Set(e.assets.map(a => registerFile(a.path))).size === e.assets.length, 'Duplicate asset path');
     const registered = registeredAssets(prior, resolve);
+    const generated = new Set(prior.filter(x => x.type === 'draft').flatMap(draftPaths).map(resolve));
     for (const a of e.assets) {
+      check(!generated.has(resolve(a.path)), 'Captured sources cannot reuse registered draft files');
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
       check(assetMatchesWork(a, e.work), 'Asset source must identify the declared work (or its saved follower profile)');
       check(time(a.capturedAt) <= recorded, 'Asset capture time is after event time');

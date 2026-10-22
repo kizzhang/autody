@@ -45,6 +45,8 @@ Below are schema examples, **not real observations**. Replace all sample identif
 
 Default config: `minNew:35`, `minRecommended:15` per active platform, `practicalSlots:10`, `minIntervalMinutes:20`, `shortWindowHours:6`, `lowFollowerCeiling:5000`, `lowLikeCeiling:1000`, `minNewLikes:10`, `minRelativeGrowth:0.5`, `fastLikesPerHour:100`, `accelerationRatio:2`. These are configurable working heuristics, not predictions. For a focused run also lower `minNew`, `minRecommended` and `practicalSlots` explicitly; they do not silently scale with targets.
 
+When supplied, `config.targets` must be a non-array object. Null, primitives and arrays are rejected before defaults are merged; omitted targets or omitted individual platform keys retain their defaults.
+
 An `attempt` adds `roundId`, `attemptId`, `status` (`running`, `paused`, `partial`, `completed`), `reason` and optional affected `platform`. A continuation reuses `roundId` with a new `attemptId`. `completed` is rejected until count and configured coverage are met. Counts remain derived from evidence, even if an attempt is marked paused/partial. Store each interruption and completion as its own event; do not modify the start event.
 
 ### Capture
@@ -118,6 +120,8 @@ A `draft` adds `workId`, `selectionEventId`, `reviewId`, `status: draft`, `brief
 The optional `hashes` field must be a JSON object when supplied, including when empty; arrays, null and primitives are rejected before saving. Omit it to let the helper calculate all three hashes, or supply existing hashes to verify them.
 
 Brief, script and evidence paths must resolve to three different files, separate from every registered capture asset; aliases and hard links do not create separate documents or turn raw sources into drafts. Historical draft hash protection also compares resolved file identities, so an alternative spelling cannot overwrite an earlier registered document. Missing unrelated old drafts do not block new draft files; their original paths remain reserved and full integrity checks continue reporting their loss.
+
+Separation is bidirectional: later captures cannot register a prior draft component or its file aliases as raw evidence. Legacy assets first registered after the same file became a draft remain in history but do not supply materials, observations, substantive-read eligibility or reviews.
 
 Historical drafts are revalidated against their event prefixes without modifying records. Only valid entries appear in `drafts` and generated-document links; `draftHistory` preserves all revisions and `draftGaps` records excluded entries in HTML/CSV. Programmatic callers must pass the store as the third `snapshot(events, now, store)` argument to verify draft files; without it, drafts remain unverified history. CLI status/render already supply that path. Output protection still covers every registered historical draft, including excluded ones.
 

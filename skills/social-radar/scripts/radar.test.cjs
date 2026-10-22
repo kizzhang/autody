@@ -794,6 +794,38 @@ test('journal directory aliases must remain beneath their selected store', t => 
   assert.deepEqual(load(root), before);
 });
 
+test('round targets reject null, primitives and arrays before defaults are merged', t => {
+  const root = fixture(t), before = load(root);
+  for (const targets of [null, false, true, 0, 25, '', 'invalid', [], [1]]) {
+    assert.throws(() => append(root, round('bad-targets', { targets })), /Targets.*object/);
+    assert.deepEqual(load(root), before);
+  }
+  append(root, round('partial-targets', { targets: { douyin: 2 } }));
+  assert.deepEqual(load(root).at(-1).config.targets, { douyin: 2, xiaohongshu: 25 });
+  const defaults = round('default-targets'); delete defaults.config.targets; append(root, defaults);
+  assert.deepEqual(load(root).at(-1).config.targets, { douyin: 25, xiaohongshu: 25 });
+});
+
+test('draft files cannot become later raw evidence or power legacy observations', t => {
+  const { root, draft } = selectedDraft(t); append(root, draft);
+  fs.linkSync(path.join(root, draft.scriptPath), path.join(root, 'materials/script-link.md'));
+  const before = load(root);
+  for (const file of [draft.briefPath, draft.scriptPath, draft.evidencePath, 'materials/script-link.md']) {
+    assert.throws(() => append(root, capture('recycled-draft', { readKinds: [], assets: [{ ...capture().assets[0], path: file }] })), /registered draft/);
+    assert.deepEqual(load(root), before);
+  }
+  append(root, round('r2'));
+  const hashes = load(root).find(e => e.id === draft.id).hashes, point = { ...obs('legacy-draft-metric', '09:20:00', 90), roundId: 'r2', evidencePaths: ['materials/script-link.md'] };
+  const assets = capture().assets.map((a, i) => ({ ...a, path: i ? 'materials/script-link.md' : draft.briefPath, capturedAt: point.sampledAt, sha256: hashes[i ? 'scriptPath' : 'briefPath'], ...(i ? { metrics: point.metrics } : {}) }));
+  fs.writeFileSync(path.join(root, 'events/00000007-legacy-draft-capture.json'), JSON.stringify(capture('legacy-draft-capture', { roundId: 'r2', assets })));
+  fs.writeFileSync(path.join(root, 'events/00000008-legacy-draft-metric.json'), JSON.stringify(point));
+  const state = snapshot(load(root), undefined, root), item = state.items[0];
+  assert.equal(state.rounds[1].unique, 0); assert.equal(item.latest.likes, undefined);
+  assert.equal(item.evidenceGaps[0].observationId, point.id);
+  assert.ok(!item.assets.some(a => [draft.briefPath, 'materials/script-link.md'].includes(a.path)));
+  assert.deepEqual(item.drafts.map(d => d.id), [draft.id]); verifyFiles(root, load(root));
+});
+
 test('draft file separation uses resolved paths instead of three distinct strings', t => {
   const { root, draft } = selectedDraft(t), before = load(root);
   assert.throws(() => append(root, { ...draft, briefPath: 'script.md', scriptPath: './script.md', evidencePath: 'sub/../script.md' }), /separate files/);
