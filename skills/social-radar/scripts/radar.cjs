@@ -91,7 +91,7 @@ function physicalFileKey(file) {
 }
 function fileKey(root, file) { return physicalFileKey(relativeFile(root, file)); }
 function internalFileKeys(root) {
-  const paths = files(root).map(n => path.join(root, 'events', n)), lock = path.join(root, '.writer.lock');
+  const dir = eventDirectory(root), paths = files(root).map(n => path.join(dir, n)), lock = path.join(root, '.writer.lock');
   if (fs.existsSync(lock)) paths.push(lock);
   return new Set(paths.map(physicalFileKey));
 }
@@ -124,11 +124,18 @@ function config(input = {}) {
   check(c.minIntervalMinutes > 0 && c.shortWindowHours * 60 >= c.minIntervalMinutes && c.accelerationRatio > 1, 'Invalid growth windows');
   return c;
 }
+function eventDirectory(root) {
+  const dir = path.resolve(root, 'events');
+  try { fs.lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') return dir; throw error; }
+  const actual = fs.realpathSync(dir), relative = path.relative(fs.realpathSync(root), actual);
+  check(relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative) && fs.statSync(actual).isDirectory(), 'Events directory must remain beneath the selected store');
+  return actual;
+}
 function files(root) {
-  const dir = path.join(root, 'events');
+  const dir = eventDirectory(root);
   return fs.existsSync(dir) ? fs.readdirSync(dir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).sort() : [];
 }
-function load(root) { return files(root).map(n => JSON.parse(fs.readFileSync(path.join(root, 'events', n), 'utf8'))); }
+function load(root) { const dir = eventDirectory(root); return files(root).map(n => JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))); }
 function assetKey(file) {
   const normalized = path.posix.normalize(file);
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
@@ -330,7 +337,8 @@ function referencedPaths(input, events, resolve = assetKey) {
   return refs;
 }
 function append(root, input) {
-  root = path.resolve(root); fs.mkdirSync(path.join(root, 'events'), { recursive: true });
+  root = path.resolve(root); fs.mkdirSync(root, { recursive: true });
+  fs.mkdirSync(eventDirectory(root), { recursive: true }); const dir = eventDirectory(root);
   const lock = path.join(root, '.writer.lock');
   let fd; try { fd = fs.openSync(lock, 'wx'); } catch (error) { if (error.code === 'EEXIST') throw new Error('Writer locked; inspect the active writer before retrying'); throw error; }
   try {
@@ -354,7 +362,7 @@ function append(root, input) {
     const normalized = validate(root, e, existing ? events.slice(0, events.indexOf(existing)) : events);
     if (existing) { check(isDeepStrictEqual(existing, normalized), `Conflicting replay: ${e.id}`); return { appended: false, id: e.id }; }
     const n = files(root).length + 1; check(n <= 99999999, 'Ledger sequence exhausted');
-    const target = path.join(root, 'events', `${String(n).padStart(8, '0')}-${e.id}.json`);
+    const target = path.join(dir, `${String(n).padStart(8, '0')}-${e.id}.json`);
     const tmp = `${target}.${crypto.randomUUID()}.tmp`;
     const out = fs.openSync(tmp, 'wx');
     try { fs.writeFileSync(out, `${JSON.stringify(normalized, null, 2)}\n`); fs.fsyncSync(out); } finally { fs.closeSync(out); }

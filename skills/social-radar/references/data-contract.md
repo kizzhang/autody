@@ -24,6 +24,8 @@ Appending verifies directly referenced registered files and expands event-ID ref
 
 Report directories cannot be `events/` or any descendant, including directory symlink/junction aliases. This check runs before creating directories so an event-shaped output directory cannot corrupt the journal namespace.
 
+The journal directory itself must resolve strictly beneath the selected store before it is listed, loaded, created or written. An `events/` symlink/junction to another store or an external directory is rejected; a contained directory alias may still be used.
+
 Registration and full integrity checks also compare file identities against journal files and the active writer lock. A hard link under `materials/` or a draft directory does not make an internal ledger file usable as evidence or a document.
 
 ## Events

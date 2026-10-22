@@ -780,6 +780,20 @@ test('invalid historical drafts stay in history and out of generated document li
   assert.equal(unverified.drafts.length, 0); assert.equal(unverified.draftHistory.length, 2);
 });
 
+test('journal directory aliases must remain beneath their selected store', t => {
+  const root = fixture(t), before = load(root), kind = process.platform === 'win32' ? 'junction' : 'dir';
+  const outside = path.join(root, 'wrong-store'); fs.mkdirSync(outside);
+  fs.symlinkSync(path.join(root, 'events'), path.join(outside, 'events'), kind);
+  assert.throws(() => load(outside), /Events directory.*store/);
+  assert.throws(() => append(outside, round('escaped')), /Events directory.*store/);
+  assert.deepEqual(load(root), before); assert.ok(!fs.existsSync(path.join(outside, '.writer.lock')));
+  const inside = path.join(root, 'contained-store'), journal = path.join(inside, 'journal'); fs.mkdirSync(journal, { recursive: true });
+  fs.symlinkSync(journal, path.join(inside, 'events'), kind);
+  append(inside, round('contained'));
+  assert.equal(load(inside)[0].roundId, 'contained'); assert.equal(fs.readdirSync(journal).length, 1);
+  assert.deepEqual(load(root), before);
+});
+
 test('draft file separation uses resolved paths instead of three distinct strings', t => {
   const { root, draft } = selectedDraft(t), before = load(root);
   assert.throws(() => append(root, { ...draft, briefPath: 'script.md', scriptPath: './script.md', evidencePath: 'sub/../script.md' }), /separate files/);
