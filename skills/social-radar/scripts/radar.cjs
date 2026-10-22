@@ -41,6 +41,13 @@ function validateMetric(k, m) {
   }
 }
 function url(s) { const u = new URL(s); check(['http:', 'https:'].includes(u.protocol) && !u.username && !u.password, 'Expected public HTTP(S) URL'); return s; }
+function workUrl(work) {
+  const u = new URL(url(work.url));
+  const domain = work.platform === 'douyin' ? 'douyin.com' : 'xiaohongshu.com';
+  const route = work.platform === 'douyin' ? /^\/(?:video|note)\/([a-zA-Z0-9_-]+)\/?$/ : /^\/(?:explore|discovery\/item)\/([a-zA-Z0-9_-]+)\/?$/;
+  const nativeId = route.exec(u.pathname)?.[1];
+  check(nativeId && [domain, `www.${domain}`].includes(u.hostname) && `${work.platform}:${nativeId}` === work.id, 'Work URL must match the declared platform and native ID; use a canonical work URL');
+}
 function relativeFile(root, file) {
   check(nonempty(file) && !path.isAbsolute(file) && !/^[A-Za-z]:|\\|\0/.test(file), 'Use a store-relative path with forward slashes');
   const resolved = path.resolve(root, file), rel = path.relative(path.resolve(root), resolved);
@@ -128,6 +135,7 @@ function eligible(e, registered, resolve = assetKey) {
 function validate(root, e, prior) {
   check(e && typeof e === 'object' && !Array.isArray(e), 'Event object required');
   id(e.id); const recorded = time(e.recordedAt);
+  if (prior.length) check(recorded >= time(prior.at(-1).recordedAt), 'Save time cannot precede the preceding committed event');
   const round = prior.find(x => x.type === 'round_started' && x.roundId === e.roundId);
   const work = prior.find(x => x.type === 'capture' && x.work.id === e.workId);
   const requireWork = () => check(work, `Unknown work: ${e.workId}`);
@@ -148,7 +156,7 @@ function validate(root, e, prior) {
     check(round, 'Unknown round');
     check(e.work && ['douyin', 'xiaohongshu'].includes(e.work.platform), 'Invalid work platform');
     check(typeof e.work.id === 'string' && new RegExp(`^${e.work.platform}:[a-zA-Z0-9_-]+$`).test(e.work.id), 'Use platform:native-id');
-    url(e.work.url); check(nonempty(e.work.title) && nonempty(e.work.author), 'Work title and author required');
+    workUrl(e.work); check(nonempty(e.work.title) && nonempty(e.work.author), 'Work title and author required');
     check(['published', 'edited', 'unknown'].includes(e.work.dateKind) && typeof e.work.dateLabel === 'string', 'Date kind/label required');
     if (e.work.publishedAt != null) { check(e.work.dateKind === 'published', 'Edited/unknown dates cannot become publication dates'); time(e.work.publishedAt); }
     check(['recommendation', 'related', 'search', 'direct'].includes(e.route), 'Invalid discovery route');
@@ -246,7 +254,7 @@ function validate(root, e, prior) {
     for (const k of ['briefPath', 'scriptPath', 'evidencePath']) {
       const hash = digest(root, e[k]); if (e.hashes[k]) check(e.hashes[k] === hash, `Draft file changed: ${e[k]}`);
       for (const old of prior.filter(x => x.type === 'draft')) for (const oldKey of ['briefPath', 'scriptPath', 'evidencePath']) {
-        if (fileKey(root, old[oldKey]) === resolved[k]) check(old.hashes[oldKey] === hash, `Registered draft cannot be overwritten: ${e[k]}`);
+        if (resolve(old[oldKey]) === resolved[k]) check(old.hashes[oldKey] === hash, `Registered draft cannot be overwritten: ${e[k]}`);
       }
       e.hashes[k] = hash;
     }
@@ -373,7 +381,7 @@ function snapshot(events, now = new Date().toISOString(), root) {
       return rounds.find(r => r.roundId === sample?.roundId)?.config || DEFAULTS;
     };
     const review = events.findLast(e => e.type === 'review' && e.workId === workId) || null;
-    return { work, captures, latest, evidenceGaps, growth: growth(observations, metricConfig('likes')),
+    return { work, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
       review, decision: events.findLast(e => e.type === 'decision' && e.workId === workId) || null,
       drafts: events.filter(e => e.type === 'draft' && e.workId === workId) };

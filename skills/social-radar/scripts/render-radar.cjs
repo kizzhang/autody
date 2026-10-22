@@ -40,7 +40,7 @@ function render(state, store, out) {
   const action = (i, label, instruction) => `<button type="button" class="action" data-prompt="${esc(actionPrompt(i.work.id, store, instruction))}">${esc(label)}</button>`;
   const card = i => `<article class="topic" data-search="${esc(`${i.work.title} ${i.work.author} ${i.review?.angle || ''}`)}"><div class="eyebrow">${esc(i.work.platform)} · ${esc(i.work.author)}</div><h3>${link(i.work.url, i.work.title)}</h3><p>${esc(i.review?.summary)}</p><dl><dt>创作价值</dt><dd>${esc(i.review?.opportunity)}</dd><dt>可讲观点</dt><dd>${esc(i.review?.angle)}</dd><dt>传播证据</dt><dd>${esc(GROWTH_LABELS[i.growth.status])}${i.growth.delta === null ? '' : ` · 新增 ${i.growth.delta} 赞`}${i.growth.perHour === null ? '' : ` · ${i.growth.perHour.toFixed(1)} 赞/小时`}${i.growth.accelerating ? ' · 三点支持加速' : ''}</dd><dt>剩余缺口</dt><dd>${esc(i.review?.gaps.join('；') || '未登记额外缺口；原始覆盖见素材')}</dd></dl><div class="actions">${action(i, '选题并写初稿', '我选择这个选题，请记录选择并生成口播初稿、创作简报和证据表')}${action(i, '继续观察', '继续观察这个选题')}${action(i, '补齐材料', '补齐这个选题已登记的素材缺口')}${action(i, '不感兴趣', '将这个选题记为不感兴趣，原因由我补充')}</div><a href="#material-${esc(i.work.id)}">查看完整素材与评论依据 →</a></article>`;
   const materials = state.items.map(i => {
-    const allAssets = new Map(); for (const c of i.captures) for (const a of c.assets) allAssets.set(a.path, a);
+    const allAssets = new Map((i.assets || []).map(a => [a.path, a]));
     return `<details id="material-${esc(i.work.id)}" class="material" data-search="${esc(`${i.work.title} ${i.work.author} ${i.review?.angle || ''}`)}"><summary>${esc(i.work.title)} <small>${esc(i.work.author)} · ${allAssets.size} 份素材</small></summary><p>${link(i.work.url, '原作品')} · ${esc(i.work.dateKind)}：${esc(i.work.dateLabel || '未知日期')}</p>${i.captures.map(c => `<p class="muted">${esc(stamp(c.recordedAt, tz))} · ${esc(c.coverage)} · 缺口：${esc(c.gaps.join('；') || '未登记')}</p>`).join('')}<div class="assets">${[...allAssets.values()].map(a => `<div>${mediaPreview(store, out, a)}<p><b>${esc(a.kind)}</b> ${localLink(store, out, a.path)}<br><small>${esc(a.coverage)}${a.status ? ` · ${esc(a.status)}` : ''}</small></p></div>`).join('')}</div>${i.evidenceGaps?.length ? `<h4>观测证据缺口</h4><p>以下历史观测缺少对应采样证据，已从当前指标和增长计算排除。</p>${i.evidenceGaps.map(g => `<p>${esc(g.observationId)} · ${esc(g.sampledAt)} · ${esc(g.reason)}</p>`).join('')}` : ''}<h4>实际读到的评论</h4>${i.review?.comments.length ? i.review.comments.map(c => `<p><b>${esc(c.platform)} / ${esc(c.kind)} / ${c.sampledCount} 条</b> ${esc(c.summary)} ${c.evidencePaths.map(p => localLink(store, out, p, '证据')).join(' ')}</p>`).join('') : '<p class="muted">尚无已核实的评论讨论记录。</p>'}<h4>来源与事实状态</h4>${(i.review?.sourceRefs || []).map(s => `<p>${link(s.url, s.status)} · ${esc(s.note)}</p>`).join('')}${(i.review?.claims || []).map(c => `<p><b>${esc(c.status)}</b> ${esc(c.text)} ${c.evidencePaths.map(p => localLink(store, out, p, '依据')).join(' ')}</p>`).join('')}<h4>用户选择与初稿</h4><p>${esc(i.decision ? `${i.decision.decision}：${i.decision.reason}` : '尚未选择')}</p>${i.drafts.map(d => `<p>${esc(d.recordedAt)} · draft · 审读 ${esc(d.reviewId)}${d.reviewId !== i.review?.id ? '（历史审读版本）' : ''} · ${localLink(store, out, d.briefPath, '创作简报')} · ${localLink(store, out, d.scriptPath, '口播初稿')} · ${localLink(store, out, d.evidencePath, '证据与镜头表')}</p>`).join('')}</details>`;
   }).join('');
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autody 选题雷达</title><style>
@@ -54,13 +54,34 @@ function render(state, store, out) {
 }
 function writeReport(state, store, out) {
   fs.mkdirSync(out, { recursive: true });
+  const pathKey = file => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
+  const identity = file => {
+    try {
+      const stat = fs.statSync(file, { bigint: true });
+      return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${pathKey(fs.realpathSync(file))}`;
+    } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) return null; throw error; }
+  };
+  const protectedFiles = state.items.flatMap(i => [
+    ...i.captures.flatMap(c => c.assets.map(a => path.resolve(store, a.path))),
+    ...i.drafts.flatMap(d => [d.briefPath, d.scriptPath, d.evidencePath].map(p => path.resolve(store, p))),
+  ]);
+  const eventsDir = path.join(store, 'events');
+  if (fs.existsSync(eventsDir)) protectedFiles.push(...fs.readdirSync(eventsDir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).map(n => path.join(eventsDir, n)));
+  const protectedKeys = new Set(protectedFiles.flatMap(file => [pathKey(file), identity(file)]).filter(Boolean));
+  const targets = new Set();
+  for (const name of ['report.html', 'snapshot.json', 'tracking.csv']) {
+    const file = path.join(out, name), key = identity(file), resolved = pathKey(file);
+    if (protectedKeys.has(resolved) || (key && protectedKeys.has(key))) throw new Error('Report output overlaps a registered ledger file');
+    if (targets.has(key || resolved)) throw new Error('Report output files must be separate');
+    targets.add(key || resolved);
+  }
   const htmlPath = path.join(out, 'report.html');
   fs.writeFileSync(htmlPath, render(state, store, out));
   fs.writeFileSync(path.join(out, 'snapshot.json'), `${JSON.stringify(state, null, 2)}\n`);
   const metricNames = ['likes', 'favorites', 'comments', 'shares', 'followers'];
   const rows = [['work_id', 'title', 'author', 'url', ...metricNames.flatMap(k => [`${k}_raw`, `${k}_sampled_at`]), 'growth_status', 'delta_likes', 'likes_per_hour', 'recommendation', 'angle', 'gaps', 'material_card', 'caption_files', 'image_files', 'video_files', 'text_files', 'source_urls', 'draft_files']];
   for (const i of state.items) {
-    const assets = [...new Map(i.captures.flatMap(c => c.assets).map(a => [a.path, a])).values()];
+    const assets = i.assets || [];
     const fileUrls = kinds => assets.filter(a => kinds.includes(a.kind)).map(a => pathToFileURL(path.resolve(store, a.path)).href).join('; ');
     const gaps = [...new Set([...i.captures.flatMap(c => c.gaps), ...(i.review?.gaps || []), ...(i.evidenceGaps || []).map(g => `${g.observationId}: ${g.reason}`)])];
     rows.push([i.work.id, i.work.title, i.work.author, i.work.url,

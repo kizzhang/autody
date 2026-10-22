@@ -383,7 +383,7 @@ test('invalid draft hash maps are rejected before saving and do not poison statu
 test('current captures reject file aliases before one file can fill multiple asset roles', t => {
   const root = fixture(t), before = load(root);
   fs.copyFileSync(path.join(root, 'materials/page.png'), path.join(root, 'materials/unseen.png'));
-  const other = { ...capture().work, id: 'xiaohongshu:other' };
+  const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
   const aliases = ['materials/./unseen.png', 'materials/sub/../unseen.png'];
   if (process.platform === 'win32') aliases.push('materials/UNSEEN.PNG');
   for (const alias of aliases) {
@@ -421,7 +421,7 @@ test('later captures cannot transfer or relabel a registered file through a hard
   const alias = 'materials/linked-metrics.json';
   fs.linkSync(path.join(root, original.assets[0].path), path.join(root, alias));
   const linked = { ...original.assets[0], path: alias };
-  const other = { ...original.work, id: 'xiaohongshu:other' };
+  const other = { ...original.work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
   const before = load(root);
   assert.throws(() => append(root, capture('transferred-link', { work: other, readKinds: [], assets: [linked] })), /another work/);
   assert.throws(() => append(root, capture('relabeled-link', { readKinds: [], assets: [{ ...linked, capturedAt: '2026-10-21T09:20:00+08:00', metrics: { likes: { value: 90, raw: '90', precision: 'exact' } } }] })), /immutable/);
@@ -467,7 +467,7 @@ test('legacy captures cannot satisfy round or review gates with another work fil
   for (const linked of [false, true]) {
     const root = fixture(t); append(root, round('r2'));
     const original = load(root).find(e => e.id === 'capture1');
-    const other = { ...original.work, id: 'xiaohongshu:other' };
+    const other = { ...original.work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
     const assets = original.assets.map((a, i) => {
       if (!linked) return a;
       const file = `materials/linked-${i}`; fs.linkSync(path.join(root, a.path), path.join(root, file));
@@ -543,6 +543,87 @@ test('exact source references require cited matching captured source evidence', 
   assert.equal(snapshot(load(root)).items[0].review.sourceRefs[0].status, 'exact');
   fs.writeFileSync(path.join(root, 'materials/source.html'), 'Changed source');
   assert.throws(() => append(root, { ...exact, id: 'source-changed', evidencePaths: [...exact.evidencePaths, 'materials/source.html'] }), /Registered asset changed/);
+});
+
+test('missing unrelated draft files do not block new preserved revisions', t => {
+  for (const empty of [false, true]) {
+    const { root, draft } = selectedDraft(t); append(root, draft);
+    if (empty) fs.writeFileSync(path.join(root, draft.scriptPath), ''); else fs.unlinkSync(path.join(root, draft.scriptPath));
+    const next = { ...draft, id: 'draft2' };
+    for (const key of ['briefPath', 'scriptPath', 'evidencePath']) {
+      next[key] = `v2-${draft[key]}`; fs.writeFileSync(path.join(root, next[key]), `Synthetic new ${key}`);
+    }
+    append(root, next);
+    assert.equal(load(root).filter(e => e.type === 'draft').length, 2);
+    fs.writeFileSync(path.join(root, draft.scriptPath), 'Changed old draft');
+    assert.throws(() => append(root, { ...next, id: 'reuse-old', scriptPath: draft.scriptPath }), /Registered draft.*overwritten/);
+    assert.throws(() => verifyFiles(root, load(root)), /Registered draft changed/);
+  }
+});
+
+test('rendered material links and CSV exclude unowned legacy capture files', t => {
+  const root = fixture(t), original = load(root).find(e => e.id === 'capture1');
+  const other = { ...original.work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  const assets = original.assets.map((a, i) => {
+    const file = `materials/unowned-${i}`; fs.linkSync(path.join(root, a.path), path.join(root, file));
+    return { ...a, path: file };
+  });
+  fs.writeFileSync(path.join(root, 'events/00000003-legacy-materials.json'), JSON.stringify({ ...original, id: 'legacy-materials', work: other, assets: [...original.assets, ...assets] }));
+  const state = snapshot(load(root), undefined, root), report = writeReport(state, root, path.join(root, 'reports'));
+  const html = fs.readFileSync(report.report, 'utf8').split('<details id="material-xiaohongshu:other"')[1].split('</details>')[0];
+  const row = fs.readFileSync(report.csv, 'utf8').split('\r\n').find(line => line.startsWith('"xiaohongshu:other"'));
+  for (const a of [...original.assets, ...assets]) { assert.ok(!html.includes(a.path)); assert.ok(!row.includes(a.path)); }
+  assert.equal(state.items.find(i => i.work.id === other.id).captures[0].assets.length, 4);
+});
+
+test('report output preflights all targets against registered assets, drafts and event files', t => {
+  const { root, draft } = selectedDraft(t); append(root, draft);
+  const names = ['report.html', 'snapshot.json', 'tracking.csv'];
+  const eventFile = path.join(root, 'events', fs.readdirSync(path.join(root, 'events')).sort()[0]);
+  for (const source of ['materials/page.png', draft.scriptPath, path.relative(root, eventFile)]) for (const name of names) {
+    const out = path.join(root, `collision-${path.basename(source)}-${name}`); fs.mkdirSync(out);
+    const original = fs.readFileSync(path.join(root, source)); fs.linkSync(path.join(root, source), path.join(out, name));
+    assert.throws(() => writeReport(snapshot(load(root)), root, out), /Report output.*registered/);
+    assert.deepEqual(fs.readFileSync(path.join(root, source)), original);
+    assert.deepEqual(fs.readdirSync(out), [name]);
+  }
+  for (const name of names) {
+    const out = path.join(root, `direct-${name}`); fs.mkdirSync(out);
+    const file = `${path.basename(out)}/${name}`; fs.writeFileSync(path.join(root, file), 'Synthetic source');
+    append(root, capture(`source-${name}`, { readKinds: [], assets: [{ ...capture().assets[0], kind: 'research_note', path: file }] }));
+    assert.throws(() => writeReport(snapshot(load(root)), root, out), /Report output.*registered/);
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), 'Synthetic source');
+  }
+  verifyFiles(root, load(root));
+});
+
+test('canonical work URLs must match both platform and native work ID', t => {
+  const root = fixture(t), before = load(root);
+  for (const work of [
+    { ...capture().work, url: 'https://www.douyin.com/video/example' },
+    { ...capture().work, url: 'https://www.xiaohongshu.com/explore/different' },
+    { ...capture().work, url: 'https://www.xiaohongshu.com.evil.test/explore/example' },
+    { ...capture().work, id: 'xiaohongshu:undefined', url: 'https://www.xiaohongshu.com/' },
+    { ...capture().work, id: 'xiaohongshu:other' },
+  ]) {
+    assert.throws(() => append(root, capture('bad-work-url', { work })), /Work URL.*platform.*ID/);
+    assert.deepEqual(load(root), before);
+  }
+  append(root, capture('xhs-alternate', { work: { ...capture().work, url: 'https://www.xiaohongshu.com/discovery/item/example?source=synthetic' } }));
+  const work = { ...capture().work, id: 'douyin:77', platform: 'douyin', url: 'https://www.douyin.com/video/77' };
+  const assets = capture().assets.map((a, i) => { const file = `materials/douyin-${i}`; fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, sourceUrl: work.url }; });
+  append(root, capture('douyin-valid', { work, assets }));
+  assert.ok(load(root).some(e => e.work?.id === work.id));
+});
+
+test('new save times cannot go backwards while replays and later-saved backfills remain valid', t => {
+  const root = fixture(t); append(root, { ...review(), recordedAt: '2026-10-21T13:00:00+08:00' });
+  const before = load(root);
+  assert.throws(() => append(root, { ...review('backdated'), recordedAt: '2026-10-21T12:59:59+08:00' }), /Save time.*preceding/);
+  assert.deepEqual(load(root), before);
+  assert.equal(append(root, capture()).appended, false);
+  append(root, capture('backfill', { recordedAt: '2026-10-21T05:00:00Z' }));
+  assert.equal(load(root).at(-1).assets[0].capturedAt, '2026-10-21T09:00:00+08:00');
 });
 
 test('draft file separation uses resolved paths instead of three distinct strings', t => {
