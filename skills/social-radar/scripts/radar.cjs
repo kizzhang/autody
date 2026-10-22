@@ -226,12 +226,12 @@ function validate(root, e, prior) {
     if (previous) check(previous.workId === e.workId && previous.roundId === e.roundId && previous.kind === e.kind, 'Task identity is immutable');
     if (e.kind === 'revisit') {
       if (previous) check(previous.baselineObservationId === e.baselineObservationId && time(previous.dueAt) === time(e.dueAt), 'Revisit baseline and deadline are immutable; use a new task to reschedule');
-      const baseline = prior.find(x => x.id === e.baselineObservationId && x.type === 'observation' && x.workId === e.workId && x.metrics.likes);
+      const baseline = prior.find(x => x.id === e.baselineObservationId && x.type === 'observation' && x.workId === e.workId && x.metrics.likes && x.metrics.likes.precision !== 'unavailable');
       check(baseline, 'Revisit needs a saved like observation');
       observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)), undefined, resolve);
       check(time(e.dueAt) >= time(baseline.sampledAt) + round.config.minIntervalMinutes * 60000, 'Revisit is earlier than the minimum interval');
       if (e.status === 'done') check(prior.some((x, i) => {
-        if (x.type !== 'observation' || x.workId !== e.workId || !x.metrics.likes || time(x.sampledAt) < time(e.dueAt)) return false;
+        if (x.type !== 'observation' || x.workId !== e.workId || !x.metrics.likes || x.metrics.likes.precision === 'unavailable' || time(x.sampledAt) < time(e.dueAt)) return false;
         try { observationEvidence(x, prior.slice(0, i), root, resolve); return true; } catch { return false; }
       }), 'No due-time revisit observation saved');
     }

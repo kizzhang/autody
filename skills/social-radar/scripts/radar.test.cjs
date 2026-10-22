@@ -626,6 +626,51 @@ test('new save times cannot go backwards while replays and later-saved backfills
   assert.equal(load(root).at(-1).assets[0].capturedAt, '2026-10-21T09:00:00+08:00');
 });
 
+test('legacy claim and comment links use only the work owned material set', t => {
+  const root = fixture(t), work = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  const assets = capture().assets.map((a, i) => {
+    const file = `materials/other-${i}`; fs.copyFileSync(path.join(root, a.path), path.join(root, file));
+    return { ...a, path: file, sourceUrl: work.url };
+  });
+  append(root, capture('other', { work, assets }));
+  const legacy = { ...review(), id: 'legacy-review', workId: work.id, captureIds: ['other'],
+    claims: [{ text: 'Legacy claim', status: 'verified', evidencePaths: ['materials/caption.md', assets[0].path] }],
+    comments: [{ platform: 'xiaohongshu', kind: 'disagreement', sampledCount: 1, summary: 'Legacy comment', evidencePaths: ['materials/page.png', assets[1].path] }] };
+  const file = path.join(root, 'events/00000004-legacy-review.json'); fs.writeFileSync(file, JSON.stringify(legacy)); const before = fs.readFileSync(file);
+  const html = render(snapshot(load(root), undefined, root), root, path.join(root, 'reports')).split('<details id="material-xiaohongshu:other"')[1].split('</details>')[0];
+  assert.ok(!html.includes('materials/caption.md')); assert.ok(!html.includes('materials/page.png'));
+  for (const a of assets) assert.ok(html.includes(a.path));
+  assert.ok(html.includes('历史引用')); assert.deepEqual(fs.readFileSync(file), before);
+});
+
+test('dangling report output symlinks are rejected before any file is written', t => {
+  const root = fixture(t), out = path.join(root, 'reports'); fs.mkdirSync(out);
+  const link = path.join(out, 'report.html');
+  let realLink = true;
+  try { fs.symlinkSync('snapshot.json', link, 'file'); } catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    // Exercise the dangling directory-entry result without elevating Windows.
+    realLink = false; const lstat = fs.lstatSync;
+    t.mock.method(fs, 'lstatSync', (file, ...args) => path.resolve(file) === link ? { isSymbolicLink: () => true } : lstat(file, ...args));
+    t.diagnostic('Windows file-symlink creation unavailable; mocked only its lstat directory entry.');
+  }
+  assert.throws(() => writeReport(snapshot(load(root)), root, out), /Report output.*symbolic link/);
+  assert.ok(fs.lstatSync(link).isSymbolicLink());
+  assert.deepEqual(fs.readdirSync(out), realLink ? ['report.html'] : []); verifyFiles(root, load(root));
+});
+
+test('an unavailable due like count keeps a revisit pending until a visible reading arrives', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'pending', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'available-revisit', kind: 'revisit', status: 'pending', reason: 'Need a visible count', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task); saveObservation(root, obs('not-shown', '09:20:00', null, 'unavailable', ''));
+  assert.throws(() => append(root, { ...task, id: 'unavailable-done', status: 'done' }), /No due-time/);
+  assert.equal(snapshot(load(root)).tasks[0].status, 'pending');
+  assert.throws(() => append(root, { ...task, id: 'bad-baseline', taskId: 'unavailable-baseline', baselineObservationId: 'not-shown', dueAt: '2026-10-21T09:40:00+08:00' }), /saved like observation/);
+  saveObservation(root, obs('visible-rounded', '09:40:00', null, 'rounded', '1.1万'));
+  append(root, { ...task, id: 'visible-done', status: 'done' });
+  assert.equal(snapshot(load(root)).tasks[0].status, 'done');
+});
+
 test('draft file separation uses resolved paths instead of three distinct strings', t => {
   const { root, draft } = selectedDraft(t), before = load(root);
   assert.throws(() => append(root, { ...draft, briefPath: 'script.md', scriptPath: './script.md', evidencePath: 'sub/../script.md' }), /separate files/);
