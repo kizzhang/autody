@@ -85,9 +85,20 @@ function relativeFile(root, file) {
   return realFile;
 }
 function digest(root, file) { return crypto.createHash('sha256').update(fs.readFileSync(relativeFile(root, file))).digest('hex'); }
-function fileKey(root, file) {
-  const real = relativeFile(root, file), stat = fs.statSync(real, { bigint: true });
-  return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${assetKey(real)}`;
+function physicalFileKey(file) {
+  const stat = fs.statSync(file, { bigint: true });
+  return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${assetKey(fs.realpathSync(file))}`;
+}
+function fileKey(root, file) { return physicalFileKey(relativeFile(root, file)); }
+function internalFileKeys(root) {
+  const paths = files(root).map(n => path.join(root, 'events', n)), lock = path.join(root, '.writer.lock');
+  if (fs.existsSync(lock)) paths.push(lock);
+  return new Set(paths.map(physicalFileKey));
+}
+function registrationKey(root, file, internals) {
+  const key = fileKey(root, file);
+  check(!internals.has(key), `Ledger-internal file cannot be registered: ${file}`);
+  return key;
 }
 function fileResolver(root) {
   const known = new Map();
@@ -160,13 +171,14 @@ function eligible(e, registered, resolve = assetKey) {
   });
   return new Set(assets.map(a => resolve(a.path))).size === assets.length && e.readKinds.some(k => READ_KINDS.has(k)) && assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && assets.some(a => a.kind === 'caption');
 }
-function validate(root, e, prior, resolve = fileResolver(root)) {
+function validate(root, e, prior, resolve = fileResolver(root), internals) {
   check(e && typeof e === 'object' && !Array.isArray(e), 'Event object required');
   id(e.id); const recorded = time(e.recordedAt);
   if (prior.length) check(recorded >= time(prior.at(-1).recordedAt), 'Save time cannot precede the preceding committed event');
   const round = prior.find(x => x.type === 'round_started' && x.roundId === e.roundId);
   const work = prior.find(x => x.type === 'capture' && x.work.id === e.workId);
   const requireWork = () => check(work, `Unknown work: ${e.workId}`);
+  const registerFile = file => registrationKey(root, file, internals ||= internalFileKeys(root));
   const knownPaths = () => new Set(assetsFor(prior, e.workId, resolve).map(a => a.path));
   const evidence = (paths) => { check(Array.isArray(paths) && paths.length > 0, 'Evidence paths required'); const known = knownPaths(); for (const p of paths) check(known.has(p), `Evidence not captured for work: ${p}`); };
   if (e.type === 'round_started') {
@@ -190,7 +202,7 @@ function validate(root, e, prior, resolve = fileResolver(root)) {
     check(Array.isArray(e.readKinds) && e.readKinds.every(k => READ_KINDS.has(k)), 'Invalid substantive read kind (summaries/title cards do not count)');
     check(typeof e.coverage === 'string' && Array.isArray(e.gaps), 'Coverage and gaps required');
     check(Array.isArray(e.assets) && e.assets.length > 0, 'Assets required');
-    check(new Set(e.assets.map(a => fileKey(root, a.path))).size === e.assets.length, 'Duplicate asset path');
+    check(new Set(e.assets.map(a => registerFile(a.path))).size === e.assets.length, 'Duplicate asset path');
     const registered = registeredAssets(prior, resolve);
     for (const a of e.assets) {
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
@@ -269,13 +281,13 @@ function validate(root, e, prior, resolve = fileResolver(root)) {
   } else if (e.type === 'draft') {
     requireWork(); const selection = prior.findLast(x => x.type === 'decision' && x.workId === e.workId);
     check(selection && selection.decision === 'selected' && selection.id === e.selectionEventId, 'Draft requires the current explicit user selection');
-    const currentReview = prior.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !reviewIssue(root, x, prior.slice(0, i), resolve));
+    const currentReview = prior.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !eventIssue(root, x, prior.slice(0, i), resolve, internals));
     check(currentReview && currentReview.id === e.reviewId, 'Draft must reference the current review revision');
     check(e.status === 'draft', 'Generated script remains draft');
     if (e.hashes === undefined) e.hashes = {};
     check(e.hashes && typeof e.hashes === 'object' && !Array.isArray(e.hashes), 'Draft hashes must be a plain object');
     const draftKeys = ['briefPath', 'scriptPath', 'evidencePath'];
-    const resolved = Object.fromEntries(draftKeys.map(k => [k, resolve(e[k])]));
+    const resolved = Object.fromEntries(draftKeys.map(k => [k, registerFile(e[k])]));
     check(new Set(Object.values(resolved)).size === 3, 'Brief, script and evidence must be separate files');
     const sources = registeredAssets(prior, resolve);
     for (const key of Object.values(resolved)) check(!sources.has(key), 'Draft files must be separate from captured source files');
@@ -289,13 +301,15 @@ function validate(root, e, prior, resolve = fileResolver(root)) {
   } else throw new Error(`Unknown event type: ${e.type}`);
   return e;
 }
-function reviewIssue(root, e, prior, resolve) {
-  try { validate(root, e, prior, resolve); return null; } catch (error) { return error.message; }
+function eventIssue(root, e, prior, resolve, internals) {
+  if (e.type === 'draft' && !root) return 'Store path required to validate a historical draft';
+  try { validate(root, JSON.parse(JSON.stringify(e)), prior, resolve, internals); return null; } catch (error) { return error.message; }
 }
 function verifyFiles(root, events) {
+  const internals = internalFileKeys(root);
   for (const e of events) {
-    if (e.type === 'capture') for (const a of e.assets) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
-    if (e.type === 'draft') for (const k of ['briefPath', 'scriptPath', 'evidencePath']) check(digest(root, e[k]) === e.hashes[k], `Registered draft changed: ${e[k]}`);
+    if (e.type === 'capture') for (const a of e.assets) { registrationKey(root, a.path, internals); check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`); }
+    if (e.type === 'draft') for (const k of ['briefPath', 'scriptPath', 'evidencePath']) { registrationKey(root, e[k], internals); check(digest(root, e[k]) === e.hashes[k], `Registered draft changed: ${e[k]}`); }
   }
 }
 function referencedPaths(input, events, resolve = assetKey) {
@@ -394,12 +408,16 @@ function growth(observations, c = DEFAULTS) {
 function snapshot(events, now = new Date().toISOString(), root) {
   time(now); const works = new Map(), rounds = events.filter(e => e.type === 'round_started');
   const resolve = root ? fileResolver(root) : assetKey;
-  const observationChecks = new Map(), reviewChecks = new Map();
+  const observationChecks = new Map(), reviewChecks = new Map(), draftChecks = new Map();
+  const internals = root && events.some(e => e.type === 'draft') ? internalFileKeys(root) : undefined;
   for (let i = 0; i < events.length; i++) if (events[i].type === 'observation') {
     try { observationEvidence(events[i], events.slice(0, i), undefined, resolve); observationChecks.set(events[i].id, null); }
     catch (error) { observationChecks.set(events[i].id, error.message); }
   }
-  for (let i = 0; i < events.length; i++) if (events[i].type === 'review') reviewChecks.set(events[i].id, reviewIssue(root, events[i], events.slice(0, i), resolve));
+  for (let i = 0; i < events.length; i++) if (['review', 'draft'].includes(events[i].type)) {
+    const checks = events[i].type === 'review' ? reviewChecks : draftChecks;
+    checks.set(events[i].id, eventIssue(root, events[i], events.slice(0, i), resolve, internals));
+  }
   const taskMap = new Map(); for (const e of events) if (e.type === 'task') taskMap.set(e.taskId, e);
   for (const e of events) if (e.type === 'capture') works.set(e.work.id, e.work);
   const items = [...works].map(([workId, work]) => {
@@ -415,10 +433,12 @@ function snapshot(events, now = new Date().toISOString(), root) {
     const reviews = events.filter(e => e.type === 'review' && e.workId === workId);
     const reviewGaps = reviews.filter(e => reviewChecks.get(e.id)).map(e => ({ reviewId: e.id, recordedAt: e.recordedAt, reason: reviewChecks.get(e.id) }));
     const review = reviews.findLast(e => !reviewChecks.get(e.id)) || null;
+    const draftHistory = events.filter(e => e.type === 'draft' && e.workId === workId);
+    const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
     return { work, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
       review, reviews, reviewGaps, decision: events.findLast(e => e.type === 'decision' && e.workId === workId) || null,
-      drafts: events.filter(e => e.type === 'draft' && e.workId === workId) };
+      drafts: draftHistory.filter(e => !draftChecks.get(e.id)), draftHistory, draftGaps };
   });
   return { generatedAt: now, eventCount: events.length, items,
     rounds: rounds.map(r => ({ ...r, ...roundStats(events, r, resolve), attempts: events.filter(e => e.type === 'attempt' && e.roundId === r.roundId) })),

@@ -135,13 +135,13 @@ test('drafts require current real-user selection, source review and separate pre
   const d = event('draft', 'draft1', { workId: 'xiaohongshu:example', selectionEventId: 'select1', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' });
   assert.throws(() => append(root, d), /explicit user selection/);
   append(root, event('decision', 'select1', { workId: 'xiaohongshu:example', decision: 'selected', userRequest: 'Synthetic user: draft this selected topic', reason: 'Fits the audience' }));
-  append(root, d); assert.equal(snapshot(load(root)).items[0].drafts.length, 1);
+  append(root, d); assert.equal(snapshot(load(root), undefined, root).items[0].drafts.length, 1);
   fs.writeFileSync(path.join(root, 'script.md'), 'Accidental overwrite');
   assert.throws(() => append(root, { ...d, id: 'overwritten' }), /cannot be overwritten/);
   fs.writeFileSync(path.join(root, 'script.md'), 'Synthetic draft script.md');
   append(root, event('decision', 'reject1', { workId: 'xiaohongshu:example', decision: 'rejected', userRequest: 'Synthetic user: discard', reason: 'Changed direction' }));
   assert.throws(() => append(root, { ...d, id: 'draft2' }), /current explicit/);
-  assert.equal(snapshot(load(root)).items[0].drafts.length, 1);
+  assert.equal(snapshot(load(root), undefined, root).items[0].drafts.length, 1);
 });
 
 test('reviews reject uncaptured evidence and preserve revisions', t => {
@@ -282,7 +282,7 @@ test('new drafts must use the latest review while historical drafts remain repla
   assert.equal(append(root, d).appended, false);
   for (const f of ['brief-v2.md', 'script-v2.md', 'evidence-v2.md']) fs.writeFileSync(path.join(root, f), `Synthetic corrected draft ${f}`);
   append(root, { ...d, id: 'draft2', reviewId: 'corrected-review', briefPath: 'brief-v2.md', scriptPath: 'script-v2.md', evidencePath: 'evidence-v2.md' });
-  assert.deepEqual(snapshot(load(root)).items[0].drafts.map(x => x.reviewId), ['review1', 'corrected-review']);
+  assert.deepEqual(snapshot(load(root), undefined, root).items[0].drafts.map(x => x.reviewId), ['review1', 'corrected-review']);
 });
 
 test('registered asset paths belong to one work while same-work reuse remains replayable', t => {
@@ -747,6 +747,37 @@ test('report directories cannot enter the event namespace even through directory
   assert.equal(load(root).length, state.eventCount);
   writeReport(state, root, path.join(root, 'events-sibling'));
   assert.equal(load(root).length, state.eventCount); verifyFiles(root, load(root));
+});
+
+test('journal hard links cannot become registered materials or draft components', t => {
+  const { root, draft } = selectedDraft(t), before = load(root);
+  const journal = path.join(root, 'events', fs.readdirSync(path.join(root, 'events')).sort()[0]);
+  const bytes = fs.readFileSync(journal), alias = 'materials/journal-link.md'; fs.linkSync(journal, path.join(root, alias));
+  assert.throws(() => append(root, capture('journal-asset', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'research_note', path: alias }] })), /Ledger-internal/);
+  assert.throws(() => append(root, { ...draft, scriptPath: alias }), /Ledger-internal/);
+  assert.deepEqual(load(root), before); assert.deepEqual(fs.readFileSync(journal), bytes);
+  const sha256 = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+  fs.writeFileSync(path.join(root, 'events/00000005-legacy-journal-link.json'), JSON.stringify(capture('legacy-journal-link', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'research_note', path: alias, sha256 }] })));
+  assert.throws(() => verifyFiles(root, load(root)), /Ledger-internal/);
+});
+
+test('invalid historical drafts stay in history and out of generated document links', t => {
+  const { root, draft } = selectedDraft(t); append(root, draft);
+  const good = load(root).find(e => e.id === draft.id), source = load(root).find(e => e.id === 'capture1').assets[0];
+  const bad = { ...good, id: 'legacy-source-draft', briefPath: source.path, hashes: { ...good.hashes, briefPath: source.sha256 } };
+  const file = path.join(root, 'events/00000006-legacy-source-draft.json'); fs.writeFileSync(file, JSON.stringify(bad));
+  const bytes = fs.readFileSync(file), events = load(root), original = JSON.stringify(events);
+  verifyFiles(root, events);
+  const state = snapshot(events, undefined, root), item = state.items[0];
+  assert.deepEqual(item.drafts.map(d => d.id), [draft.id]); assert.equal(item.draftHistory.at(-1).id, bad.id);
+  assert.equal(item.draftGaps[0].draftId, bad.id); assert.equal(JSON.stringify(events), original);
+  const report = writeReport(state, root, path.join(root, 'reports'));
+  assert.ok(fs.readFileSync(report.report, 'utf8').includes('历史稿件'));
+  const sourceUrl = require('node:url').pathToFileURL(path.resolve(root, source.path)).href;
+  assert.equal(fs.readFileSync(report.csv, 'utf8').split(sourceUrl).length - 1, 1);
+  assert.deepEqual(fs.readFileSync(file), bytes);
+  const unverified = snapshot(events).items[0];
+  assert.equal(unverified.drafts.length, 0); assert.equal(unverified.draftHistory.length, 2);
 });
 
 test('draft file separation uses resolved paths instead of three distinct strings', t => {

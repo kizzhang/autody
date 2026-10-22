@@ -24,6 +24,8 @@ Appending verifies directly referenced registered files and expands event-ID ref
 
 Report directories cannot be `events/` or any descendant, including directory symlink/junction aliases. This check runs before creating directories so an event-shaped output directory cannot corrupt the journal namespace.
 
+Registration and full integrity checks also compare file identities against journal files and the active writer lock. A hard link under `materials/` or a draft directory does not make an internal ledger file usable as evidence or a document.
+
 ## Events
 
 Below are schema examples, **not real observations**. Replace all sample identifiers, times and material paths with actual captured values. Asset files must exist and be nonempty before `append`.
@@ -114,6 +116,8 @@ A `draft` adds `workId`, `selectionEventId`, `reviewId`, `status: draft`, `brief
 The optional `hashes` field must be a JSON object when supplied, including when empty; arrays, null and primitives are rejected before saving. Omit it to let the helper calculate all three hashes, or supply existing hashes to verify them.
 
 Brief, script and evidence paths must resolve to three different files, separate from every registered capture asset; aliases and hard links do not create separate documents or turn raw sources into drafts. Historical draft hash protection also compares resolved file identities, so an alternative spelling cannot overwrite an earlier registered document. Missing unrelated old drafts do not block new draft files; their original paths remain reserved and full integrity checks continue reporting their loss.
+
+Historical drafts are revalidated against their event prefixes without modifying records. Only valid entries appear in `drafts` and generated-document links; `draftHistory` preserves all revisions and `draftGaps` records excluded entries in HTML/CSV. Programmatic callers must pass the store as the third `snapshot(events, now, store)` argument to verify draft files; without it, drafts remain unverified history. CLI status/render already supply that path. Output protection still covers every registered historical draft, including excluded ones.
 
 ## Limits
 
