@@ -463,6 +463,88 @@ test('draft components cannot reuse captured source files or their hard links', 
   append(root, draft); verifyFiles(root, load(root));
 });
 
+test('legacy captures cannot satisfy round or review gates with another work files', t => {
+  for (const linked of [false, true]) {
+    const root = fixture(t); append(root, round('r2'));
+    const original = load(root).find(e => e.id === 'capture1');
+    const other = { ...original.work, id: 'xiaohongshu:other' };
+    const assets = original.assets.map((a, i) => {
+      if (!linked) return a;
+      const file = `materials/linked-${i}`; fs.linkSync(path.join(root, a.path), path.join(root, file));
+      return { ...a, path: file };
+    });
+    const legacy = { ...original, id: 'legacy-unowned', roundId: 'r2', work: other, assets };
+    const legacyFile = path.join(root, 'events/00000004-legacy-unowned.json');
+    fs.writeFileSync(legacyFile, JSON.stringify(legacy)); const before = fs.readFileSync(legacyFile);
+    fs.writeFileSync(path.join(root, 'materials/other-note.md'), 'Synthetic note owned by the other work');
+    append(root, capture('other-note', { roundId: 'r2', work: other, readKinds: [], assets: [{ ...original.assets[0], kind: 'research_note', path: 'materials/other-note.md', sha256: undefined }] }));
+    assert.equal(snapshot(load(root), undefined, root).rounds[1].unique, 0);
+    assert.throws(() => append(root, event('attempt', 'false-complete', { roundId: 'r2', attemptId: 'a2', status: 'completed', reason: 'Legacy unowned capture' })), /targets not met/);
+    assert.throws(() => append(root, { ...review(), workId: other.id, captureIds: [legacy.id], evidencePaths: ['materials/other-note.md'], claims: [] }), /substantive.*capture/);
+    assert.deepEqual(fs.readFileSync(legacyFile), before);
+  }
+});
+
+test('revisit revisions preserve their baseline and deadline until completion', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17)); saveObservation(root, obs('early', '09:20:00', 18));
+  const task = event('task', 'pending', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'fixed-revisit', kind: 'revisit', status: 'pending', reason: 'Observe at ten', baselineObservationId: 'baseline', dueAt: '2026-10-21T10:00:00+08:00' });
+  append(root, task); const before = load(root);
+  for (const patch of [{ dueAt: '2026-10-21T09:20:00+08:00' }, { baselineObservationId: 'early' }]) {
+    assert.throws(() => append(root, { ...task, ...patch, id: 'changed-pending' }), /immutable/);
+    assert.throws(() => append(root, { ...task, ...patch, id: 'changed-done', status: 'done' }), /immutable/);
+  }
+  assert.deepEqual(load(root), before);
+  assert.throws(() => append(root, { ...task, id: 'early-done', status: 'done' }), /No due-time/);
+  saveObservation(root, obs('due', '10:00:00', 20));
+  append(root, { ...task, id: 'done', status: 'done', dueAt: '2026-10-21T02:00:00Z' });
+  assert.equal(snapshot(load(root)).tasks[0].status, 'done');
+});
+
+test('rounded metrics require a visible display and legacy blanks do not replace readings', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17)); const before = load(root);
+  for (const raw of ['', '  ']) {
+    const blank = obs('blank', '09:20:00', null, 'rounded', raw);
+    assert.throws(() => captureMetricEvidence(root, blank), /Rounded.*display/);
+    assert.deepEqual(load(root), before);
+  }
+  const original = load(root).find(e => e.id === 'capture-baseline');
+  const blank = { ...obs('legacy-blank', '09:20:00', null, 'rounded', ''), evidencePaths: ['materials/legacy-blank.json'] };
+  fs.writeFileSync(path.join(root, blank.evidencePaths[0]), JSON.stringify(blank.metrics));
+  const hash = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(root, blank.evidencePaths[0]))).digest('hex');
+  fs.writeFileSync(path.join(root, 'events/00000005-legacy-blank-capture.json'), JSON.stringify({ ...original, id: 'legacy-blank-capture', assets: [{ ...original.assets[0], path: blank.evidencePaths[0], capturedAt: blank.sampledAt, metrics: blank.metrics, sha256: hash }] }));
+  fs.writeFileSync(path.join(root, 'events/00000006-legacy-blank.json'), JSON.stringify(blank));
+  const item = snapshot(load(root), undefined, root).items[0];
+  assert.equal(item.latest.likes.value, 17); assert.equal(item.evidenceGaps[0].observationId, blank.id);
+  saveObservation(root, obs('unavailable-later', '09:40:00', null, 'unavailable', ''));
+  assert.equal(snapshot(load(root)).items[0].latest.likes.value, 17);
+});
+
+test('lost unrelated assets do not block replacement captures or intact evidence', t => {
+  const root = fixture(t);
+  for (const file of ['lost.mp4', 'empty.mp4']) fs.writeFileSync(path.join(root, 'materials', file), `Synthetic ${file}`);
+  append(root, capture('old-media', { readKinds: [], assets: ['lost.mp4', 'empty.mp4'].map(file => ({ ...capture().assets[0], kind: 'video', path: `materials/${file}` })) }));
+  fs.unlinkSync(path.join(root, 'materials/lost.mp4')); fs.writeFileSync(path.join(root, 'materials/empty.mp4'), '');
+  fs.writeFileSync(path.join(root, 'materials/replacement.mp4'), 'Synthetic replacement');
+  append(root, capture('replacement', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'video', path: 'materials/replacement.mp4' }] }));
+  saveObservation(root, obs('intact', '09:00:00', 17)); append(root, review());
+  assert.ok(load(root).some(e => e.id === 'replacement')); assert.ok(load(root).some(e => e.id === 'review1'));
+  assert.throws(() => verifyFiles(root, load(root)));
+});
+
+test('exact source references require cited matching captured source evidence', t => {
+  const root = fixture(t), sourceUrl = review().sourceRefs[0].url;
+  const exact = { ...review(), sourceRefs: [{ url: sourceUrl, status: 'exact', note: 'Synthetic primary source' }] };
+  assert.throws(() => append(root, exact), /Exact source.*captured/);
+  fs.writeFileSync(path.join(root, 'materials/source.html'), '<p>Synthetic source text</p>');
+  append(root, capture('source', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'source_page', path: 'materials/source.html', sourceUrl }] }));
+  assert.throws(() => append(root, exact), /Exact source.*captured/);
+  assert.throws(() => append(root, { ...exact, evidencePaths: [...exact.evidencePaths, 'materials/source.html'], sourceRefs: [{ ...exact.sourceRefs[0], url: `${sourceUrl}0` }] }), /Exact source.*captured/);
+  append(root, { ...exact, evidencePaths: [...exact.evidencePaths, 'materials/source.html'] });
+  assert.equal(snapshot(load(root)).items[0].review.sourceRefs[0].status, 'exact');
+  fs.writeFileSync(path.join(root, 'materials/source.html'), 'Changed source');
+  assert.throws(() => append(root, { ...exact, id: 'source-changed', evidencePaths: [...exact.evidencePaths, 'materials/source.html'] }), /Registered asset changed/);
+});
+
 test('draft file separation uses resolved paths instead of three distinct strings', t => {
   const { root, draft } = selectedDraft(t), before = load(root);
   assert.throws(() => append(root, { ...draft, briefPath: 'script.md', scriptPath: './script.md', evidencePath: 'sub/../script.md' }), /separate files/);

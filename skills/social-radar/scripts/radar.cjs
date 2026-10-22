@@ -35,7 +35,10 @@ function validateMetric(k, m) {
   check(m && ['exact', 'rounded', 'unavailable'].includes(m.precision) && typeof m.raw === 'string', 'Metric precision/raw required');
   if (m.precision === 'exact') {
     check(Number.isSafeInteger(m.value) && m.value >= 0 && /^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(m.raw) && Number(m.raw.replaceAll(',', '')) === m.value, `Exact ${k} needs a matching integer display`);
-  } else check(m.value === null, 'Rounded/unavailable metrics must have value:null');
+  } else {
+    check(m.value === null, 'Rounded/unavailable metrics must have value:null');
+    if (m.precision === 'rounded') check(nonempty(m.raw), 'Rounded metrics require a visible display');
+  }
 }
 function url(s) { const u = new URL(s); check(['http:', 'https:'].includes(u.protocol) && !u.username && !u.password, 'Expected public HTTP(S) URL'); return s; }
 function relativeFile(root, file) {
@@ -54,7 +57,15 @@ function fileKey(root, file) {
 }
 function fileResolver(root) {
   const known = new Map();
-  return file => { const key = assetKey(file); if (!known.has(key)) known.set(key, fileKey(root, file)); return known.get(key); };
+  return file => {
+    const key = assetKey(file);
+    if (!known.has(key)) {
+      // Missing unrelated history must not prevent recovery under new paths.
+      // Referenced files still pass strict path/hash checks before append.
+      try { known.set(key, fileKey(root, file)); } catch { known.set(key, `path:${key}`); }
+    }
+    return known.get(key);
+  };
 }
 function config(input = {}) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Invalid config');
@@ -99,13 +110,20 @@ function observationEvidence(e, prior, root, resolve = assetKey) {
     check(a && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && time(a.capturedAt) === time(e.sampledAt), 'Observation requires metric-bearing evidence captured at its sampling time');
   }
   for (const [k, m] of Object.entries(e.metrics)) {
+    validateMetric(k, m);
     const sources = referenced.filter(a => Object.hasOwn(a.metrics, k));
     check(sources.length > 0 && sources.every(a => isDeepStrictEqual(a.metrics[k], m)), `Observation ${k} does not match its captured metric reading`);
   }
   if (root) for (const a of referenced) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
 }
-function eligible(e) {
-  return e.type === 'capture' && new Set(e.assets.map(a => assetKey(a.path))).size === e.assets.length && e.readKinds.some(k => READ_KINDS.has(k)) && e.assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && e.assets.some(a => a.kind === 'caption');
+function eligible(e, registered, resolve = assetKey) {
+  if (e.type !== 'capture') return false;
+  const known = registered || registeredAssets([e], resolve);
+  const assets = e.assets.filter(a => {
+    const first = known.get(resolve(a.path));
+    return first?.workId === e.work.id && isDeepStrictEqual(first.asset, a);
+  });
+  return new Set(assets.map(a => resolve(a.path))).size === assets.length && e.readKinds.some(k => READ_KINDS.has(k)) && assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && assets.some(a => a.kind === 'caption');
 }
 function validate(root, e, prior) {
   check(e && typeof e === 'object' && !Array.isArray(e), 'Event object required');
@@ -125,7 +143,7 @@ function validate(root, e, prior) {
     check(['running', 'paused', 'partial', 'completed'].includes(e.status), 'Invalid attempt status');
     check(nonempty(e.reason), 'Attempt reason required');
     if (e.platform) check(['douyin', 'xiaohongshu'].includes(e.platform), 'Invalid paused platform');
-    if (e.status === 'completed') check(roundStats(prior, round).coverageComplete, 'Round count/coverage targets not met; save partial');
+    if (e.status === 'completed') check(roundStats(prior, round, resolve).coverageComplete, 'Round count/coverage targets not met; save partial');
   } else if (e.type === 'capture') {
     check(round, 'Unknown round');
     check(e.work && ['douyin', 'xiaohongshu'].includes(e.work.platform), 'Invalid work platform');
@@ -176,9 +194,14 @@ function validate(root, e, prior) {
       check(capture, 'Review capture not saved for this work');
       return capture;
     });
-    check(readCaptures.some(eligible), 'Review requires a substantive eligible capture');
+    const registered = registeredAssets(prior, resolve);
+    check(readCaptures.some(c => eligible(c, registered, resolve)), 'Review requires a substantive eligible capture');
     check(Array.isArray(e.gaps) && Array.isArray(e.sourceRefs) && Array.isArray(e.claims), 'Review gaps, claims and sourceRefs arrays required');
-    for (const s of e.sourceRefs) { url(s.url); check(['exact', 'account_clue', 'unverified'].includes(s.status) && nonempty(s.note), 'Source status/note required'); }
+    const sourceAssets = assetsFor(prior, e.workId, resolve).filter(a => ['source_page', 'source_image', 'research_note'].includes(a.kind) && e.evidencePaths.includes(a.path));
+    for (const s of e.sourceRefs) {
+      url(s.url); check(['exact', 'account_clue', 'unverified'].includes(s.status) && nonempty(s.note), 'Source status/note required');
+      if (s.status === 'exact') check(sourceAssets.some(a => a.sourceUrl === s.url), 'Exact source reference requires cited captured source evidence with a matching URL');
+    }
     for (const c of e.claims) { check(nonempty(c.text) && ['verified', 'author_report', 'inference', 'unresolved'].includes(c.status), 'Invalid claim'); evidence(c.evidencePaths); }
     check(Array.isArray(e.comments), 'Comments array required (empty means no verified discussion)');
     const commentPaths = new Set(assetsFor(prior, e.workId, resolve).filter(a => a.kind === 'comments').map(a => a.path));
@@ -194,6 +217,7 @@ function validate(root, e, prior) {
     const previous = prior.findLast(x => x.type === 'task' && x.taskId === e.taskId);
     if (previous) check(previous.workId === e.workId && previous.roundId === e.roundId && previous.kind === e.kind, 'Task identity is immutable');
     if (e.kind === 'revisit') {
+      if (previous) check(previous.baselineObservationId === e.baselineObservationId && time(previous.dueAt) === time(e.dueAt), 'Revisit baseline and deadline are immutable; use a new task to reschedule');
       const baseline = prior.find(x => x.id === e.baselineObservationId && x.type === 'observation' && x.workId === e.workId && x.metrics.likes);
       check(baseline, 'Revisit needs a saved like observation');
       observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)), undefined, resolve);
@@ -235,7 +259,7 @@ function verifyFiles(root, events) {
     if (e.type === 'draft') for (const k of ['briefPath', 'scriptPath', 'evidencePath']) check(digest(root, e[k]) === e.hashes[k], `Registered draft changed: ${e[k]}`);
   }
 }
-function referencedPaths(input, events) {
+function referencedPaths(input, events, resolve = assetKey) {
   const byId = new Map(events.map(e => [e.id, e])), seen = new Set(), refs = new Set(), pending = [input];
   const add = paths => { if (Array.isArray(paths)) for (const p of paths) if (typeof p === 'string') refs.add(assetKey(p)); };
   while (pending.length) {
@@ -246,7 +270,8 @@ function referencedPaths(input, events) {
     const ids = [...(Array.isArray(e.captureIds) ? e.captureIds : []), e.baselineObservationId, e.reviewId, e.selectionEventId];
     for (const id of ids) if (byId.has(id)) pending.push(byId.get(id));
     if (e.type === 'attempt' && e.status === 'completed') {
-      pending.push(...events.filter(c => c.type === 'capture' && c.roundId === e.roundId && eligible(c)));
+      const registered = registeredAssets(events, resolve);
+      pending.push(...events.filter(c => c.type === 'capture' && c.roundId === e.roundId && eligible(c, registered, resolve)));
     }
   }
   return refs;
@@ -261,7 +286,7 @@ function append(root, input) {
     const e = JSON.parse(JSON.stringify(input)), existing = events.find(x => x.id === e.id);
     // Hash only reused/referenced files on append; do not reread every historical
     // video for each metric sample. status/render perform the full integrity pass.
-    const refs = referencedPaths(e, events);
+    const refs = referencedPaths(e, events, fileResolver(root));
     for (const old of events) {
       if (old.type === 'capture') for (const a of old.assets) {
         if (refs.has(assetKey(a.path))) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
@@ -284,8 +309,9 @@ function append(root, input) {
     return { appended: true, id: e.id };
   } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
 }
-function roundStats(events, round) {
-  const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && eligible(e));
+function roundStats(events, round, resolve = assetKey) {
+  const registered = registeredAssets(events, resolve), isEligible = e => eligible(e, registered, resolve);
+  const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && isEligible(e));
   const distinct = new Map(); for (const e of captures) if (!distinct.has(e.work.id)) distinct.set(e.work.id, e);
   const platformCounts = { douyin: 0, xiaohongshu: 0 }, recommended = { douyin: 0, xiaohongshu: 0 };
   let newWorks = 0, practical = 0;
@@ -293,7 +319,7 @@ function roundStats(events, round) {
   for (const [wid, first] of distinct) {
     platformCounts[first.work.platform]++;
     if (['recommendation', 'related'].includes(first.route)) recommended[first.work.platform]++;
-    if (!events.slice(0, roundIndex).some(e => e.type === 'capture' && eligible(e) && e.work.id === wid)) newWorks++;
+    if (!events.slice(0, roundIndex).some(e => e.type === 'capture' && isEligible(e) && e.work.id === wid)) newWorks++;
     if (captures.some(e => e.work.id === wid && e.practicalMethod === true)) practical++;
   }
   const c = round.config, countComplete = Object.keys(platformCounts).every(k => platformCounts[k] >= c.targets[k]);
@@ -353,7 +379,7 @@ function snapshot(events, now = new Date().toISOString(), root) {
       drafts: events.filter(e => e.type === 'draft' && e.workId === workId) };
   });
   return { generatedAt: now, eventCount: events.length, items,
-    rounds: rounds.map(r => ({ ...r, ...roundStats(events, r), attempts: events.filter(e => e.type === 'attempt' && e.roundId === r.roundId) })),
+    rounds: rounds.map(r => ({ ...r, ...roundStats(events, r, resolve), attempts: events.filter(e => e.type === 'attempt' && e.roundId === r.roundId) })),
     tasks: [...taskMap.values()].map(t => ({ ...t, due: t.status === 'pending' && (t.dueAt == null || time(t.dueAt) <= time(now)) })) };
 }
 function main(argv) {

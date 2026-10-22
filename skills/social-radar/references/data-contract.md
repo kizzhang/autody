@@ -20,7 +20,7 @@ node skills/social-radar/scripts/radar.cjs render --store outputs/social-radar -
 
 `status` and `render` optionally accept `--now <ISO-time>` for reproducible inspection. The CSV opens in Excel and protects formula-leading text; it is an export, not an editable database or XLSX workbook. Dashboard buttons prepare instructions using only a validated work ID and the store path; public titles/authors are not interpolated into commands. They provide clipboard/manual-copy fallback and do not mutate records or claim to have run a task. Use a new report directory to retain past reports.
 
-Appending verifies directly referenced registered files and expands event-ID references, including review capture IDs, revisit baselines and draft review revisions, into their backing files. Completed rounds verify their eligible captures, and completed revisits require an intact due-time observation. Unrelated historical videos are not rehashed on every append; `status` and `render` still perform the full integrity pass.
+Appending verifies directly referenced registered files and expands event-ID references, including review capture IDs, revisit baselines and draft review revisions, into their backing files. Completed rounds verify their eligible captures, and completed revisits require an intact due-time observation. Unrelated historical files may be missing or empty without blocking replacement captures under new paths or other intact evidence; `status` and `render` still perform the full integrity pass and report those losses.
 
 ## Events
 
@@ -60,7 +60,7 @@ An `attempt` adds `roundId`, `attemptId`, `status` (`running`, `paused`, `partia
 
 Asset kinds: `caption`, `page_screenshot`, `original_image`, `video`, `clip`, `frame`, `original_subtitles`, `transcript_candidate`, `platform_summary`, `image_text`, `comments`, `source_page`, `source_image`, `research_note`, `metric_snapshot`. Every asset has a store-relative `path`, `sourceUrl`, `capturedAt`, `coverage`; the helper adds/verifies `sha256`. A registered file belongs to its first work and cannot be reused for another work, including normalized path aliases, symlinks and hard links across captures. Save a separate file for each work. Registered files retain both their original bytes and metadata, including capture time and metric readings. Reusing a file for the same work cannot change that metadata. Legacy reuse remains in history but cannot supply a different work or relabelled observation evidence; `status` and `render` resolve file identities when checking it.
 
-A capture cannot list one file more than once, even through dot-segment aliases, symlinks or hard links. Duplicate normalized paths in legacy captures do not qualify for round counts or new substantive reviews; keep that history and save a new valid capture.
+A capture cannot list one file more than once, even through dot-segment aliases, symlinks or hard links. Round counts and new substantive reviews use resolved, first-owner assets with their original metadata. Duplicate or unowned legacy registrations cannot supply the required caption and page/video roles; keep that history and save a new valid capture.
 
 Only `page_screenshot` and `metric_snapshot` assets can supply observation metrics. A `metric_snapshot` is the saved visible-page/DOM reading, including the displayed labels, values and page identity, not a reconstructed researcher summary. Each metric-bearing asset has a `metrics` object with the exact same value/raw/precision schema as observations. Metric snapshots require it; screenshots used only for content do not. Readings must actually be visible in that asset. `capturedAt` is the actual screenshot/snapshot instant; do not backdate it or relabel an old capture to match a desired sample time.
 
@@ -76,7 +76,7 @@ A `clip` also needs actual `startSeconds`/`endSeconds`. A `transcript_candidate`
 }
 ```
 
-Supported public metrics: `likes`, `favorites`, `comments`, `shares`, `followers`. Each uses `value`, literal `raw` count and `precision: exact|rounded|unavailable`. Unknown/rounded numeric values are null. Exact displays accept integers and comma grouping; keep labels separately in evidence. A homepage follower reading at another time gets its own observation. The latest available reading is tracked separately per metric; an unavailable later reading does not erase earlier data or refresh its timestamp. If the later value is rounded, show it as rounded rather than reusing an older exact number.
+Supported public metrics: `likes`, `favorites`, `comments`, `shares`, `followers`. Each uses `value`, literal `raw` count and `precision: exact|rounded|unavailable`. Unknown/rounded numeric values are null. Rounded readings require a nonempty visible display; use `unavailable` when nothing was shown. Exact displays accept integers and comma grouping; keep labels separately in evidence. A homepage follower reading at another time gets its own observation. The latest available reading is tracked separately per metric; an unavailable later reading does not erase earlier data or refresh its timestamp. If the later value is rounded, show it as rounded rather than reusing an older exact number.
 
 Every `evidencePaths` entry must be a saved metric-bearing screenshot/snapshot for this work, captured at the same instant as `sampledAt` (equivalent timezone offsets are accepted). Each observation metric must match at least one referenced asset's reading; multiple referenced readings for that metric must agree. A caption, screenshot without metrics, stale capture or mismatched count is rejected. For a fresh revisit, save fresh evidence before appending the observation. Do not include unrelated content assets in observation evidence.
 
@@ -91,7 +91,7 @@ Growth thresholds come from the round of the latest valid, available like sample
 A `review` adds `workId`, `captureIds` (saved captures actually read), `summary`, `opportunity`, `angle`, `recommendation: shortlist|watch|archive`, `evidencePaths` and arrays:
 
 - `gaps`: remaining missing material/verification.
-- `sourceRefs`: `{url, status: exact|account_clue|unverified, note}`. Store original text/translation in assets, and explain source clusters in `note`.
+- `sourceRefs`: `{url, status: exact|account_clue|unverified, note}`. An `exact` reference requires a registered `source_page`, `source_image` or `research_note` with the same `sourceUrl`, cited in the review's `evidencePaths`. Store original text/translation in assets, and explain source clusters in `note`.
 - `claims`: `{text, status: verified|author_report|inference|unresolved, evidencePaths}`. Evidence paths refer to captured assets, including primary-source checks saved as research notes.
 - `comments`: `{platform: douyin|xiaohongshu|x, kind: disagreement|request|meme|support|ai|other, sampledCount, summary, evidencePaths}`. Empty means no verified discussion, not zero total comments. The detailed reply structure lives in the comments asset.
 
@@ -99,7 +99,7 @@ All referenced evidence must already be registered for that work. At least one r
 
 ### Tasks, selection and drafts
 
-A `task` adds `roundId`, `workId`, stable `taskId`, `kind: revisit|backfill`, `status: pending|done|cancelled`, `reason`, and `dueAt` (nullable for backfill). Revisit tasks also reference `baselineObservationId`; due time must be at least the configured interval after that saved like observation. Marking a revisit done requires a later saved like observation at/after its due time. Updating a task appends a new event with the same `taskId`. Status exposes due tasks; it does not run a scheduler.
+A `task` adds `roundId`, `workId`, stable `taskId`, `kind: revisit|backfill`, `status: pending|done|cancelled`, `reason`, and `dueAt` (nullable for backfill). Revisit tasks also reference `baselineObservationId`; due time must be at least the configured interval after that saved like observation. The revisit baseline and deadline remain immutable across revisions (equivalent timezone offsets are accepted); create a new task ID to reschedule. Marking a revisit done requires a later saved like observation at/after its original due time. Updating a task appends a new event with the same `taskId`. Status exposes due tasks; it does not run a scheduler.
 
 A `decision` adds `workId`, `decision: selected|watch|rejected`, `reason` and `userRequest` preserving the real user instruction. Never fabricate a selection from a model's shortlist. `watch` removes the work from the priority shortlist; `rejected` removes it from both shortlist and watchlist while retaining its materials and task history.
 
