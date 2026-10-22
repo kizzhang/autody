@@ -52,6 +52,10 @@ function fileKey(root, file) {
   const real = relativeFile(root, file), stat = fs.statSync(real, { bigint: true });
   return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${assetKey(real)}`;
 }
+function fileResolver(root) {
+  const known = new Map();
+  return file => { const key = assetKey(file); if (!known.has(key)) known.set(key, fileKey(root, file)); return known.get(key); };
+}
 function config(input = {}) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Invalid config');
   for (const k of Object.keys(input)) check(k in DEFAULTS, `Unknown config key: ${k}`);
@@ -73,22 +77,22 @@ function assetKey(file) {
   const normalized = path.posix.normalize(file);
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
-function registeredAssets(events) {
+function registeredAssets(events, resolve = assetKey) {
   const known = new Map();
   for (const e of events) if (e.type === 'capture') for (const asset of e.assets) {
-    const key = assetKey(asset.path);
+    const key = resolve(asset.path);
     if (!known.has(key)) known.set(key, { workId: e.work.id, asset });
   }
   return known;
 }
-function assetsFor(events, workId) {
+function assetsFor(events, workId, resolve = assetKey) {
   // A legacy cross-work registration must not transfer the first owner's evidence.
-  return [...registeredAssets(events).values()].filter(a => a.workId === workId).map(a => a.asset);
+  return [...registeredAssets(events, resolve).values()].filter(a => a.workId === workId).map(a => a.asset);
 }
-function observationEvidence(e, prior, root) {
+function observationEvidence(e, prior, root, resolve = assetKey) {
   const known = new Map();
   // The first registration owns the timestamp/metric readings for a path.
-  for (const a of assetsFor(prior, e.workId)) if (!known.has(a.path)) known.set(a.path, a);
+  for (const a of assetsFor(prior, e.workId, resolve)) if (!known.has(a.path)) known.set(a.path, a);
   check(Array.isArray(e.evidencePaths) && e.evidencePaths.length > 0, 'Fresh metric evidence required');
   const referenced = e.evidencePaths.map(p => known.get(p));
   for (const a of referenced) {
@@ -109,7 +113,8 @@ function validate(root, e, prior) {
   const round = prior.find(x => x.type === 'round_started' && x.roundId === e.roundId);
   const work = prior.find(x => x.type === 'capture' && x.work.id === e.workId);
   const requireWork = () => check(work, `Unknown work: ${e.workId}`);
-  const knownPaths = () => new Set(assetsFor(prior, e.workId).map(a => a.path));
+  const resolve = fileResolver(root);
+  const knownPaths = () => new Set(assetsFor(prior, e.workId, resolve).map(a => a.path));
   const evidence = (paths) => { check(Array.isArray(paths) && paths.length > 0, 'Evidence paths required'); const known = knownPaths(); for (const p of paths) check(known.has(p), `Evidence not captured for work: ${p}`); };
   if (e.type === 'round_started') {
     id(e.roundId); check(!round, 'Round already exists');
@@ -133,7 +138,7 @@ function validate(root, e, prior) {
     check(typeof e.coverage === 'string' && Array.isArray(e.gaps), 'Coverage and gaps required');
     check(Array.isArray(e.assets) && e.assets.length > 0, 'Assets required');
     check(new Set(e.assets.map(a => fileKey(root, a.path))).size === e.assets.length, 'Duplicate asset path');
-    const registered = registeredAssets(prior);
+    const registered = registeredAssets(prior, resolve);
     for (const a of e.assets) {
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
       check(time(a.capturedAt) <= recorded, 'Asset capture time is after event time');
@@ -146,7 +151,7 @@ function validate(root, e, prior) {
       if (a.kind === 'clip') check(Number.isFinite(a.startSeconds) && a.startSeconds >= 0 && Number.isFinite(a.endSeconds) && a.endSeconds > a.startSeconds, 'Clip needs actual start/end seconds');
       if (a.kind === 'transcript_candidate') check(['ai_extracted_unverified', 'partial', 'verified'].includes(a.status), 'Transcript status required');
       const hash = digest(root, a.path); if (a.sha256) check(a.sha256 === hash, `Asset changed: ${a.path}`); a.sha256 = hash;
-      const old = registered.get(assetKey(a.path));
+      const old = registered.get(resolve(a.path));
       if (old) {
         check(old.workId === e.work.id, 'Asset path already registered for another work; use a new path');
         check(isDeepStrictEqual(old.asset, a), 'Registered asset and its metadata are immutable; use a new path');
@@ -160,7 +165,7 @@ function validate(root, e, prior) {
       validateMetric(k, m);
       check(!prior.some(x => x.type === 'observation' && x.workId === e.workId && time(x.sampledAt) === time(e.sampledAt) && k in x.metrics), `Duplicate ${k} at sample time`);
     }
-    observationEvidence(e, prior);
+    observationEvidence(e, prior, undefined, resolve);
   } else if (e.type === 'review') {
     requireWork(); evidence(e.evidencePaths);
     check(['shortlist', 'watch', 'archive'].includes(e.recommendation), 'Invalid recommendation');
@@ -176,7 +181,7 @@ function validate(root, e, prior) {
     for (const s of e.sourceRefs) { url(s.url); check(['exact', 'account_clue', 'unverified'].includes(s.status) && nonempty(s.note), 'Source status/note required'); }
     for (const c of e.claims) { check(nonempty(c.text) && ['verified', 'author_report', 'inference', 'unresolved'].includes(c.status), 'Invalid claim'); evidence(c.evidencePaths); }
     check(Array.isArray(e.comments), 'Comments array required (empty means no verified discussion)');
-    const commentPaths = new Set(assetsFor(prior, e.workId).filter(a => a.kind === 'comments').map(a => a.path));
+    const commentPaths = new Set(assetsFor(prior, e.workId, resolve).filter(a => a.kind === 'comments').map(a => a.path));
     for (const c of e.comments) {
       check(['douyin', 'xiaohongshu', 'x'].includes(c.platform) && ['disagreement', 'request', 'meme', 'support', 'ai', 'other'].includes(c.kind), 'Comment platform/kind required');
       check(Number.isSafeInteger(c.sampledCount) && c.sampledCount > 0 && nonempty(c.summary), 'Comment count/summary required'); evidence(c.evidencePaths);
@@ -191,11 +196,11 @@ function validate(root, e, prior) {
     if (e.kind === 'revisit') {
       const baseline = prior.find(x => x.id === e.baselineObservationId && x.type === 'observation' && x.workId === e.workId && x.metrics.likes);
       check(baseline, 'Revisit needs a saved like observation');
-      observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)));
+      observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)), undefined, resolve);
       check(time(e.dueAt) >= time(baseline.sampledAt) + round.config.minIntervalMinutes * 60000, 'Revisit is earlier than the minimum interval');
       if (e.status === 'done') check(prior.some((x, i) => {
         if (x.type !== 'observation' || x.workId !== e.workId || !x.metrics.likes || time(x.sampledAt) < time(e.dueAt)) return false;
-        try { observationEvidence(x, prior.slice(0, i), root); return true; } catch { return false; }
+        try { observationEvidence(x, prior.slice(0, i), root, resolve); return true; } catch { return false; }
       }), 'No due-time revisit observation saved');
     }
   } else if (e.type === 'decision') {
@@ -210,8 +215,10 @@ function validate(root, e, prior) {
     if (e.hashes === undefined) e.hashes = {};
     check(e.hashes && typeof e.hashes === 'object' && !Array.isArray(e.hashes), 'Draft hashes must be a plain object');
     const draftKeys = ['briefPath', 'scriptPath', 'evidencePath'];
-    const resolved = Object.fromEntries(draftKeys.map(k => [k, fileKey(root, e[k])]));
+    const resolved = Object.fromEntries(draftKeys.map(k => [k, resolve(e[k])]));
     check(new Set(Object.values(resolved)).size === 3, 'Brief, script and evidence must be separate files');
+    const sources = registeredAssets(prior, resolve);
+    for (const key of Object.values(resolved)) check(!sources.has(key), 'Draft files must be separate from captured source files');
     for (const k of ['briefPath', 'scriptPath', 'evidencePath']) {
       const hash = digest(root, e[k]); if (e.hashes[k]) check(e.hashes[k] === hash, `Draft file changed: ${e[k]}`);
       for (const old of prior.filter(x => x.type === 'draft')) for (const oldKey of ['briefPath', 'scriptPath', 'evidencePath']) {
@@ -319,11 +326,12 @@ function growth(observations, c = DEFAULTS) {
   }
   return result;
 }
-function snapshot(events, now = new Date().toISOString()) {
+function snapshot(events, now = new Date().toISOString(), root) {
   time(now); const works = new Map(), rounds = events.filter(e => e.type === 'round_started');
+  const resolve = root ? fileResolver(root) : assetKey;
   const observationChecks = new Map();
   for (let i = 0; i < events.length; i++) if (events[i].type === 'observation') {
-    try { observationEvidence(events[i], events.slice(0, i)); observationChecks.set(events[i].id, null); }
+    try { observationEvidence(events[i], events.slice(0, i), undefined, resolve); observationChecks.set(events[i].id, null); }
     catch (error) { observationChecks.set(events[i].id, error.message); }
   }
   const taskMap = new Map(); for (const e of events) if (e.type === 'task') taskMap.set(e.taskId, e);
@@ -354,7 +362,7 @@ function main(argv) {
   check(opts.store, 'Usage: radar.cjs append|status|render --store <directory> [--input event.json] [--out report-directory] [--now ISO-time]');
   check(['append', 'status', 'render'].includes(command), 'Unknown command');
   if (command === 'append') { check(opts.input, '--input required'); return append(opts.store, JSON.parse(fs.readFileSync(opts.input, 'utf8').replace(/^\uFEFF/, ''))); }
-  const events = load(opts.store); verifyFiles(opts.store, events); const state = snapshot(events, opts.now);
+  const events = load(opts.store); verifyFiles(opts.store, events); const state = snapshot(events, opts.now, opts.store);
   if (command === 'render') { check(opts.out, '--out required'); return require('./render-radar.cjs').writeReport(state, opts.store, opts.out); }
   return state;
 }

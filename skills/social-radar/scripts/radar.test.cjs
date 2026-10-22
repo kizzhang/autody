@@ -415,6 +415,54 @@ function selectedDraft(t) {
   return { root, draft: event('draft', 'draft1', { workId: 'xiaohongshu:example', selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' }) };
 }
 
+test('later captures cannot transfer or relabel a registered file through a hard link', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+  const original = load(root).find(e => e.id === 'capture-baseline');
+  const alias = 'materials/linked-metrics.json';
+  fs.linkSync(path.join(root, original.assets[0].path), path.join(root, alias));
+  const linked = { ...original.assets[0], path: alias };
+  const other = { ...original.work, id: 'xiaohongshu:other' };
+  const before = load(root);
+  assert.throws(() => append(root, capture('transferred-link', { work: other, readKinds: [], assets: [linked] })), /another work/);
+  assert.throws(() => append(root, capture('relabeled-link', { readKinds: [], assets: [{ ...linked, capturedAt: '2026-10-21T09:20:00+08:00', metrics: { likes: { value: 90, raw: '90', precision: 'exact' } } }] })), /immutable/);
+  assert.deepEqual(load(root), before);
+  fs.copyFileSync(path.join(root, alias), path.join(root, 'materials/fresh-metrics.json'));
+  append(root, capture('separate-file', { work: other, readKinds: [], assets: [{ ...linked, path: 'materials/fresh-metrics.json' }] }));
+});
+
+test('legacy linked metric registrations stay history without supplying new readings', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+  const original = load(root).find(e => e.id === 'capture-baseline');
+  const alias = 'materials/legacy-linked.json';
+  fs.linkSync(path.join(root, original.assets[0].path), path.join(root, alias));
+  const later = { ...obs('legacy-linked-point', '09:20:00', 90), evidencePaths: [alias] };
+  const file = path.join(root, 'events/00000005-legacy-linked.json');
+  fs.writeFileSync(file, JSON.stringify({ ...original, id: 'legacy-linked', assets: [{ ...original.assets[0], path: alias, capturedAt: later.sampledAt, metrics: later.metrics }] }));
+  assert.throws(() => append(root, { ...later, id: 'new-linked-point' }), /metric-bearing evidence/);
+  fs.writeFileSync(path.join(root, 'events/00000006-legacy-linked-point.json'), JSON.stringify(later));
+  const before = fs.readFileSync(file);
+  const result = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'status', '--store', root], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const item = JSON.parse(result.stdout).items[0];
+  assert.equal(item.latest.likes.value, 17); assert.equal(item.growth.points.length, 1);
+  assert.equal(item.evidenceGaps[0].observationId, later.id);
+  assert.deepEqual(fs.readFileSync(file), before);
+});
+
+test('draft components cannot reuse captured source files or their hard links', t => {
+  const { root, draft } = selectedDraft(t);
+  captureMetricEvidence(root, obs('source', '09:00:00', 17));
+  const sources = ['materials/caption.md', 'materials/page.png', 'materials/metrics-source.json'];
+  fs.linkSync(path.join(root, sources[0]), path.join(root, 'materials/linked-caption.md'));
+  const before = load(root);
+  for (const source of [...sources, 'materials/linked-caption.md']) for (const key of ['briefPath', 'scriptPath', 'evidencePath']) {
+    assert.throws(() => append(root, { ...draft, [key]: source }), /captured source/);
+    assert.deepEqual(load(root), before);
+  }
+  assert.throws(() => append(root, { ...draft, briefPath: sources[0], scriptPath: sources[1], evidencePath: sources[2] }), /captured source/);
+  append(root, draft); verifyFiles(root, load(root));
+});
+
 test('draft file separation uses resolved paths instead of three distinct strings', t => {
   const { root, draft } = selectedDraft(t), before = load(root);
   assert.throws(() => append(root, { ...draft, briefPath: 'script.md', scriptPath: './script.md', evidencePath: 'sub/../script.md' }), /separate files/);
