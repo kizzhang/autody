@@ -2214,3 +2214,38 @@ test('a reopened revisit stays open when the correction that made its baseline u
   assert.equal(reopened.baselineUnavailable, true); assert.equal(reopened.baselineEvidenceLost, true);
   assert.equal(summary(state).pendingTasks.length, 1);
 });
+
+test('deduplicating identical registered files into hard links changes no ownership', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  fs.copyFileSync(path.join(root, 'materials/caption.md'), path.join(root, 'materials/other-caption.md'));
+  freshCopy(root, 'materials/page.png', 'materials/other-page.png');
+  append(root, capture('other', { roundId: 'r2', work: other, assets: [{ ...capture().assets[0], path: 'materials/other-caption.md', sourceUrl: other.url }, { ...capture().assets[1], path: 'materials/other-page.png', sourceUrl: other.url }] }));
+  saveObservation(root, obs('o1', '09:00:00', 17));
+  fs.copyFileSync(path.join(root, 'materials/metrics-o1.json'), path.join(root, 'materials/metrics-o1-fix.json'));
+  append(root, capture('fix', { readKinds: [], assets: [{ kind: 'metric_snapshot', path: 'materials/metrics-o1-fix.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T09:00:00+08:00', coverage: 'Reread of the same snapshot', metrics: { likes: { value: 71, precision: 'exact', raw: '71' } } }] }));
+  append(root, { ...obs('o1-fix', '09:00:00', 71), evidencePaths: ['materials/metrics-o1-fix.json'], correctsObservationId: 'o1' });
+  const dedupe = (from, to) => { fs.rmSync(path.join(root, to)); fs.linkSync(path.join(root, from), path.join(root, to)); };
+  try { dedupe('materials/caption.md', 'materials/other-caption.md'); dedupe('materials/metrics-o1.json', 'materials/metrics-o1-fix.json'); } catch { t.skip('hard links unavailable'); return; }
+  const state = checkedSnapshot(root);
+  assert.deepEqual(state.integrityIssues, []);
+  assert.equal(state.rounds[1].unique, 1);
+  assert.equal(state.items.find(i => i.work.id === 'xiaohongshu:example').latest.likes.value, 71);
+  append(root, { ...review('other-review'), workId: other.id, captureIds: ['other'], evidencePaths: ['materials/other-caption.md'], claims: [{ text: 'Synthetic claim', status: 'author_report', evidencePaths: ['materials/other-caption.md'] }] });
+});
+
+test('practicalMethod must be a boolean and summary lists the latest round s counted works', t => {
+  const root = fixture(t);
+  assert.throws(() => append(root, capture('typo', { practicalMethod: 'true' })), /practicalMethod must be true or false/);
+  assert.deepEqual(summary(snapshot(load(root))).rounds.at(-1).countedWorks, ['xiaohongshu:example']);
+  append(root, round('r2', { minNew: 0 }));
+  const brief = summary(snapshot(load(root)));
+  assert.deepEqual(brief.rounds.at(-1).countedWorks, []); assert.equal(brief.rounds[0].countedWorks, undefined);
+});
+
+test('the date-seen note uses the capture s own local day', t => {
+  const root = fixture(t); append(root, review());
+  const state = snapshot(load(root)), item = state.items[0];
+  const html = render({ ...state, items: [{ ...item, dateSeenAt: '2026-10-21T10:00:00-07:00' }] }, root, path.join(root, 'reports'));
+  assert.match(html, /采集于 2026\/10\/21/); assert.ok(!html.includes('采集于 2026/10/22'));
+});

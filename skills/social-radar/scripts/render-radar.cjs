@@ -55,7 +55,9 @@ function render(state, store, out) {
   const selected = state.items.filter(i => i.decision?.decision === 'selected');
   // Relative labels such as "昨天" only make sense next to the day they were read.
   // The label was read from the page, so use the page or caption capture time rather than the save time.
-  const seen = i => i.dateSeenAt ? `（采集于 ${new Intl.DateTimeFormat('zh-CN', { timeZone: tz, dateStyle: 'short' }).format(new Date(i.dateSeenAt))}）` : '';
+  // The label was read in the capture's local time, so its own offset gives that day, whatever the round's time zone.
+  const localDay = s => { const m = /([+-])(\d{2}):(\d{2})$/.exec(s), offset = m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0; return new Intl.DateTimeFormat('zh-CN', { timeZone: 'UTC', dateStyle: 'short' }).format(new Date(Date.parse(s) + offset * 60000)); };
+  const seen = i => i.dateSeenAt ? `（采集于 ${localDay(i.dateSeenAt)}）` : '';
   const assetIssues = (state.integrityIssues || []).filter(x => x.kind !== 'draft').length, draftIssues = (state.integrityIssues || []).filter(x => x.kind === 'draft');
   const draftEdits = draftIssues.filter(x => /^Registered draft changed/.test(x.reason)).length, draftMissing = draftIssues.length - draftEdits;
   const draftCount = i => {

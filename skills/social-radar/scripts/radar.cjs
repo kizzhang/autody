@@ -136,6 +136,11 @@ function hashFile(file) {
   return hash.digest('hex');
 }
 function digest(root, file) { return hashFile(relativeFile(root, file)); }
+function syncDirectory(dir) {
+  // Persist a rename where the platform can sync a directory; a failure here must not undo a committed save.
+  if (process.platform === 'win32') return;
+  try { const fd = fs.openSync(dir, 'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } } catch { /* Best effort. */ }
+}
 function identity(realFile, stat) { return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${assetKey(realFile)}`; }
 function physicalFileKey(file) { return identity(real(file), fs.statSync(file, { bigint: true })); }
 function fileKey(root, file, realRoot) { const { realFile, stat } = storedFile(root, file, realRoot); return identity(realFile, stat); }
@@ -195,9 +200,10 @@ function fileResolver(root) {
     }
     return known.get(key);
   };
-  // A registered path that now shares another registration's file identity, though both were saved with
-  // different bytes, was replaced after registration. It keeps an identity of its own, so neither path takes
-  // over the other's ownership history; the integrity check reports whichever file changed.
+  // A registered path that now shares another registration's file identity was replaced or linked after it was
+  // saved, for example by a deduplication tool (registration refuses aliases). It keeps an identity of its own,
+  // so neither path takes over the other's history; ownership of identical bytes still follows their first
+  // registration, and the integrity check reports a file whose bytes changed.
   resolve.split = file => { const key = assetKey(file), own = `path:${key}`; known.set(key, own); return own; };
   return resolve;
 }
@@ -252,7 +258,7 @@ function ledgerIndex(events, resolve) {
     for (const asset of e.assets) {
       let key = resolve(asset.path);
       const prior = entries.get(key);
-      if (prior && resolve.split && assetKey(prior.asset.path) !== assetKey(asset.path) && prior.asset.sha256 !== asset.sha256) key = resolve.split(asset.path);
+      if (prior && resolve.split && assetKey(prior.asset.path) !== assetKey(asset.path)) key = resolve.split(asset.path);
       if (entries.has(key)) continue;
       const entry = { index: i, workId: e.work.id, work: works.get(e.work.id), roundId: e.roundId, asset, fromDraft: generated.has(key) || draftHashes.has(asset.sha256) };
       entries.set(key, entry);
@@ -371,6 +377,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
       for (const c of earlierCaptures) for (const a of c.assets) check(publicationAllowsAsset(a, e.work), `Publication timestamp cannot follow earlier work capture evidence: ${a.path}`);
     }
     check(['recommendation', 'related', 'search', 'direct'].includes(e.route), 'Invalid discovery route');
+    check(e.practicalMethod === undefined || typeof e.practicalMethod === 'boolean', 'practicalMethod must be true or false when present');
     check(Array.isArray(e.readKinds) && e.readKinds.every(k => READ_KINDS.has(k)), 'Invalid substantive read kind (summaries/title cards do not count)');
     check(typeof e.coverage === 'string' && Array.isArray(e.gaps) && e.gaps.every(nonempty), 'Coverage and gaps required; each gap is a nonempty string');
     check(Array.isArray(e.assets) && e.assets.length > 0, 'Assets required');
@@ -637,7 +644,7 @@ function append(root, input) {
     try {
       try { fs.writeFileSync(out, `${JSON.stringify(normalized, null, 2)}\n`); fs.fsyncSync(out); } finally { fs.closeSync(out); }
       const prefix = `${String(n).padStart(8, '0')}-`;
-      check(!fs.readdirSync(dir).some(name => name.startsWith(prefix) && name.endsWith('.json')), 'Sequence conflict: an event already uses this sequence number'); fs.renameSync(tmp, target);
+      check(!fs.readdirSync(dir).some(name => name.startsWith(prefix) && name.endsWith('.json')), 'Sequence conflict: an event already uses this sequence number'); fs.renameSync(tmp, target); syncDirectory(dir);
     } finally { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); }
     return { appended: true, id: e.id };
   } finally {
@@ -683,7 +690,7 @@ function roundStats(events, round, resolve = assetKey) {
   }
   const c = round.config, countComplete = Object.keys(platformCounts).every(k => platformCounts[k] >= c.targets[k]);
   const coverageComplete = countComplete && newWorks >= c.minNew && practical >= c.practicalSlots && Object.keys(recommended).every(k => !c.targets[k] || recommended[k] >= c.minRecommended);
-  return { unique: distinct.size, repeatReads: captures.length - distinct.size, platformCounts, recommended, newWorks, practical, countComplete, coverageComplete };
+  return { unique: distinct.size, countedWorks: [...distinct.keys()], repeatReads: captures.length - distinct.size, platformCounts, recommended, newWorks, practical, countComplete, coverageComplete };
 }
 function growth(observations, c = DEFAULTS) {
   const points = observations.filter(o => o.metrics.likes && o.metrics.likes.precision !== 'unavailable').sort((a, b) => time(a.sampledAt) - time(b.sampledAt));
@@ -827,7 +834,7 @@ function summary(state) {
   const recentSince = time(state.generatedAt) - 7 * 86400000, priority = candidates.filter(i => time(i.review.recordedAt) >= recentSince);
   return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, profile: state.rounds.at(-1)?.profile ?? null, storeExists: state.storeExists ?? true, journalGaps: state.journalGaps ?? [], journalDuplicates: state.journalDuplicates ?? [], integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
-    rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, pausedPlatforms: pausedPlatforms(r.attempts), lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
+    rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, ...(r === state.rounds.at(-1) ? { countedWorks: r.countedWorks } : {}), pausedPlatforms: pausedPlatforms(r.attempts), lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
     pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened, baselineUnavailable, baselineEvidenceLost }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}), ...(baselineUnavailable ? { baselineUnavailable } : {}), ...(baselineEvidenceLost ? { baselineEvidenceLost } : {}) })),
     shortlist: priority.map(i => ({ workId: i.work.id, title: i.work.title, angle: i.review.angle, reviewId: i.review.id })),
     decisions: state.items.filter(i => i.decision).map(i => ({ workId: i.work.id, decision: i.decision.decision, recordedAt: i.decision.recordedAt })),
