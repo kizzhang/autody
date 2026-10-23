@@ -566,17 +566,30 @@ function append(root, input) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Event object required');
   check(fs.existsSync(path.join(root, 'events')) || input.type === 'round_started', `No ledger at ${root}; check --store, or start a new store with a round_started event`);
   if (!fs.existsSync(path.join(root, 'events'))) {
-    // A new store nested inside another one would be deleted together with it when the outer store is retired.
-    for (let dir = path.dirname(root); ; dir = path.dirname(dir)) {
-      const journal = path.join(dir, 'events');
-      const outer = fs.existsSync(journal) && fs.statSync(journal).isDirectory() && fs.readdirSync(journal).some(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n));
-      check(!outer, `New store ${root} would sit inside the existing store ${dir}; use a sibling directory`);
+    // A new store nested inside another one, or wrapping one, would be deleted with it when the outer store is
+    // retired. Check both the given path and its physical location (directory links can hide nesting).
+    const hasJournal = dir => { try { return fs.readdirSync(path.join(dir, 'events')).some(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)); } catch { return false; } };
+    let existing = root; const suffix = [];
+    while (!fs.existsSync(existing) && path.dirname(existing) !== existing) { suffix.unshift(path.basename(existing)); existing = path.dirname(existing); }
+    const physicalRoot = path.join(real(existing), ...suffix);
+    for (const start of new Set([root, physicalRoot])) for (let dir = path.dirname(start); ; dir = path.dirname(dir)) {
+      check(!hasJournal(dir), `New store ${root} would sit inside the existing store ${dir}; use a sibling directory`);
       if (path.dirname(dir) === dir) break;
     }
-    // Nor may a new store wrap existing stores in its subdirectories (checked two levels deep).
-    const hasJournal = dir => { try { return fs.readdirSync(path.join(dir, 'events')).some(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)); } catch { return false; } };
-    const children = dir => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory() && d.name !== 'events').map(d => path.join(dir, d.name)); } catch { return []; } };
-    for (const child of children(root)) for (const inner of [child, ...children(child)]) check(!hasJournal(inner), `New store ${root} would contain the existing store ${inner}; use a sibling directory`);
+    // Subdirectories are scanned without following links, within a budget; a new store belongs in a new directory.
+    const pending = [{ dir: root, depth: 0 }]; let visited = 0;
+    while (pending.length) {
+      const { dir, depth } = pending.pop();
+      let entries = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      for (const d of entries) {
+        if (!d.isDirectory() || d.isSymbolicLink() || d.name === 'events') continue;
+        const inner = path.join(dir, d.name);
+        check(!hasJournal(inner), `New store ${root} would contain the existing store ${inner}; use a sibling directory`);
+        check(++visited <= 2000 && depth < 8, `New store ${root} has too many subdirectories to check; create the store in a new directory`);
+        pending.push({ dir: inner, depth: depth + 1 });
+      }
+    }
   }
   fs.mkdirSync(root, { recursive: true });
   fs.mkdirSync(eventDirectory(root), { recursive: true }); const dir = eventDirectory(root);
@@ -632,7 +645,11 @@ function roundStats(events, round, resolve = assetKey) {
   const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && isEligible(e) && freshInRound(e));
   // A discovery capture newly saves non-metric evidence of the work; re-listed files do not change what a revisit was.
   const position = new Map(events.map((e, i) => [e, i]));
-  const discovers = e => e.assets.some(a => !(METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined) && workBound(a, e.work) && registered.get(resolve(a.path))?.index === position.get(e));
+  const discovers = e => e.assets.some(a => {
+    // Only the capture's own, first-owned, uncopied and intact work evidence records a discovery route.
+    const first = registered.get(resolve(a.path));
+    return !(METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined) && workBound(a, e.work) && first?.index === position.get(e) && first.workId === e.work.id && !first.fromDraft && !copiedContent(first, registered) && !unusable(resolve, a);
+  });
   const distinct = new Map(); for (const e of captures) if (!distinct.has(e.work.id)) distinct.set(e.work.id, e);
   const platformCounts = { douyin: 0, xiaohongshu: 0 }, recommended = { douyin: 0, xiaohongshu: 0 };
   let newWorks = 0, practical = 0;
@@ -763,7 +780,6 @@ function snapshot(events, now = new Date().toISOString(), root, integrity) {
     if (!b || observationChecks.get(b.id)) return 'evidence_lost';
     return b.metrics.likes && b.metrics.likes.precision !== 'unavailable' ? 'ok' : 'unavailable';
   };
-  const baselineStands = t => baselineState(t) === 'ok';
   // A finished revisit reopens when its baseline was corrected to unavailable or its completing reading no longer
   // stands; lost baseline files only flag it, because the revisit itself already happened.
   const revisitDone = t => baselineState(t) !== 'unavailable' && (groups.get(t.workId)?.observations || []).some(o => !observationChecks.get(o.id) && !superseded.has(o.id) && o.metrics.likes && o.metrics.likes.precision !== 'unavailable' && time(o.sampledAt) >= time(t.dueAt));

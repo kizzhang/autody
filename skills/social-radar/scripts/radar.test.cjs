@@ -2065,3 +2065,63 @@ test('the CSV leaves out an unsupported newest review s gaps and sources', t => 
   const csv = fs.readFileSync(writeReport(checkedSnapshot(root), root, path.join(root, 'reports')).csv, 'utf8');
   assert.ok(!csv.includes('OLD_REVIEW_GAP')); assert.ok(!csv.includes('x.com/old'));
 });
+
+test('copied or lost lead evidence does not record a recommendation route', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  fs.writeFileSync(path.join(root, 'materials/a-image.png'), 'Synthetic original image of the first work');
+  append(root, capture('a-image', { roundId: 'r2', readKinds: [], route: 'search', assets: [{ ...capture().assets[0], kind: 'original_image', path: 'materials/a-image.png', coverage: 'Synthetic image' }] }));
+  fs.copyFileSync(path.join(root, 'materials/a-image.png'), path.join(root, 'materials/b-lead.png'));
+  append(root, capture('b-lead', { roundId: 'r2', work: other, readKinds: [], route: 'recommendation', assets: [{ ...capture().assets[0], kind: 'original_image', path: 'materials/b-lead.png', sourceUrl: other.url, coverage: 'Copied image' }] }));
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/b-own-'); freshCopy(root, a.path, file); return { ...a, path: file, sourceUrl: other.url }; });
+  append(root, capture('b-read', { roundId: 'r2', work: other, route: 'search', assets }));
+  assert.equal(snapshot(load(root)).rounds[1].recommended.xiaohongshu, 0);
+});
+
+test('a new store cannot hide inside another store through a directory link or wrap a deep one', t => {
+  const parent = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'autody-radar-nest-'));
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const old = path.join(parent, 'old-store'); fs.mkdirSync(path.join(old, 'materials'), { recursive: true }); append(old, round());
+  let linked = true;
+  try { fs.symlinkSync(path.join(old, 'materials'), path.join(parent, 'materials-alias'), 'junction'); } catch { linked = false; }
+  if (linked) assert.throws(() => append(path.join(parent, 'materials-alias', 'new-store'), round('hidden')), /inside the existing store/);
+  const deep = path.join(parent, 'outer', 'archive', '2026', 'october'); fs.mkdirSync(path.join(deep, 'materials'), { recursive: true }); append(deep, round('deep'));
+  assert.throws(() => append(path.join(parent, 'outer'), round('wrapper')), /would contain the existing store/);
+});
+
+test('the dashboard warns about journal gaps and lists only revisit work in the watchlist', t => {
+  const root = fixture(t); append(root, { ...review(), recommendation: 'archive' });
+  append(root, event('task', 'backfill', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'backfill', kind: 'backfill', status: 'pending', reason: 'Save the video', dueAt: null }));
+  append(root, round('r2'));
+  fs.rmSync(path.join(root, 'events', fs.readdirSync(path.join(root, 'events')).sort()[2]));
+  const run = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'render', '--store', root, '--out', path.join(root, 'reports')], { encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  const html = fs.readFileSync(path.join(root, 'reports/report.html'), 'utf8');
+  assert.match(html, /事件记录缺少序号 3/);
+  assert.ok(!html.split('<section id="watch">')[1].split('</section>')[0].includes('<tr data-search'));
+});
+
+test('documented field rules reject their counterexamples', t => {
+  const root = fixture(t), before = load(root);
+  const rejects = (input, pattern) => { assert.throws(() => append(root, input), pattern); assert.deepEqual(load(root), before); };
+  rejects({ ...round('no-zone'), timezone: '' }, /timezone/);
+  rejects({ ...round('bad-zone'), timezone: 'Mars/Base' }, /Invalid time zone|timeZone/i);
+  rejects(round('fraction', { minNew: 0.5 }), /must be an integer/);
+  rejects(round('windows', { shortWindowHours: 0.1 }), /Invalid growth windows/);
+  rejects(event('attempt', 'bad-platform', { roundId: 'r1', attemptId: 'a', status: 'paused', platform: 'weibo', reason: 'Synthetic' }), /paused platform/);
+  rejects(capture('no-title', { work: { ...capture().work, title: ' ' } }), /title and author/);
+  rejects(capture('bad-route', { route: 'timeline' }), /discovery route/);
+  fs.writeFileSync(path.join(root, 'materials/transcript.md'), 'Synthetic transcript');
+  rejects(capture('bad-transcript', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'transcript_candidate', path: 'materials/transcript.md', status: 'guessed' }] }), /Transcript status/);
+  rejects({ ...review('bad-recommendation'), recommendation: 'maybe' }, /Invalid recommendation/);
+  rejects({ ...review('no-angle'), angle: '' }, /Review angle required/);
+  fs.writeFileSync(path.join(root, 'materials/comments.md'), 'Synthetic comments');
+  append(root, capture('comments', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'comments', path: 'materials/comments.md', coverage: 'Synthetic comments' }] }));
+  assert.throws(() => append(root, { ...review('zero-comments'), comments: [{ platform: 'xiaohongshu', kind: 'support', sampledCount: 0, summary: 'None', evidencePaths: ['materials/comments.md'] }] }), /count\/summary/);
+  const outside = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'autody-radar-outside-'));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(outside, 'page.png'), 'Synthetic outside screenshot');
+  let linked = true; try { fs.symlinkSync(outside, path.join(root, 'materials', 'outside-link'), 'junction'); } catch { linked = false; }
+  if (linked) assert.throws(() => append(root, capture('escape', { readKinds: [], assets: [{ ...capture().assets[1], path: 'materials/outside-link/page.png' }] })), /Symlink escapes store/);
+  assert.equal(render({ ...snapshot(load(root)), items: snapshot(load(root)).items.map(i => ({ ...i, work: { ...i.work, url: 'javascript:alert(1)' } })) }, root, path.join(root, 'reports')).includes('href="javascript:'), false);
+});
