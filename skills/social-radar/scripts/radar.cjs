@@ -465,10 +465,13 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
       check(commentAssets.some(a => c.evidencePaths.includes(a.path) && sourcePlatform(a.sourceUrl) === c.platform), 'Comment summary requires captured comments evidence on its stated platform');
     }
   } else if (e.type === 'task') {
-    requireWork(); check(round, 'Unknown round'); id(e.taskId);
+    id(e.taskId);
+    const previous = prior.findLast(x => x.type === 'task' && x.taskId === e.taskId);
+    // Cancelling an existing task asserts nothing about its work, round or baseline, so it still works when a
+    // quarantined or lost journal file took those records.
+    if (!(previous && e.status === 'cancelled')) { requireWork(); check(round, 'Unknown round'); }
     check(['revisit', 'backfill'].includes(e.kind) && ['pending', 'done', 'cancelled'].includes(e.status) && nonempty(e.reason), 'Invalid task');
     if (e.dueAt != null) time(e.dueAt);
-    const previous = prior.findLast(x => x.type === 'task' && x.taskId === e.taskId);
     if (previous) check(previous.workId === e.workId && previous.roundId === e.roundId && previous.kind === e.kind, 'Task identity is immutable');
     if (e.kind === 'revisit') {
       if (previous) check(previous.baselineObservationId === e.baselineObservationId && time(previous.dueAt) === time(e.dueAt), 'Revisit baseline and deadline are immutable; use a new task to reschedule');
@@ -714,10 +717,12 @@ function growth(observations, c = DEFAULTS) {
   result.relative = a.metrics.likes.value > 0 ? delta / a.metrics.likes.value : null;
   if (minutes > c.shortWindowHours * 60) return { ...result, status: 'cross_round_average' };
   result.status = 'short_window';
-  result.lowLikeFast = b.metrics.likes.value < c.lowLikeCeiling && delta >= c.minNewLikes && (a.metrics.likes.value === 0 || result.relative >= c.minRelativeGrowth);
-  result.fast = delta >= c.minNewLikes && result.perHour >= c.fastLikesPerHour;
+  // Growth flags need an actual increase, even when minNewLikes is configured as zero.
+  const grew = delta > 0 && delta >= c.minNewLikes;
+  result.lowLikeFast = grew && b.metrics.likes.value < c.lowLikeCeiling && (a.metrics.likes.value === 0 || result.relative >= c.minRelativeGrowth);
+  result.fast = grew && result.perHour >= c.fastLikesPerHour;
   // Acceleration compares this window with the preceding window built the same way.
-  const previousIndex = delta >= c.minNewLikes ? points.findLastIndex(p => olderBy(a, p)) : -1;
+  const previousIndex = grew ? points.findLastIndex(p => olderBy(a, p)) : -1;
   if (previousIndex >= 0) {
     const p = points[previousIndex], previousMinutes = (time(a.sampledAt) - time(p.sampledAt)) / 60000;
     const previousWindow = points.slice(previousIndex, startIndex + 1);

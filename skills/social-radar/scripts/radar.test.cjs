@@ -2249,3 +2249,18 @@ test('the date-seen note uses the capture s own local day', t => {
   const html = render({ ...state, items: [{ ...item, dateSeenAt: '2026-10-21T10:00:00-07:00' }] }, root, path.join(root, 'reports'));
   assert.match(html, /采集于 2026\/10\/21/); assert.ok(!html.includes('采集于 2026/10/22'));
 });
+
+test('a task can still be cancelled after its work s capture records are lost', t => {
+  const root = fixture(t); saveObservation(root, obs('base', '09:00:00', 17));
+  const task = event('task', 'revisit-task', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'base', dueAt: '2026-10-21T09:30:00+08:00' });
+  append(root, task);
+  for (const name of fs.readdirSync(path.join(root, 'events'))) if (/-capture/.test(name)) fs.rmSync(path.join(root, 'events', name));
+  assert.throws(() => append(root, { ...task, id: 'revisit-done', status: 'done' }), /Unknown work/);
+  append(root, { ...task, id: 'revisit-cancel', status: 'cancelled', reason: 'Work records lost; rebuild from a fresh capture' });
+  assert.equal(snapshot(load(root)).tasks[0].status, 'cancelled');
+});
+
+test('zero growth is never a fast or low-like fast increase', () => {
+  const g = growth([obs('a', '12:00:00', 0), obs('b', '12:20:00', 0)], { ...DEFAULTS, minNewLikes: 0, fastLikesPerHour: 0 });
+  assert.equal(g.delta, 0); assert.equal(g.lowLikeFast, false); assert.equal(g.fast, false); assert.equal(g.accelerating, false);
+});
