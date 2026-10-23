@@ -272,7 +272,7 @@ function copiedContent(entry, registry) {
   const first = typeof entry.asset.sha256 === 'string' ? registry.firstByHash(entry.asset.sha256) : undefined;
   if (!first || first === entry || first.asset === entry.asset) return null;
   if (CONTENT_IDENTITY_KINDS.has(entry.asset.kind) && first.workId !== entry.workId) return `Asset content of ${entry.asset.path} is already registered for another work (${first.workId}: ${first.asset.path}); save this work's own file`;
-  if (METRIC_ASSET_KINDS.has(entry.asset.kind) && entry.asset.metrics !== undefined && time(first.asset.capturedAt) !== time(entry.asset.capturedAt)) return 'Metric evidence repeats earlier bytes under a different capture time; a fresh snapshot must record its own sampling time and page state';
+  if (METRIC_ASSET_KINDS.has(entry.asset.kind) && entry.asset.metrics !== undefined && time(first.asset.capturedAt) !== time(entry.asset.capturedAt)) return 'Metric evidence repeats earlier bytes under a different capture time; save a metric_snapshot that records its own sampling time and page state (an unchanged screenshot cannot)';
   return null;
 }
 function assetsFor(events, workId, resolve = assetKey, roundId) {
@@ -698,12 +698,16 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     // files re-listed from earlier captures keep their own, older times.
     const seesWork = (c, a) => ['page_screenshot', 'caption'].includes(a.kind) && workBound(a, c.work) && registry.get(resolve(a.path))?.index === order.get(c);
     // The latest capture that newly saved the work page or caption with this label supplies its anchor.
-    const labelRead = captures.findLast(c => c.work.dateLabel === work.dateLabel && c.assets.some(a => seesWork(c, a)));
+    // Date fields come from the latest capture that newly saved the work page or caption with a label, so a
+    // metrics-only revisit cannot overwrite or blank them. A confirmed publication date still wins.
+    const dated = work.publishedAt != null ? null : captures.findLast(c => nonempty(c.work.dateLabel) && c.assets.some(a => seesWork(c, a)));
+    const shownWork = dated ? { ...work, dateKind: dated.work.dateKind, dateLabel: dated.work.dateLabel } : work;
+    const labelRead = captures.findLast(c => c.work.dateLabel === shownWork.dateLabel && c.assets.some(a => seesWork(c, a)));
     const dateSeenAt = labelRead ? labelRead.assets.filter(a => seesWork(labelRead, a)).map(a => a.capturedAt).sort((x, y) => time(x) - time(y))[0] : null;
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
     // Ledger order, not equal timestamps, decides whether a review came after the user's decision.
     const reviewAfterDecision = Boolean(review && decision && order.get(review) > order.get(decision));
-    return { work, dateSeenAt, reviewAfterDecision, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
+    return { work: shownWork, dateSeenAt, reviewAfterDecision, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
       review, reviewBlocked, reviews, reviewGaps, decision,
       drafts: draftHistory.filter(e => !draftChecks.get(e.id)), draftHistory, draftGaps, integrityIssues: integrity.filter(x => x.workId === workId) };

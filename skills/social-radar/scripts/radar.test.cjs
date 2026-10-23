@@ -1867,3 +1867,13 @@ test('draft files and draft content belong to the work that first registered the
   for (const name of ['brief', 'script', 'evidence']) fs.writeFileSync(path.join(root, `other-${name}.md`), `Synthetic ${name} for the other work`);
   append(root, { ...draft, briefPath: 'other-brief.md', scriptPath: 'other-script.md', evidencePath: 'other-evidence.md' });
 });
+
+test('metrics-only revisits cannot overwrite or blank the date label read from the work page', t => {
+  const root = fixture(t), metrics = { likes: { value: 30, raw: '30', precision: 'exact' } };
+  for (const [id, dateKind, dateLabel] of [['three-days', 'unknown', '3天前'], ['blank', 'unknown', '']]) {
+    fs.writeFileSync(path.join(root, `materials/${id}.json`), JSON.stringify({ synthetic: id, sampledAt: '2026-10-22T09:00:00+08:00', metrics }));
+    append(root, { ...capture(id, { work: { ...capture().work, dateKind, dateLabel }, readKinds: [], assets: [{ kind: 'metric_snapshot', path: `materials/${id}.json`, sourceUrl: capture().work.url, capturedAt: '2026-10-22T09:00:00+08:00', coverage: 'Synthetic metrics-only revisit', metrics }] }), recordedAt: '2026-10-22T09:05:00+08:00' });
+    const item = snapshot(load(root), undefined, root).items[0];
+    assert.equal(item.work.dateLabel, '昨天'); assert.equal(item.dateSeenAt, '2026-10-21T09:00:00+08:00');
+  }
+});
