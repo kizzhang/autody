@@ -220,8 +220,15 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
     check(e.work && ['douyin', 'xiaohongshu'].includes(e.work.platform), 'Invalid work platform');
     check(typeof e.work.id === 'string' && new RegExp(`^${e.work.platform}:[a-zA-Z0-9_-]+$`).test(e.work.id), 'Use platform:native-id');
     workUrl(e.work); authorUrl(e.work); check(nonempty(e.work.title) && nonempty(e.work.author), 'Work title and author required');
+    const earlierCaptures = prior.filter(x => x.type === 'capture' && x.work.id === e.work.id);
+    // The profile URL identifies whose follower samples belong to this work; display names may be corrected.
+    const profile = earlierCaptures.find(x => x.work.authorUrl !== undefined);
+    if (profile && e.work.authorUrl !== undefined) check(profile.work.authorUrl === e.work.authorUrl, 'Author profile URL conflicts with the profile already registered for this work');
     check(['published', 'edited', 'unknown'].includes(e.work.dateKind) && typeof e.work.dateLabel === 'string', 'Date kind/label required');
-    if (e.work.publishedAt != null) { check(e.work.dateKind === 'published', 'Edited/unknown dates cannot become publication dates'); check(time(e.work.publishedAt) <= recorded, 'Publication timestamp cannot follow its capture event'); }
+    if (e.work.publishedAt != null) {
+      check(e.work.dateKind === 'published', 'Edited/unknown dates cannot become publication dates'); check(time(e.work.publishedAt) <= recorded, 'Publication timestamp cannot follow its capture event');
+      for (const c of earlierCaptures) for (const a of c.assets) check(publicationAllowsAsset(a, e.work), `Publication timestamp cannot follow earlier work capture evidence: ${a.path}`);
+    }
     check(['recommendation', 'related', 'search', 'direct'].includes(e.route), 'Invalid discovery route');
     check(Array.isArray(e.readKinds) && e.readKinds.every(k => READ_KINDS.has(k)), 'Invalid substantive read kind (summaries/title cards do not count)');
     check(typeof e.coverage === 'string' && Array.isArray(e.gaps), 'Coverage and gaps required');
@@ -397,11 +404,14 @@ function roundStats(events, round, resolve = assetKey) {
   const distinct = new Map(); for (const e of captures) if (!distinct.has(e.work.id)) distinct.set(e.work.id, e);
   const platformCounts = { douyin: 0, xiaohongshu: 0 }, recommended = { douyin: 0, xiaohongshu: 0 };
   let newWorks = 0, practical = 0;
-  const roundIndex = events.indexOf(round);
+  // Newness follows round order, not save order: a backfill into an earlier round is a previous read.
+  const roundIndex = events.indexOf(round), earlierRounds = new Set(events.filter((e, i) => e.type === 'round_started' && i < roundIndex).map(e => e.roundId));
   for (const [wid, first] of distinct) {
     platformCounts[first.work.platform]++;
-    if (['recommendation', 'related'].includes(first.route)) recommended[first.work.platform]++;
-    if (!events.slice(0, roundIndex).some(e => e.type === 'capture' && isEligible(e) && e.work.id === wid)) newWorks++;
+    // Route coverage reflects how the work was first found in this round, even when that was a lead read later.
+    const discovery = events.find(e => e.type === 'capture' && e.roundId === round.roundId && e.work.id === wid);
+    if (['recommendation', 'related'].includes(discovery.route)) recommended[first.work.platform]++;
+    if (!events.some(e => e.type === 'capture' && earlierRounds.has(e.roundId) && e.work.id === wid && isEligible(e))) newWorks++;
     if (captures.some(e => e.work.id === wid && e.practicalMethod === true)) practical++;
   }
   const c = round.config, countComplete = Object.keys(platformCounts).every(k => platformCounts[k] >= c.targets[k]);

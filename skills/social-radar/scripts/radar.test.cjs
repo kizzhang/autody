@@ -983,3 +983,45 @@ test('growth and follower thresholds follow their own latest available metric sa
   item = snapshot(load(root)).items[0];
   assert.equal(item.growth.fast, false); assert.equal(item.lowFollower, true);
 });
+
+test('a work keeps its registered author profile while display names may be corrected', t => {
+  const root = fixture(t), profile = 'https://www.xiaohongshu.com/user/profile/synthetic-author';
+  append(root, capture('with-profile', { work: { ...capture().work, authorUrl: profile } }));
+  append(root, capture('renamed', { work: { ...capture().work, author: 'Renamed author', authorUrl: profile } }));
+  const before = load(root);
+  assert.throws(() => append(root, capture('other-profile', { work: { ...capture().work, authorUrl: 'https://www.xiaohongshu.com/user/profile/someone-else' } })), /profile URL conflicts/);
+  assert.deepEqual(load(root), before);
+  assert.equal(snapshot(load(root)).items[0].work.author, 'Renamed author');
+});
+
+test('a confirmed publication date cannot postdate evidence saved by earlier captures of the work', t => {
+  const root = fixture(t);
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/later-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, capturedAt: '2026-10-21T11:00:00+08:00' }; });
+  const work = { ...capture().work, dateKind: 'published', dateLabel: 'Synthetic publication', publishedAt: '2026-10-21T10:00:00+08:00' };
+  const before = load(root);
+  assert.throws(() => append(root, capture('revised-date', { work, assets })), /earlier work capture evidence/);
+  assert.deepEqual(load(root), before);
+  append(root, capture('consistent-date', { work: { ...work, publishedAt: '2026-10-21T09:00:00+08:00' }, assets }));
+  assert.equal(snapshot(load(root)).items[0].work.publishedAt, '2026-10-21T09:00:00+08:00');
+});
+
+test('backfills into an earlier round count as previous reads for later rounds', t => {
+  const root = fixture(t); append(root, round('r2'));
+  const work = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/other-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, sourceUrl: work.url }; });
+  append(root, capture('backfill-r1', { roundId: 'r1', work, assets }));
+  append(root, capture('read-r2', { roundId: 'r2', work, assets }));
+  const rounds = snapshot(load(root)).rounds;
+  assert.equal(rounds[0].unique, 2); assert.equal(rounds[0].newWorks, 2);
+  assert.equal(rounds[1].unique, 1); assert.equal(rounds[1].newWorks, 0);
+  assert.throws(() => append(root, event('attempt', 'claimed', { roundId: 'r2', attemptId: 'b', status: 'completed', reason: 'claimed' })), /targets not met/);
+});
+
+test('a lead later read directly keeps its discovery route for round coverage', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  append(root, capture('lead', { roundId: 'r2', readKinds: [], route: 'recommendation' }));
+  assert.equal(snapshot(load(root)).rounds[1].unique, 0);
+  append(root, capture('direct-read', { roundId: 'r2', route: 'direct' }));
+  const r = snapshot(load(root)).rounds[1];
+  assert.equal(r.unique, 1); assert.equal(r.recommended.xiaohongshu, 1); assert.equal(r.coverageComplete, true);
+});
