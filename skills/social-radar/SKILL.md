@@ -9,7 +9,7 @@ Turn public content into evidence-backed creative opportunities. Keep **传播�
 
 ## Start or resume
 
-Use Chrome Extension-first in the user's existing logged-in Chrome session. Read [collection.md](references/collection.md) before browsing and [data-contract.md](references/data-contract.md) before writing records. Use a persistent user workspace such as `outputs/social-radar/`, not the installed skill directory. The local Node helper has no browser, model, scheduler or network client.
+Use Chrome Extension-first in the user's existing logged-in Chrome session. Read [collection.md](references/collection.md) before browsing and [data-contract.md](references/data-contract.md) before writing records. Use a persistent user workspace such as `outputs/social-radar/`, not the installed skill directory; for long-running use, start a new store each month as described in the data contract. The local Node helper has no browser, model, scheduler or network client.
 
 Load the saved rounds, pending tasks, prior selections/rejections and creator preferences first; `radar.cjs summary` gives a compact view. Resume a paused round with the same `roundId`; do not turn its continuation into a new completed round. Defaults are configurable: 50 distinct works (25 per platform), at least 35 newly read works, at least 15 recommendation/related discoveries per platform, and about 10 practical-AI/overseas-method reading slots. Topics default to AI technology, science, mathematics and viewpoints; use the user's audience, strengths and exclusions when known. Old examples belong in a separate background group, not the recent-week pool.
 

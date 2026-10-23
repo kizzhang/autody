@@ -1010,7 +1010,8 @@ test('backfills into an earlier round count as previous reads for later rounds',
   const work = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
   const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/other-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, sourceUrl: work.url }; });
   append(root, capture('backfill-r1', { roundId: 'r1', work, assets }));
-  append(root, capture('read-r2', { roundId: 'r2', work, assets }));
+  const fresh = assets.map(a => { const file = a.path.replace('materials/other-', 'materials/other-r2-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  append(root, capture('read-r2', { roundId: 'r2', work, assets: fresh }));
   const rounds = snapshot(load(root)).rounds;
   assert.equal(rounds[0].unique, 2); assert.equal(rounds[0].newWorks, 2);
   assert.equal(rounds[1].unique, 1); assert.equal(rounds[1].newWorks, 0);
@@ -1019,9 +1020,10 @@ test('backfills into an earlier round count as previous reads for later rounds',
 
 test('a lead later read directly keeps its discovery route for round coverage', t => {
   const root = fixture(t); append(root, round('r2', { minNew: 0 }));
-  append(root, capture('lead', { roundId: 'r2', readKinds: [], route: 'recommendation' }));
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/r2-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  append(root, capture('lead', { roundId: 'r2', readKinds: [], route: 'recommendation', assets }));
   assert.equal(snapshot(load(root)).rounds[1].unique, 0);
-  append(root, capture('direct-read', { roundId: 'r2', route: 'direct' }));
+  append(root, capture('direct-read', { roundId: 'r2', route: 'direct', assets }));
   const r = snapshot(load(root)).rounds[1];
   assert.equal(r.unique, 1); assert.equal(r.recommended.xiaohongshu, 1); assert.equal(r.coverageComplete, true);
 });
@@ -1134,4 +1136,114 @@ test('pending tasks on rejected works stay in history but are no longer due', t 
   const state = snapshot(load(root), at), [task] = state.tasks;
   assert.equal(task.status, 'pending'); assert.equal(task.suppressed, true); assert.equal(task.due, false);
   assert.deepEqual(summary(state).pendingTasks.map(x => [x.taskId, x.due, x.suppressed]), [['revisit', false, true]]);
+});
+
+test('a completed revisit reopens when its completing reading is corrected away', t => {
+  const root = fixture(t), at = '2026-10-21T10:00:00+08:00', workId = 'xiaohongshu:example';
+  saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'task1', { roundId: 'r1', workId, taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task); saveObservation(root, obs('due', '09:20:00', 20)); append(root, { ...task, id: 'task1-done', status: 'done' });
+  assert.equal(snapshot(load(root), at).tasks[0].status, 'done');
+  saveObservation(root, { ...obs('due-fix', '09:20:00', null, 'unavailable', ''), correctsObservationId: 'due' });
+  const state = snapshot(load(root), at), [reopened] = state.tasks;
+  assert.equal(reopened.status, 'pending'); assert.equal(reopened.reopened, true); assert.equal(reopened.recordedStatus, 'done'); assert.equal(reopened.due, true);
+  assert.deepEqual(summary(state).pendingTasks.map(x => x.taskId), ['revisit']);
+});
+
+test('draft registration uses the same current review as status when a newer review lost its files', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  append(root, review());
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/second-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  append(root, capture('capture2', { assets }));
+  append(root, { ...review('review2'), captureIds: ['capture2'], evidencePaths: [assets[0].path], claims: [] });
+  fs.rmSync(path.join(root, assets[1].path));
+  append(root, event('decision', 'selected', { workId, decision: 'selected', userRequest: 'Synthetic user: select this', reason: 'Useful' }));
+  assert.equal(snapshot(load(root), undefined, root, require('./radar.cjs').integrityIssues(root, load(root))).items[0].review.id, 'review1');
+  for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  const draft = event('draft', 'draft1', { workId, selectionEventId: 'selected', reviewId: 'review2', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' });
+  assert.throws(() => append(root, draft), /current review revision|Missing\/empty/);
+  append(root, { ...draft, reviewId: 'review1' });
+  assert.equal(load(root).at(-1).reviewId, 'review1');
+});
+
+test('journal files reached through a contained events alias cannot be registered', t => {
+  const parent = fs.realpathSync(os.tmpdir()), root = fs.mkdtempSync(path.join(parent, 'autody-radar-test-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'journal')); fs.mkdirSync(path.join(root, 'materials'));
+  try { fs.symlinkSync(path.join(root, 'journal'), path.join(root, 'events'), 'junction'); } catch { t.skip('directory links unavailable'); return; }
+  fs.writeFileSync(path.join(root, 'materials/caption.md'), 'Synthetic fixture caption');
+  fs.writeFileSync(path.join(root, 'materials/page.png'), 'Synthetic fixture screenshot');
+  append(root, round()); append(root, capture());
+  const entry = fs.readdirSync(path.join(root, 'journal')).sort()[0], before = load(root);
+  assert.throws(() => append(root, capture('journal-note', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'research_note', path: `journal/${entry}`, sourceUrl: 'https://x.com/example/status/1' }] })), /Ledger-internal/);
+  assert.deepEqual(load(root), before);
+});
+
+test('timestamps accept up to nine fractional digits and report capture-time errors directly', t => {
+  const root = fixture(t);
+  for (const sampled of ['09:00:00.123456', '09:01:00.1234567']) saveObservation(root, obs(`fraction-${sampled.length}`, sampled, 17));
+  assert.equal(snapshot(load(root)).items[0].growth.points.length, 2);
+  assert.throws(() => append(root, { ...obs('no-seconds', '09:00:00', 18), sampledAt: '2026-10-21T09:05+08:00' }), /Timezone-qualified timestamp required \(YYYY/);
+  const work = { ...capture().work, dateKind: 'published', dateLabel: 'Synthetic publication', publishedAt: '2026-10-21T08:00:00+08:00' };
+  assert.throws(() => append(root, capture('bad-captured', { work, assets: [{ ...capture().assets[0], capturedAt: 'yesterday' }] })), /Timezone-qualified/);
+});
+
+test('round config rejects inherited object keys', t => {
+  const root = fixture(t), before = load(root);
+  for (const key of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+    assert.throws(() => append(root, round('inherited', JSON.parse(`{"${key}": 1}`))), /Unknown config key/);
+    assert.deepEqual(load(root), before);
+  }
+});
+
+test('later rounds count a work only with page or video evidence saved in that round', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  append(root, capture('reused-r1-files', { roundId: 'r2' }));
+  assert.equal(snapshot(load(root)).rounds[1].unique, 0);
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/reread-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  append(root, capture('fresh-r2-files', { roundId: 'r2', assets }));
+  const r = snapshot(load(root)).rounds[1];
+  assert.equal(r.unique, 1); assert.equal(r.repeatReads, 0);
+});
+
+test('a metrics-only revisit capture does not decide the discovery route', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  const metrics = { likes: { value: 30, raw: '30', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/revisit.json'), JSON.stringify(metrics));
+  append(root, capture('revisit-first', { roundId: 'r2', route: 'direct', readKinds: [], practicalMethod: false, assets: [{ kind: 'metric_snapshot', path: 'materials/revisit.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T10:00:00+08:00', coverage: 'Synthetic metrics-only revisit', metrics }] }));
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/route-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  append(root, capture('recommended-read', { roundId: 'r2', route: 'recommendation', assets }));
+  const r = snapshot(load(root)).rounds[1];
+  assert.equal(r.unique, 1); assert.equal(r.recommended.xiaohongshu, 1);
+});
+
+test('corrected readings cannot start revisits and stay excluded if their correction loses evidence', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  saveObservation(root, obs('wrong', '09:00:00', 900));
+  saveObservation(root, { ...obs('right', '09:00:00', 9), correctsObservationId: 'wrong' });
+  const task = event('task', 'from-wrong', { roundId: 'r1', workId, taskId: 'revisit-wrong', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'wrong', dueAt: '2026-10-21T09:20:00+08:00' });
+  assert.throws(() => append(root, task), /Baseline observation was corrected/);
+  append(root, { ...task, id: 'from-right', taskId: 'revisit-right', baselineObservationId: 'right' });
+  fs.rmSync(path.join(root, 'materials/metrics-right.json'));
+  const state = snapshot(load(root), undefined, root, require('./radar.cjs').integrityIssues(root, load(root)));
+  assert.equal(state.items[0].latest.likes, undefined); assert.deepEqual(state.items[0].correctedObservations, ['wrong']);
+});
+
+test('the dashboard lists recent candidates first, folds older ones and separates selected works', t => {
+  // Saved times stay in the past; the report time moves forward instead.
+  const root = fixture(t), later = '2026-10-22T12:00:00+08:00', at = '2026-10-29T00:00:00+08:00';
+  const copyFor = (work, prefix) => capture().assets.map(a => { const file = a.path.replace('materials/', `materials/${prefix}-`); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, sourceUrl: work.url }; });
+  append(root, review('old-review'));
+  for (const name of ['second', 'third']) {
+    const work = { ...capture().work, id: `xiaohongshu:${name}`, url: `https://www.xiaohongshu.com/explore/${name}`, title: `Synthetic ${name} title` }, assets = copyFor(work, name);
+    append(root, { ...capture(`${name}-capture`, { work, assets }), recordedAt: later });
+    append(root, { ...review(`${name}-review`), workId: work.id, captureIds: [`${name}-capture`], evidencePaths: [assets[0].path], claims: [], recordedAt: later });
+  }
+  append(root, event('decision', 'pick-third', { workId: 'xiaohongshu:third', decision: 'selected', userRequest: 'Synthetic user: select the third', reason: 'Useful', recordedAt: later }));
+  const html = render(snapshot(load(root), at, root), root, path.join(root, 'reports'));
+  const topics = html.split('<section id="topics">')[1].split('</section>')[0];
+  const [recent, rest] = topics.split('<details class="older">'), [older, chosen] = rest.split('<h3>已选题</h3>');
+  assert.ok(recent.includes('Synthetic second title')); assert.ok(!recent.includes('Synthetic third title')); assert.ok(!recent.includes('explore/example'));
+  assert.ok(older.includes('较早的候选（1）')); assert.ok(older.includes('explore/example'));
+  assert.ok(chosen.includes('Synthetic third title'));
 });

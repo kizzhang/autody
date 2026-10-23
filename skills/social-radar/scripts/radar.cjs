@@ -23,9 +23,13 @@ const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,119}$/;
 function check(ok, message) { if (!ok) throw new Error(message); }
 function nonempty(s) { return typeof s === 'string' && s.trim().length > 0; }
 function id(s) { check(typeof s === 'string' && SAFE_ID.test(s), `Invalid ID: ${s}`); }
+function real(file) {
+  // One native call instead of an lstat per path component; fall back where the native call is unsupported.
+  try { return fs.realpathSync.native(file); } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; return fs.realpathSync(file); }
+}
 function time(s) {
-  const parts = typeof s === 'string' && /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(s);
-  check(parts, `Timezone-qualified timestamp required: ${s}`);
+  const parts = typeof s === 'string' && /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(s);
+  check(parts, `Timezone-qualified timestamp required (YYYY-MM-DDTHH:MM:SS[.fraction] with Z or ±HH:MM): ${s}`);
   const [, y, mo, d, h, mi, sec, oh = 0, om = 0] = parts.map((v, i) => i === 0 ? v : v === undefined ? undefined : Number(v));
   const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -99,13 +103,13 @@ function storagePath(file) {
   const key = assetKey(file.replaceAll('\\', '/'));
   check(key !== '.writer.lock' && key !== 'events' && !key.startsWith('events/'), `Ledger-internal path cannot be registered: ${file}`);
 }
-function storedFile(root, file, realRoot = fs.realpathSync(root)) {
+function storedFile(root, file, realRoot = real(root)) {
   check(nonempty(file) && !path.isAbsolute(file) && !/^[A-Za-z]:|\\|\0/.test(file), 'Use a store-relative path with forward slashes');
   storagePath(file);
   const resolved = path.resolve(root, file), rel = path.relative(path.resolve(root), resolved);
   check(rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel), `Path escapes store: ${file}`);
   let realFile;
-  try { realFile = fs.realpathSync(resolved); } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) throw new Error(`Missing/empty asset: ${file}`); throw error; }
+  try { realFile = real(resolved); } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) throw new Error(`Missing/empty asset: ${file}`); throw error; }
   const realRel = path.relative(realRoot, realFile);
   check(realRel && realRel !== '..' && !realRel.startsWith(`..${path.sep}`) && !path.isAbsolute(realRel), `Symlink escapes store: ${file}`);
   storagePath(realRel);
@@ -116,20 +120,38 @@ function storedFile(root, file, realRoot = fs.realpathSync(root)) {
 function relativeFile(root, file) { return storedFile(root, file).realFile; }
 function digest(root, file) { return crypto.createHash('sha256').update(fs.readFileSync(relativeFile(root, file))).digest('hex'); }
 function identity(realFile, stat) { return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${assetKey(realFile)}`; }
-function physicalFileKey(file) { return identity(fs.realpathSync(file), fs.statSync(file, { bigint: true })); }
+function physicalFileKey(file) { return identity(real(file), fs.statSync(file, { bigint: true })); }
 function fileKey(root, file, realRoot) { const { realFile, stat } = storedFile(root, file, realRoot); return identity(realFile, stat); }
 function internalFileKeys(root) {
   const dir = eventDirectory(root), paths = files(root).map(n => path.join(dir, n)), lock = path.join(root, '.writer.lock');
   if (fs.existsSync(lock)) paths.push(lock);
   return new Set(paths.map(physicalFileKey));
 }
-function lazyInternals(root) { let keys; return () => keys ||= internalFileKeys(root); }
-function registrationKey(root, file, internals = lazyInternals(root)) {
-  const { realFile, stat } = storedFile(root, file), key = identity(realFile, stat);
-  // Only a multiply-linked file can be a journal entry or the writer lock under another name;
-  // other paths into events/ and the lock are rejected by name before this point.
+function lazyInternals(root) {
+  let keys, dir;
+  const get = () => keys ||= internalFileKeys(root);
+  get.eventsDir = () => dir ??= eventDirectory(root);
+  return get;
+}
+function registeredFile(root, file, internals = lazyInternals(root), realRoot = undefined) {
+  const { realFile, stat } = storedFile(root, file, realRoot), key = identity(realFile, stat);
+  // The resolved journal directory may be reached through another name when events/ is a contained alias.
+  const inJournal = path.relative(internals.eventsDir(), realFile);
+  check(!inJournal || inJournal === '..' || inJournal.startsWith(`..${path.sep}`) || path.isAbsolute(inJournal), `Ledger-internal file cannot be registered: ${file}`);
+  // A hard link is the only remaining way to reach a journal entry or the writer lock.
   if (stat.nlink > 1n) check(!internals().has(key), `Ledger-internal file cannot be registered: ${file}`);
-  return key;
+  return { realFile, key };
+}
+function registrationKey(root, file, internals) { return registeredFile(root, file, internals).key; }
+function withoutBrokenAssets(root, events, workId) {
+  // Mirror status/render: a missing or changed file of this work no longer supports its records.
+  const broken = new Set();
+  for (const e of events) if (e.type === 'capture' && e.work.id === workId) for (const a of e.assets) {
+    let intact = false;
+    try { intact = digest(root, a.path) === a.sha256; } catch { /* Missing or unreadable. */ }
+    if (!intact) broken.add(assetKey(a.path));
+  }
+  return broken.size ? events.map(e => e.type === 'capture' && e.assets.some(a => broken.has(assetKey(a.path))) ? { ...e, assets: e.assets.filter(a => !broken.has(assetKey(a.path))) } : e) : events;
 }
 function fileResolver(root) {
   const known = new Map();
@@ -143,7 +165,7 @@ function fileResolver(root) {
       let found = `path:${key}`;
       try {
         const stat = fs.statSync(path.resolve(root, file), { bigint: true });
-        found = stat.isFile() && stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : fileKey(root, file, realRoot ??= fs.realpathSync(root));
+        found = stat.isFile() && stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : fileKey(root, file, realRoot ??= real(root));
       } catch { /* Keep the path identity. */ }
       known.set(key, found);
     }
@@ -152,7 +174,7 @@ function fileResolver(root) {
 }
 function config(input = {}) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Invalid config');
-  for (const k of Object.keys(input)) check(k in DEFAULTS, `Unknown config key: ${k}`);
+  for (const k of Object.keys(input)) check(Object.hasOwn(DEFAULTS, k), `Unknown config key: ${k}`);
   if (input.targets !== undefined) check(input.targets && typeof input.targets === 'object' && !Array.isArray(input.targets), 'Targets must be a non-array object');
   const c = { ...DEFAULTS, ...input, targets: { ...DEFAULTS.targets, ...input.targets } };
   check(Object.keys(c.targets).every(k => ['douyin', 'xiaohongshu'].includes(k)), 'Unknown target platform');
@@ -168,7 +190,7 @@ function config(input = {}) {
 function eventDirectory(root) {
   const dir = path.resolve(root, 'events');
   try { fs.lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') return dir; throw error; }
-  const actual = fs.realpathSync(dir), relative = path.relative(fs.realpathSync(root), actual);
+  const actual = real(dir), relative = path.relative(real(root), actual);
   check(relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative) && fs.statSync(actual).isDirectory(), 'Events directory must remain beneath the selected store');
   return actual;
 }
@@ -292,7 +314,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
     const registered = registeredAssets(prior, resolve);
     for (const a of e.assets) {
       check(!registered.generated(resolve(a.path)), 'Captured sources cannot reuse registered draft files');
-      check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
+      check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl); time(a.capturedAt);
       // A publication date confirmed by an earlier capture still applies when this capture omits it.
       check(publicationAllowsAsset(a, effective), 'Publication timestamp cannot follow work capture evidence');
       check(assetMatchesWork(a, effective), 'Asset source must identify the declared work (or its saved follower profile)');
@@ -367,6 +389,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
       if (previous) check(previous.baselineObservationId === e.baselineObservationId && time(previous.dueAt) === time(e.dueAt), 'Revisit baseline and deadline are immutable; use a new task to reschedule');
       const baseline = prior.find(x => x.id === e.baselineObservationId && x.type === 'observation' && x.workId === e.workId && x.metrics.likes && x.metrics.likes.precision !== 'unavailable');
       check(baseline, 'Revisit needs a saved like observation');
+      if (!previous) check(!supersededObservations(prior).has(baseline.id), 'Baseline observation was corrected; use its latest correction as the baseline');
       observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)), undefined, resolve);
       check(time(e.dueAt) >= time(baseline.sampledAt) + round.config.minIntervalMinutes * 60000, 'Revisit is earlier than the minimum interval');
       const superseded = supersededObservations(prior);
@@ -381,7 +404,9 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
   } else if (e.type === 'draft') {
     requireWork(); const selection = prior.findLast(x => x.type === 'decision' && x.workId === e.workId);
     check(selection && selection.decision === 'selected' && selection.id === e.selectionEventId, 'Draft requires the current explicit user selection');
-    const currentReview = prior.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !eventIssue(root, x, prior.slice(0, i), resolve, internals));
+    const view = root ? withoutBrokenAssets(root, prior, e.workId) : prior;
+    const viewResolve = view === prior ? resolve : Object.assign(file => resolve(file), { ledger: view });
+    const currentReview = view.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !eventIssue(root, x, view.slice(0, i), viewResolve, internals));
     check(currentReview && currentReview.id === e.reviewId, 'Draft must reference the current review revision');
     check(e.status === 'draft', 'Generated script remains draft');
     if (e.hashes === undefined) e.hashes = {};
@@ -407,14 +432,14 @@ function eventIssue(root, e, prior, resolve, internals) {
 }
 function integrityIssues(root, events, { hashes = true } = {}) {
   // Without hashes only presence is checked: a quick resume view, not proof that bytes are unchanged.
-  const internals = lazyInternals(root), issues = [], seen = new Set();
+  const internals = lazyInternals(root), realRoot = real(root), issues = [], seen = new Set();
   const probe = (e, kind, file, expected) => {
     const key = `${kind}:${typeof file === 'string' ? assetKey(file) : String(file)}`;
     if (seen.has(key)) return; seen.add(key);
     let reason = null;
     try {
       if (!hashes) { const stat = fs.statSync(path.resolve(root, file)); check(stat.isFile() && stat.size > 0, `Missing/empty ${kind}: ${file}`); }
-      else { registrationKey(root, file, internals); if (digest(root, file) !== expected) reason = `Registered ${kind} changed: ${file}`; }
+      else { const { realFile } = registeredFile(root, file, internals, realRoot); if (crypto.createHash('sha256').update(fs.readFileSync(realFile)).digest('hex') !== expected) reason = `Registered ${kind} changed: ${file}`; }
     } catch (error) { reason = error.code === 'ENOENT' ? `Missing/empty ${kind}: ${file}` : error.message; }
     if (reason) issues.push({ eventId: e.id, workId: e.type === 'capture' ? e.work.id : e.workId, kind, path: file, reason });
   };
@@ -469,7 +494,7 @@ function append(root, input) {
     if (existing && e.type === 'observation' && isDeepStrictEqual(existing, e)) return { appended: false, id: e.id };
     const normalized = validate(root, e, existing ? events.slice(0, events.indexOf(existing)) : events, resolve);
     if (existing) { check(isDeepStrictEqual(existing, normalized), `Conflicting replay: ${e.id}`); return { appended: false, id: e.id }; }
-    const n = files(root).length + 1; check(n <= 99999999, 'Ledger sequence exhausted');
+    const n = events.length + 1; check(n <= 99999999, 'Ledger sequence exhausted');
     const target = path.join(dir, `${String(n).padStart(8, '0')}-${e.id}.json`);
     const tmp = `${target}.${crypto.randomUUID()}.tmp`;
     const out = fs.openSync(tmp, 'wx');
@@ -480,7 +505,10 @@ function append(root, input) {
 }
 function roundStats(events, round, resolve = assetKey) {
   const registered = registeredAssets(events, resolve), isEligible = e => eligible(e, registered, resolve);
-  const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && isEligible(e));
+  // Re-listing files registered in an earlier round is not a new read for this round.
+  const freshInRound = e => e.assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind) && workBound(a, e.work) && registered.get(resolve(a.path))?.roundId === e.roundId);
+  const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && isEligible(e) && freshInRound(e));
+  const metricsOnly = e => e.assets.every(a => METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined);
   const distinct = new Map(); for (const e of captures) if (!distinct.has(e.work.id)) distinct.set(e.work.id, e);
   const platformCounts = { douyin: 0, xiaohongshu: 0 }, recommended = { douyin: 0, xiaohongshu: 0 };
   let newWorks = 0, practical = 0;
@@ -488,9 +516,8 @@ function roundStats(events, round, resolve = assetKey) {
   const roundIndex = events.indexOf(round), earlierRounds = new Set(events.filter((e, i) => e.type === 'round_started' && i < roundIndex).map(e => e.roundId));
   for (const [wid, first] of distinct) {
     platformCounts[first.work.platform]++;
-    // Route coverage reflects how the work was first found in this round, even when that was a lead read later.
-    const discovery = events.find(e => e.type === 'capture' && e.roundId === round.roundId && e.work.id === wid);
-    if (['recommendation', 'related'].includes(discovery.route)) recommended[first.work.platform]++;
+    // A lead found through recommendations and read later still counts; metrics-only revisit captures do not decide the route.
+    if (events.some(e => e.type === 'capture' && e.roundId === round.roundId && e.work.id === wid && !metricsOnly(e) && ['recommendation', 'related'].includes(e.route))) recommended[first.work.platform]++;
     if (!events.some(e => e.type === 'capture' && earlierRounds.has(e.roundId) && e.work.id === wid && isEligible(e))) newWorks++;
     if (captures.some(e => e.work.id === wid && e.practicalMethod === true)) practical++;
   }
@@ -542,7 +569,7 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     const checks = events[i].type === 'review' ? reviewChecks : draftChecks;
     checks.set(events[i].id, eventIssue(root, events[i], events.slice(0, i), resolve, internals));
   }
-  const superseded = new Set(events.filter(e => e.type === 'observation' && typeof e.correctsObservationId === 'string' && !observationChecks.get(e.id)).map(e => e.correctsObservationId));
+  const superseded = supersededObservations(events);
   const taskMap = new Map(); for (const e of events) if (e.type === 'task') taskMap.set(e.taskId, e);
   const groups = new Map(), group = workId => { if (!groups.has(workId)) groups.set(workId, { captures: [], observations: [], reviews: [], drafts: [], decision: null }); return groups.get(workId); };
   for (const e of source) if (e.type === 'capture') group(e.work.id).captures.push(e);
@@ -573,13 +600,18 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
   });
   // Pending work on a rejected topic stays in history but is no longer due.
   const rejected = new Set(items.filter(i => i.decision?.decision === 'rejected').map(i => i.work.id));
+  const revisitDone = t => (groups.get(t.workId)?.observations || []).some(o => !observationChecks.get(o.id) && !superseded.has(o.id) && o.metrics.likes && o.metrics.likes.precision !== 'unavailable' && time(o.sampledAt) >= time(t.dueAt));
   return { generatedAt: now, eventCount: source.length, integrityIssues: integrity, items,
     rounds: rounds.map(r => ({ ...r, ...roundStats(events, r, resolve), attempts: events.filter(e => e.type === 'attempt' && e.roundId === r.roundId) })),
-    tasks: [...taskMap.values()].map(t => { const suppressed = t.status === 'pending' && rejected.has(t.workId); return { ...t, suppressed, due: t.status === 'pending' && !suppressed && (t.dueAt == null || time(t.dueAt) <= time(now)) }; }) };
+    tasks: [...taskMap.values()].map(t => {
+      const reopened = t.kind === 'revisit' && t.status === 'done' && !revisitDone(t), status = reopened ? 'pending' : t.status;
+      const suppressed = status === 'pending' && rejected.has(t.workId);
+      return { ...t, status, ...(reopened ? { recordedStatus: 'done', reopened: true } : {}), suppressed, due: status === 'pending' && !suppressed && (t.dueAt == null || time(t.dueAt) <= time(now)) };
+    }) };
 }
 function summary(state) {
   // Compact view for an agent resuming work; status and snapshot.json keep the full history.
-  const priority = state.items.filter(i => i.review?.recommendation === 'shortlist' && !['watch', 'rejected'].includes(i.decision?.decision));
+  const priority = state.items.filter(i => i.review?.recommendation === 'shortlist' && !['watch', 'rejected', 'selected'].includes(i.decision?.decision)).sort((a, b) => time(b.review.recordedAt) - time(a.review.recordedAt));
   return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     rounds: state.rounds.map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
     pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed })),

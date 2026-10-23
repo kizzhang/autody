@@ -22,7 +22,7 @@ Use `materials/<platform>-<native-id>/` inside the store. Save `caption.md`, a c
 
 For every metric sample, save a fresh metric-bearing page screenshot or visible-page `metric_snapshot` with its actual capture time and structured `metrics` readings. Use that instant as the observation's `sampledAt`, and copy only the values actually shown. A screenshot taken later is a separate sample; it cannot substantiate an earlier DOM reading unless that original reading was itself saved as a snapshot. All metadata for a registered asset is immutable. Content-only screenshots, captions and old captures cannot substantiate new counts.
 
-An `asset` path is always store-relative. Keep originals immutable after registration: the helper checks referenced/reused files when appending, and summary/status/render report any missing or changed registered file and exclude it from derived results. To correct an interpretation, append a new review pointing to the same evidence. To replace a broken capture, save a new file and append a new capture.
+An `asset` path is always store-relative. Keep originals immutable after registration: the helper checks referenced/reused files when appending, summary reports missing or empty registered files, and status/render also detect changed bytes; both exclude them from derived results. To correct an interpretation, append a new review pointing to the same evidence. To replace a broken capture, save a new file and append a new capture.
 
 ## Pacing and interruption
 
