@@ -237,7 +237,14 @@ function files(root) {
 }
 function load(root) {
   const dir = eventDirectory(root);
-  return files(root).map(n => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); } catch (error) { throw new Error(`Journal entry ${n} is not valid JSON: ${error.message}`); } });
+  return files(root).map(n => {
+    let e;
+    try { e = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); } catch (error) { throw new Error(`Journal entry ${n} is not valid JSON: ${error.message}`); }
+    // Only append writes events/: a hand-saved input with a date-like name must not become a committed record.
+    check(e && typeof e === 'object' && !Array.isArray(e) && typeof e.id === 'string' && n === `${n.slice(0, 8)}-${e.id}.json` && typeof e.type === 'string' && typeof e.recordedAt === 'string',
+      `events/${n} was not written by append (journal entries are named <sequence>-<event id>.json); move hand-written inputs out of events/, for example to inputs/`);
+    return e;
+  });
 }
 function assetKey(file) {
   const normalized = path.posix.normalize(file);
@@ -848,14 +855,14 @@ function summary(state) {
 function journalGaps(root) {
   // Missing sequence numbers mean a journal file was removed, for example by a sync conflict or quarantine;
   // a repeated number means a removed file came back after a newer event took its place. A lost last file
-  // leaves no trace.
+  // leaves no trace. Runs of missing numbers are reported as ranges, so one stray high number stays cheap.
   const dir = eventDirectory(root);
   if (!fs.existsSync(dir)) return { gaps: [], duplicates: [] };
   const numbers = fs.readdirSync(dir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).map(n => Number(n.slice(0, 8)));
   const seen = new Set(), duplicates = new Set();
   for (const n of numbers) { if (seen.has(n)) duplicates.add(n); seen.add(n); }
-  const gaps = [];
-  for (let n = 1; n <= Math.max(0, ...seen); n++) if (!seen.has(n)) gaps.push(n);
+  const gaps = []; let previous = 0;
+  for (const n of [...seen].sort((a, b) => a - b)) { if (n > previous + 1) gaps.push(n === previous + 2 ? String(previous + 1) : `${previous + 1}-${n - 1}`); previous = n; }
   return { gaps, duplicates: [...duplicates].sort((a, b) => a - b) };
 }
 function readUtf8(file) {
@@ -870,14 +877,22 @@ function main(argv) {
   check(opts.store, 'Usage: radar.cjs append|summary|status|render --store <directory> [--input event.json] [--out report-directory] [--now ISO-time]');
   check(['append', 'summary', 'status', 'render'].includes(command), 'Unknown command');
   if (command === 'render') check(opts.out, '--out required');
-  if (command === 'append') { check(opts.input, '--input required'); return append(opts.store, JSON.parse(readUtf8(opts.input))); }
+  if (command === 'append') {
+    check(opts.input, '--input required');
+    // An input saved inside events/ would be read back as a committed record.
+    const input = path.resolve(opts.input), journal = path.resolve(opts.store, 'events');
+    const within = (base, target) => { const relative = path.relative(base, target); return relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative); };
+    let physical = false; try { physical = within(eventDirectory(path.resolve(opts.store)), real(input)); } catch { /* Missing input or journal: reported below. */ }
+    check(!within(journal, input) && !physical, 'Save append inputs outside events/ (for example inputs/<round-id>/); events/ holds only journal entries written by append');
+    return append(opts.store, JSON.parse(readUtf8(opts.input)));
+  }
   const events = load(opts.store), issues = integrityIssues(opts.store, events, { hashes: command !== 'summary' }), state = snapshot(events, opts.now, opts.store, issues);
   if (issues.length) process.stderr.write(`Warning: ${issues.length} registered file(s) are missing or changed and are excluded from derived results; see integrityIssues.\n`);
   const journal = journalGaps(opts.store);
   state.storeExists = fs.existsSync(path.resolve(opts.store)); state.journalGaps = journal.gaps; state.journalDuplicates = journal.duplicates;
   if (state.journalDuplicates.length) process.stderr.write(`Warning: journal sequence numbers ${state.journalDuplicates.join(', ')} are used more than once; a removed event file may have come back.\n`);
   if (!state.storeExists) process.stderr.write(`Warning: store ${path.resolve(opts.store)} does not exist; check --store before appending.\n`);
-  if (state.journalGaps.length) process.stderr.write(`Warning: journal sequence numbers ${state.journalGaps.join(', ')} are missing; an event file was removed.\n`);
+  if (state.journalGaps.length) process.stderr.write(`Warning: journal sequence numbers ${state.journalGaps.join(', ')} are missing; an event file was removed, or a file in events/ was not written by append.\n`);
   if (command === 'render') { check(opts.out, '--out required'); return require('./render-radar.cjs').writeReport(state, opts.store, opts.out, events); }
   return command === 'summary' ? summary(state) : state;
 }

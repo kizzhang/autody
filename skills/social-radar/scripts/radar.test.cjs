@@ -735,7 +735,7 @@ test('metric observations use the round that first registered their evidence', t
   assert.throws(() => append(root, wrong), /metric-bearing evidence.*round/);
   assert.deepEqual(load(root), before);
   append(root, point);
-  const legacy = path.join(root, 'events/00000008-legacy-wrong-round.json'); fs.writeFileSync(legacy, JSON.stringify(wrong));
+  const legacy = path.join(root, 'events/00000008-wrong-round.json'); fs.writeFileSync(legacy, JSON.stringify(wrong));
   const bytes = fs.readFileSync(legacy), item = snapshot(load(root), undefined, root).items[0];
   assert.equal(item.latest.likes.observationId, point.id); assert.equal(item.growth.fast, false);
   assert.deepEqual(item.growth.points.map(p => p.id), ['first', 'second']);
@@ -1910,7 +1910,7 @@ test('summary warns about a missing store and about gaps in the journal sequence
   const typo = run(missing); assert.equal(typo.status, 0); assert.equal(JSON.parse(typo.stdout).storeExists, false); assert.match(typo.stderr, /does not exist/);
   const root = fixture(t); append(root, round('r2'));
   fs.rmSync(path.join(root, 'events', fs.readdirSync(path.join(root, 'events')).sort()[1]));
-  const gap = run(root); assert.equal(gap.status, 0); assert.deepEqual(JSON.parse(gap.stdout).journalGaps, [2]); assert.match(gap.stderr, /sequence numbers 2 are missing/);
+  const gap = run(root); assert.equal(gap.status, 0); assert.deepEqual(JSON.parse(gap.stdout).journalGaps, ['2']); assert.match(gap.stderr, /sequence numbers 2 are missing/);
 });
 
 test('an edit label read after a confirmed publication is shown as an edit, not as the publication', t => {
@@ -2147,7 +2147,7 @@ test('a reused ID of another event type and a null correction link get clear han
 test('summary reports a journal sequence number used twice', t => {
   const root = fixture(t), dir = path.join(root, 'events');
   const first = fs.readdirSync(dir).sort()[1];
-  fs.copyFileSync(path.join(dir, first), path.join(dir, first.replace('-capture1.json', '-restored-copy.json')));
+  fs.writeFileSync(path.join(dir, first.replace('-capture1.json', '-restored-copy.json')), JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(dir, first), 'utf8')), id: 'restored-copy' }));
   const run = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'summary', '--store', root], { encoding: 'utf8' });
   assert.deepEqual(JSON.parse(run.stdout).journalDuplicates, [2]); assert.match(run.stderr, /used more than once/);
 });
@@ -2263,4 +2263,37 @@ test('a task can still be cancelled after its work s capture records are lost', 
 test('zero growth is never a fast or low-like fast increase', () => {
   const g = growth([obs('a', '12:00:00', 0), obs('b', '12:20:00', 0)], { ...DEFAULTS, minNewLikes: 0, fastLikesPerHour: 0 });
   assert.equal(g.delta, 0); assert.equal(g.lowLikeFast, false); assert.equal(g.fast, false); assert.equal(g.accelerating, false);
+});
+
+test('append refuses inputs saved in events and reading stops at files append did not write', t => {
+  const root = fixture(t), { main } = require('./radar.cjs'), stray = path.join(root, 'events', '20261021-am-review.json');
+  fs.writeFileSync(stray, JSON.stringify(review('review-x')));
+  assert.throws(() => main(['append', '--store', root, '--input', stray]), /outside events/);
+  assert.throws(() => load(root), /20261021-am-review\.json was not written by append/);
+  fs.mkdirSync(path.join(root, 'inputs')); fs.renameSync(stray, path.join(root, 'inputs', 'review-x.json'));
+  assert.equal(main(['append', '--store', root, '--input', path.join(root, 'inputs', 'review-x.json')]).appended, true);
+  assert.equal(fs.readdirSync(path.join(root, 'events')).sort().at(-1), '00000003-review-x.json');
+});
+
+test('a stray high sequence number is reported as one cheap range', t => {
+  const root = fixture(t);
+  fs.writeFileSync(path.join(root, 'events', '20261021-stray.json'), JSON.stringify(round('stray-round')).replace('"start-stray-round"', '"stray"'));
+  const run = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'summary', '--store', root], { encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(JSON.parse(run.stdout).journalGaps, ['3-20261020']); assert.match(run.stderr, /not written by append/);
+});
+
+test('round settings are escaped in the dashboard', t => {
+  const root = fixture(t), state = snapshot(load(root)), payload = '<img src=x onerror=alert(1)>';
+  const html = render({ ...state, rounds: state.rounds.map(r => ({ ...r, config: { ...r.config, minNew: payload, practicalSlots: payload, targets: { douyin: payload, xiaohongshu: payload } } })) }, root, path.join(root, 'reports'));
+  assert.ok(!html.includes(payload));
+});
+
+test('an edited draft replaced by a newer revision is noted without a header alert', t => {
+  const root = draftedFixture(t);
+  fs.writeFileSync(path.join(root, 'brief.md'), 'User edit made in place');
+  for (const file of ['brief2.md', 'script2.md', 'evidence2.md']) fs.writeFileSync(path.join(root, file), `Synthetic revised ${file}`);
+  append(root, event('draft', 'draft2', { workId: 'xiaohongshu:example', selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief2.md', scriptPath: 'script2.md', evidencePath: 'evidence2.md' }));
+  const html = render(checkedSnapshot(root), root, path.join(root, 'reports'));
+  assert.ok(!html.includes('个初稿文件在登记后被修改')); assert.match(html, /文件在登记后被修改，尚未登记新修订/);
 });
