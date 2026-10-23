@@ -126,6 +126,11 @@ const checkedFiles = [
   "skills/xiaohongshu-analysis/SKILL.md",
   "skills/xiaohongshu-analysis/agents/openai.yaml",
   "skills/xiaohongshu-analysis/references/diandian-workflow.md",
+  "skills/social-radar/SKILL.md",
+  "skills/social-radar/agents/openai.yaml",
+  "skills/social-radar/references/collection.md",
+  "skills/social-radar/references/data-contract.md",
+  "skills/social-radar/references/reading-and-drafting.md",
 ];
 
 const forbiddenHumanPaceRegressions = [

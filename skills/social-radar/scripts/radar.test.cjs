@@ -2185,3 +2185,19 @@ test('a report cannot take over a registered path behind a dangling directory li
   assert.throws(() => writeReport(checkedSnapshot(root), root, target, load(root)), /overlaps a registered ledger file/);
   assert.equal(fs.existsSync(target), false);
 });
+
+test('a briefly held writer lock is removed after a retry', t => {
+  const root = fixture(t), lock = path.join(root, '.writer.lock'), original = fs.unlinkSync;
+  let refusals = 0;
+  fs.unlinkSync = file => { if (path.resolve(file) === lock && refusals < 2) { refusals++; throw Object.assign(new Error('busy'), { code: 'EBUSY' }); } return original(file); };
+  try { saveObservation(root, obs('o1', '09:00:00', 17)); } finally { fs.unlinkSync = original; }
+  assert.equal(refusals, 2); assert.equal(fs.existsSync(lock), false);
+});
+
+test('topic cards show low-follower and low-like fast growth signals', t => {
+  const root = fixture(t); append(root, review());
+  const state = snapshot(load(root)), item = state.items[0];
+  const html = render({ ...state, items: [{ ...item, lowFollower: true, growth: { ...item.growth, lowLikeFast: true } }] }, root, path.join(root, 'reports'));
+  const card = html.split('<article class="topic"')[1].split('</article>')[0];
+  assert.match(card, /低赞快增（工作阈值）/); assert.match(card, /低粉工作阈值内/);
+});

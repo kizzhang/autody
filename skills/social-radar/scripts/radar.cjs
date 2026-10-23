@@ -512,7 +512,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
       check(!sources.firstByHash(hash), 'Draft files must differ from captured source content');
       for (const old of prior.filter(x => x.type === 'draft')) for (const oldKey of ['briefPath', 'scriptPath', 'evidencePath']) {
         // Draft files and their content belong to the work that first registered them.
-        if (resolve(old[oldKey]) === resolved[k]) { check(old.workId === e.workId, `Draft file already registered for another work: ${e[k]}`); check(old.hashes[oldKey] === hash, `Registered draft cannot be overwritten: ${e[k]}`); }
+        if (resolve(old[oldKey]) === resolved[k]) { check(old.workId === e.workId, `Draft file already registered for another work: ${e[k]}`); check(old.hashes?.[oldKey] === hash, `Registered draft cannot be overwritten: ${e[k]}`); }
         else check(old.workId === e.workId || old.hashes?.[oldKey] !== hash, `Draft content of ${e[k]} is already registered for another work`);
       }
       e.hashes[k] = hash;
@@ -622,7 +622,7 @@ function append(root, input) {
         if (refs.has(assetKey(a.path))) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
       }
       if (old.type === 'draft') for (const k of ['briefPath', 'scriptPath', 'evidencePath']) {
-        if (refs.has(assetKey(old[k]))) check(digest(root, old[k]) === old.hashes[k], `Registered draft cannot be overwritten: ${old[k]}`);
+        if (refs.has(assetKey(old[k]))) check(digest(root, old[k]) === old.hashes?.[k], `Registered draft cannot be overwritten: ${old[k]}`);
       }
     }
     // Replaying an unchanged legacy record makes no new assertion. Unsupported
@@ -642,8 +642,14 @@ function append(root, input) {
     return { appended: true, id: e.id };
   } finally {
     fs.closeSync(fd);
-    // A security scanner may briefly hold the lock; report it without turning a committed save into a failure.
-    try { fs.unlinkSync(lock); } catch (error) { process.stderr.write(`Warning: could not remove ${lock} (${error.code || error.message}); remove it once no writer is running.\n`); }
+    // A security scanner may briefly hold the lock: retry for about half a second, then report it without turning a
+    // committed save into a failure.
+    for (let attempt = 0; ; attempt++) {
+      try { fs.unlinkSync(lock); break; } catch (error) {
+        if (['EBUSY', 'EPERM'].includes(error.code) && attempt < 5) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); continue; }
+        process.stderr.write(`Warning: could not remove ${lock} (${error.code || error.message}); remove it once no writer is running.\n`); break;
+      }
+    }
   }
 }
 function roundStats(events, round, resolve = assetKey) {
