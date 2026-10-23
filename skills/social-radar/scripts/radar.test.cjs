@@ -2201,3 +2201,16 @@ test('topic cards show low-follower and low-like fast growth signals', t => {
   const card = html.split('<article class="topic"')[1].split('</article>')[0];
   assert.match(card, /低赞快增（工作阈值）/); assert.match(card, /低粉工作阈值内/);
 });
+
+test('a reopened revisit stays open when the correction that made its baseline unavailable loses its files', t => {
+  const root = fixture(t);
+  saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task); saveObservation(root, obs('due', '09:20:00', 20)); append(root, { ...task, id: 'done', status: 'done' });
+  saveObservation(root, { ...obs('baseline-fix', '09:00:00', null, 'unavailable', ''), correctsObservationId: 'baseline' });
+  fs.rmSync(path.join(root, 'materials/metrics-baseline-fix.json'));
+  const state = checkedSnapshot(root), [reopened] = state.tasks;
+  assert.equal(reopened.status, 'pending'); assert.equal(reopened.reopened, true); assert.equal(reopened.due, false);
+  assert.equal(reopened.baselineUnavailable, true); assert.equal(reopened.baselineEvidenceLost, true);
+  assert.equal(summary(state).pendingTasks.length, 1);
+});

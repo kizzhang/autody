@@ -793,10 +793,14 @@ function snapshot(events, now = new Date().toISOString(), root, integrity) {
   });
   // Pending work on a rejected topic stays in history but is no longer due.
   const rejected = new Set(items.filter(i => i.decision?.decision === 'rejected').map(i => i.work.id));
+  const baselineReading = t => latestCorrection(groups.get(t.workId)?.observations || [], t.baselineObservationId);
+  const baselineLost = t => { const b = baselineReading(t); return !b || Boolean(observationChecks.get(b.id)); };
   const baselineState = t => {
-    const b = latestCorrection(groups.get(t.workId)?.observations || [], t.baselineObservationId);
-    if (!b || observationChecks.get(b.id)) return 'evidence_lost';
-    return b.metrics.likes && b.metrics.likes.precision !== 'unavailable' ? 'ok' : 'unavailable';
+    // A standing reading recorded as unavailable stays unavailable when its files are lost: losing a
+    // correction's evidence does not bring back the reading it replaced.
+    const b = baselineReading(t);
+    if (b && !(b.metrics?.likes && b.metrics.likes.precision !== 'unavailable')) return 'unavailable';
+    return baselineLost(t) ? 'evidence_lost' : 'ok';
   };
   // A finished revisit reopens when its baseline was corrected to unavailable or its completing reading no longer
   // stands; lost baseline files only flag it, because the revisit itself already happened.
@@ -808,7 +812,7 @@ function snapshot(events, now = new Date().toISOString(), root, integrity) {
       const suppressed = status === 'pending' && rejected.has(t.workId);
       // A revisit whose baseline is unavailable or lost cannot be completed, so it is flagged instead of due.
       const baseline = t.kind === 'revisit' ? baselineState(t) : 'ok';
-      return { ...t, status, ...(reopened ? { recordedStatus: 'done', reopened: true } : {}), ...(baseline === 'unavailable' ? { baselineUnavailable: true } : {}), ...(baseline === 'evidence_lost' ? { baselineEvidenceLost: true } : {}), suppressed, due: status === 'pending' && !suppressed && baseline === 'ok' && (t.dueAt == null || time(t.dueAt) <= time(now)) };
+      return { ...t, status, ...(reopened ? { recordedStatus: 'done', reopened: true } : {}), ...(baseline === 'unavailable' ? { baselineUnavailable: true } : {}), ...(t.kind === 'revisit' && baselineLost(t) ? { baselineEvidenceLost: true } : {}), suppressed, due: status === 'pending' && !suppressed && baseline === 'ok' && (t.dueAt == null || time(t.dueAt) <= time(now)) };
     }) };
 }
 function pausedPlatforms(attempts) {
