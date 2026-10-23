@@ -1410,3 +1410,64 @@ test('summary answers for a store that does not exist yet and reports paused pla
   append(root, event('attempt', 'dy-run', { roundId: 'r1', attemptId: 'a2', status: 'running', platform: 'douyin', reason: 'Continue Douyin' }));
   assert.deepEqual(summary(snapshot(load(root))).rounds[0].pausedPlatforms, ['xiaohongshu']);
 });
+
+test('lost files stop supporting records but keep their ownership and read history', t => {
+  const reread = fixture(t); append(reread, round('r2', { minNew: 1 }));
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/reread-'); freshCopy(reread, a.path, file); return { ...a, path: file }; });
+  append(reread, capture('reread', { roundId: 'r2', assets }));
+  assert.deepEqual([snapshot(load(reread)).rounds[1].newWorks, snapshot(load(reread)).rounds[1].coverageComplete], [0, false]);
+  fs.rmSync(path.join(reread, 'materials/page.png'));
+  const after = checkedSnapshot(reread).rounds[1];
+  assert.equal(after.unique, 1); assert.equal(after.newWorks, 0); assert.equal(after.coverageComplete, false);
+  const copied = fixture(t); append(copied, round('r2', { minNew: 0 }));
+  fs.copyFileSync(path.join(copied, 'materials/page.png'), path.join(copied, 'materials/identical.png'));
+  fs.writeFileSync(path.join(copied, 'materials/caption-r2.md'), 'Synthetic r2 caption');
+  append(copied, capture('identical', { roundId: 'r2', assets: [{ ...capture().assets[0], path: 'materials/caption-r2.md' }, { ...capture().assets[1], path: 'materials/identical.png' }] }));
+  assert.equal(snapshot(load(copied)).rounds[1].unique, 0);
+  fs.rmSync(path.join(copied, 'materials/page.png'));
+  assert.equal(checkedSnapshot(copied).rounds[1].unique, 0);
+});
+
+test('a written draft whose review lost support keeps its links and explains the recovery', t => {
+  const root = draftedFixture(t);
+  fs.rmSync(path.join(root, 'materials/page.png'));
+  const state = checkedSnapshot(root), html = render(state, root, path.join(root, 'reports'));
+  assert.match(html, /1 份初稿（其中 1 份所引审读已失效）/); assert.match(html, /href="\.\.\/script\.md"/); assert.match(html, /所引审读的依据已失效/);
+  const report = writeReport(state, root, path.join(root, 'reports'));
+  assert.ok(fs.readFileSync(report.csv, 'utf8').includes('script.md'));
+  for (const file of ['brief2.md', 'script2.md', 'evidence2.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  assert.throws(() => append(root, event('draft', 'draft2', { workId: 'xiaohongshu:example', selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief2.md', scriptPath: 'script2.md', evidencePath: 'evidence2.md' })), /record a new review/);
+});
+
+test('an older shortlist review is not promoted when the newest review loses support', t => {
+  const root = fixture(t); append(root, review());
+  fs.writeFileSync(path.join(root, 'materials/comments.md'), 'Synthetic comments showing the method no longer works');
+  append(root, capture('with-comments', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'comments', path: 'materials/comments.md', coverage: 'Synthetic comments' }] }));
+  append(root, { ...review('archive'), recommendation: 'archive', evidencePaths: ['materials/comments.md'], claims: [] });
+  fs.rmSync(path.join(root, 'materials/comments.md'));
+  const state = checkedSnapshot(root);
+  assert.equal(state.items[0].review.id, 'review1'); assert.equal(state.items[0].reviewBlocked, true);
+  assert.deepEqual(summary(state).shortlist, []);
+  assert.ok(!render(state, root, path.join(root, 'reports')).split('<section id="topics">')[1].split('</section>')[0].includes('<article'));
+});
+
+test('identical text may repeat across works while copied media names its first owner', t => {
+  const root = fixture(t), other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  fs.writeFileSync(path.join(root, 'materials/ocr-a.txt'), 'Same OCR text from a shared X screenshot');
+  append(root, capture('ocr-a', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'image_text', path: 'materials/ocr-a.txt' }] }));
+  fs.writeFileSync(path.join(root, 'materials/ocr-b.txt'), 'Same OCR text from a shared X screenshot');
+  append(root, capture('ocr-b', { work: other, readKinds: [], assets: [{ ...capture().assets[0], kind: 'image_text', path: 'materials/ocr-b.txt', sourceUrl: other.url }] }));
+  fs.copyFileSync(path.join(root, 'materials/page.png'), path.join(root, 'materials/other-page.png'));
+  assert.throws(() => append(root, capture('copied', { work: other, readKinds: [], assets: [{ ...capture().assets[1], path: 'materials/other-page.png', sourceUrl: other.url }] })), /materials\/other-page\.png.*xiaohongshu:example: materials\/page\.png/);
+});
+
+test('exact replays succeed even after referenced files change', t => {
+  const root = draftedFixture(t), saved = load(root), draft = saved.find(e => e.id === 'draft1'), capture1 = saved.find(e => e.id === 'capture1');
+  fs.rmSync(path.join(root, 'materials/page.png'));
+  assert.equal(append(root, draft).appended, false);
+  const { hashes, ...withoutHashes } = draft;
+  assert.ok(hashes); assert.equal(append(root, withoutHashes).appended, false);
+  assert.equal(append(root, capture()).appended, false); assert.equal(append(root, capture1).appended, false);
+  assert.deepEqual(load(root), saved);
+  assert.throws(() => append(root, { ...withoutHashes, hashes: { briefPath: '0'.repeat(64) } }));
+});

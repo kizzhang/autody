@@ -16,8 +16,10 @@ const ASSET_KINDS = new Set(['caption', 'page_screenshot', 'original_image', 'vi
   'comments', 'source_comments', 'source_page', 'source_image', 'research_note', 'metric_snapshot']);
 const METRIC_ASSET_KINDS = new Set(['page_screenshot', 'metric_snapshot']);
 const EXTERNAL_ASSET_KINDS = new Set(['source_page', 'source_image', 'source_comments', 'research_note']);
-// Identical bytes of these kinds belong to one work; captions and external sources may legitimately repeat.
-const contentOwned = kind => !EXTERNAL_ASSET_KINDS.has(kind) && kind !== 'caption';
+// Identical media or metric bytes belong to one work; text such as captions, OCR, subtitles, comments and
+// external sources may legitimately repeat across a propagation cluster.
+const CONTENT_OWNED_KINDS = new Set(['page_screenshot', 'original_image', 'video', 'clip', 'frame', 'metric_snapshot']);
+const contentOwned = kind => CONTENT_OWNED_KINDS.has(kind);
 const INDEPENDENT_SOURCE_KINDS = new Set(['research_note', 'source_page', 'source_image']);
 const READ_KINDS = new Set(['caption_body', 'image_text', 'video_fragment', 'original_subtitles', 'verified_transcript']);
 const READ_EVIDENCE = { caption_body: ['caption'], image_text: ['original_image', 'image_text', 'page_screenshot'], video_fragment: ['video', 'clip'], original_subtitles: ['original_subtitles'], verified_transcript: ['transcript_candidate'] };
@@ -151,16 +153,21 @@ function registeredFile(root, file, internals = lazyInternals(root), realRoot = 
   return { realFile, key };
 }
 function registrationKey(root, file, internals) { return registeredFile(root, file, internals).key; }
-function withoutBrokenAssets(root, events, selected) {
-  // Mirror status/render: a missing or changed file of the selected captures no longer supports records.
+function brokenAssets(root, events, selected) {
+  // Mirror status/render: a missing or changed file of the selected captures stops supporting records.
   const broken = new Set();
   for (const e of events) if (e.type === 'capture' && selected(e)) for (const a of e.assets) {
     let intact = false;
     try { intact = digest(root, a.path) === a.sha256; } catch { /* Missing or unreadable. */ }
     if (!intact) broken.add(assetKey(a.path));
   }
-  return broken.size ? events.map(e => e.type === 'capture' && e.assets.some(a => broken.has(assetKey(a.path))) ? { ...e, assets: e.assets.filter(a => !broken.has(assetKey(a.path))) } : e) : events;
+  return broken;
 }
+function withBroken(resolve, broken) {
+  // Same ledger and ownership history; the listed files no longer count as evidence.
+  return Object.assign(file => resolve(file), { ledger: resolve.ledger, index: resolve.index, broken: new Set([...(resolve.broken || []), ...broken]), filtered: true });
+}
+function unusable(resolve, asset) { return Boolean(resolve.broken?.has(assetKey(asset.path))); }
 function fileResolver(root) {
   const known = new Map();
   let realRoot;
@@ -256,14 +263,14 @@ function copiedContent(entry, registry) {
   // old metric evidence into a new time and reading. A correction keeps the original capture time.
   const first = typeof entry.asset.sha256 === 'string' ? registry.firstByHash(entry.asset.sha256) : undefined;
   if (!first || first === entry || first.asset === entry.asset) return null;
-  if (contentOwned(entry.asset.kind) && first.workId !== entry.workId) return 'Asset content is already registered for another work; save this work\'s own file';
+  if (contentOwned(entry.asset.kind) && first.workId !== entry.workId) return `Asset content of ${entry.asset.path} is already registered for another work (${first.workId}: ${first.asset.path}); save this work's own file`;
   if (METRIC_ASSET_KINDS.has(entry.asset.kind) && entry.asset.metrics !== undefined && time(first.asset.capturedAt) !== time(entry.asset.capturedAt) && !isDeepStrictEqual(first.asset.metrics, entry.asset.metrics)) return 'Metric evidence copies earlier content under a different time and reading';
   return null;
 }
 function assetsFor(events, workId, resolve = assetKey, roundId) {
   // A legacy cross-work registration or copied content must not transfer the first owner's evidence.
   const registry = registeredAssets(events, resolve);
-  return registry.forWork(workId).filter(a => !a.fromDraft && (roundId === undefined || a.roundId === roundId) && assetMatchesWork(a.asset, a.work) && !copiedContent(a, registry)).map(a => a.asset);
+  return registry.forWork(workId).filter(a => !a.fromDraft && !unusable(resolve, a.asset) && (roundId === undefined || a.roundId === roundId) && assetMatchesWork(a.asset, a.work) && !copiedContent(a, registry)).map(a => a.asset);
 }
 function supersededObservations(events) {
   return new Set(events.filter(x => x.type === 'observation' && typeof x.correctsObservationId === 'string').map(x => x.correctsObservationId));
@@ -285,10 +292,12 @@ function observationEvidence(e, prior, root, resolve = assetKey) {
   }
   if (root) for (const a of referenced) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
 }
-function eligible(e, registered, resolve = assetKey) {
+function eligible(e, registered, resolve = assetKey, { intact = true } = {}) {
+  // intact:false asks whether the capture was a substantive read when saved, regardless of later file loss.
   if (e.type !== 'capture') return false;
   const known = registered || registeredAssets([e], resolve);
   const assets = e.assets.filter(a => {
+    if (intact && unusable(resolve, a)) return false;
     const first = known.get(resolve(a.path));
     return first?.workId === e.work.id && !first.fromDraft && isDeepStrictEqual(first.asset, a) && assetMatchesWork(a, first.work) && assetMatchesWork(a, e.work) && !copiedContent(first, known);
   });
@@ -315,9 +324,8 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
     if (e.platform) check(['douyin', 'xiaohongshu'].includes(e.platform), 'Invalid paused platform');
     if (e.status === 'completed') {
       // Count only captures whose files are intact, as status does, so a replacement capture can complete the round.
-      const view = root && !resolve.filtered ? withoutBrokenAssets(root, prior, c => c.roundId === e.roundId) : prior;
-      const viewResolve = view === prior ? resolve : Object.assign(file => resolve(file), { ledger: view });
-      if (!roundStats(view, round, viewResolve).coverageComplete) check(false, view !== prior && roundStats(prior, round, resolve).coverageComplete ? 'Round coverage relies on missing or changed files; recapture them under new paths' : 'Round count/coverage targets not met; save partial');
+      const viewResolve = root && !resolve.filtered ? withBroken(resolve, brokenAssets(root, prior, c => c.roundId === e.roundId)) : resolve;
+      if (!roundStats(prior, round, viewResolve).coverageComplete) check(false, viewResolve !== resolve && roundStats(prior, round, resolve).coverageComplete ? 'Round coverage relies on missing or changed files; recapture them under new paths' : 'Round count/coverage targets not met; save partial');
     }
   } else if (e.type === 'capture') {
     check(round, 'Unknown round');
@@ -364,7 +372,8 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
         const copied = copiedContent({ asset: a, workId: e.work.id }, registered); check(!copied, copied);
       }
     }
-    check(new Set(e.assets.map(a => a.sha256)).size === e.assets.length, 'Duplicate asset content within one capture');
+    const owned = e.assets.filter(a => contentOwned(a.kind));
+    check(new Set(owned.map(a => a.sha256)).size === owned.length, 'Duplicate media or metric content within one capture');
     if (e.readKinds.includes('verified_transcript')) check(e.assets.some(a => a.kind === 'transcript_candidate' && a.status === 'verified'), 'Verified transcript evidence required');
     const bound = e.assets.filter(a => workBound(a, e.work));
     for (const kind of e.readKinds) check(supportsRead(kind, bound), `Read kind ${kind} requires compatible saved evidence from the work itself`);
@@ -387,20 +396,19 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
   } else if (e.type === 'review') {
     requireWork();
     // Judge the review on this work's intact files, as status does, so an unrelated lost file does not block it.
-    const view = root && !resolve.filtered ? withoutBrokenAssets(root, prior, c => c.work.id === e.workId) : prior;
-    const viewResolve = view === prior ? resolve : Object.assign(file => resolve(file), { ledger: view });
-    const workAssets = assetsFor(view, e.workId, viewResolve), known = new Set(workAssets.map(a => a.path));
+    const viewResolve = root && !resolve.filtered ? withBroken(resolve, brokenAssets(root, prior, c => c.work.id === e.workId)) : resolve;
+    const workAssets = assetsFor(prior, e.workId, viewResolve), known = new Set(workAssets.map(a => a.path));
     const cited = paths => { check(Array.isArray(paths) && paths.length > 0, 'Evidence paths required'); for (const p of paths) check(known.has(p), `Evidence not captured for work: ${p}`); };
     cited(e.evidencePaths);
     check(['shortlist', 'watch', 'archive'].includes(e.recommendation), 'Invalid recommendation');
     for (const k of ['summary', 'opportunity', 'angle']) check(nonempty(e[k]), `Review ${k} required`);
     check(Array.isArray(e.captureIds) && e.captureIds.length > 0, 'Read capture IDs required');
     const readCaptures = e.captureIds.map(cid => {
-      const capture = view.find(x => x.type === 'capture' && x.id === cid && x.work.id === e.workId);
+      const capture = prior.find(x => x.type === 'capture' && x.id === cid && x.work.id === e.workId);
       check(capture, 'Review capture not saved for this work');
       return capture;
     });
-    const registered = registeredAssets(view, viewResolve);
+    const registered = registeredAssets(prior, viewResolve);
     check(readCaptures.some(c => eligible(c, registered, viewResolve)), 'Review requires a substantive eligible capture');
     check(Array.isArray(e.gaps) && Array.isArray(e.sourceRefs) && Array.isArray(e.claims), 'Review gaps, claims and sourceRefs arrays required');
     const sourceAssets = workAssets.filter(a => INDEPENDENT_SOURCE_KINDS.has(a.kind) && e.evidencePaths.includes(a.path));
@@ -444,14 +452,13 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
   } else if (e.type === 'draft') {
     requireWork(); const selection = prior.findLast(x => x.type === 'decision' && x.workId === e.workId);
     check(selection && selection.decision === 'selected' && selection.id === e.selectionEventId, 'Draft requires the current explicit user selection');
-    const view = root && !resolve.filtered ? withoutBrokenAssets(root, prior, c => c.work.id === e.workId) : prior;
-    const viewResolve = view === prior ? resolve : Object.assign(file => resolve(file), { ledger: view });
-    const currentReview = view.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !eventIssue(root, x, view.slice(0, i), viewResolve, internals));
+    const viewResolve = root && !resolve.filtered ? withBroken(resolve, brokenAssets(root, prior, c => c.work.id === e.workId)) : resolve;
+    const currentReview = prior.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !eventIssue(root, x, prior.slice(0, i), viewResolve, internals));
     if (!currentReview || currentReview.id !== e.reviewId) {
       // Say why a draft fails when the review it cites has since lost its support.
-      const cited = view.findIndex(x => x.type === 'review' && x.id === e.reviewId && x.workId === e.workId);
-      const issue = cited >= 0 ? eventIssue(root, view[cited], view.slice(0, cited), viewResolve, internals) : null;
-      check(false, issue ? `Draft review ${e.reviewId} is no longer valid: ${issue}` : 'Draft must reference the current review revision');
+      const cited = prior.findIndex(x => x.type === 'review' && x.id === e.reviewId && x.workId === e.workId);
+      const issue = cited >= 0 ? eventIssue(root, prior[cited], prior.slice(0, cited), viewResolve, internals) : null;
+      check(false, issue ? `Draft review ${e.reviewId} is no longer valid: ${issue}. Recapture the missing evidence and record a new review before registering a new draft` : 'Draft must reference the current review revision');
     }
     check(e.status === 'draft', 'Generated script remains draft');
     if (e.hashes === undefined) e.hashes = {};
@@ -510,6 +517,16 @@ function referencedPaths(input, events, resolve = assetKey) {
   }
   return refs;
 }
+function sameReplay(existing, input) {
+  // A replay may omit helper-filled hashes; any hash it supplies must match the saved one.
+  const saved = JSON.parse(JSON.stringify(existing));
+  if (saved.type === 'draft' && saved.hashes) {
+    if (input.hashes === undefined) delete saved.hashes;
+    else if (input.hashes && typeof input.hashes === 'object' && !Array.isArray(input.hashes)) saved.hashes = Object.fromEntries(Object.entries(saved.hashes).filter(([k]) => Object.hasOwn(input.hashes, k)));
+  }
+  if (saved.type === 'capture' && Array.isArray(saved.assets) && Array.isArray(input.assets)) saved.assets.forEach((a, i) => { if (input.assets[i] && input.assets[i].sha256 === undefined) delete a.sha256; });
+  return isDeepStrictEqual(saved, input);
+}
 function append(root, input) {
   root = path.resolve(root); fs.mkdirSync(root, { recursive: true });
   fs.mkdirSync(eventDirectory(root), { recursive: true }); const dir = eventDirectory(root);
@@ -523,6 +540,7 @@ function append(root, input) {
     // video for each metric sample. status/render perform the full integrity pass.
     if (typeof e.recordedAt === 'string' && Number.isFinite(Date.parse(e.recordedAt))) check(Date.parse(e.recordedAt) <= Date.now() + 5 * 60000, 'recordedAt is later than this machine clock; record the actual save time');
     const resolve = fileResolver(root); resolve.ledger = events;
+    if (existing && sameReplay(existing, e)) return { appended: false, id: e.id };
     const refs = referencedPaths(e, events, resolve);
     for (const old of events) {
       if (old.type === 'capture') for (const a of old.assets) {
@@ -534,7 +552,6 @@ function append(root, input) {
     }
     // Replaying an unchanged legacy record makes no new assertion. Unsupported
     // historical observations remain excluded by snapshot's evidence checks.
-    if (existing && e.type === 'observation' && isDeepStrictEqual(existing, e)) return { appended: false, id: e.id };
     const normalized = validate(root, e, existing ? events.slice(0, events.indexOf(existing)) : events, resolve);
     if (existing) { check(isDeepStrictEqual(existing, normalized), `Conflicting replay: ${e.id}`); return { appended: false, id: e.id }; }
     const n = events.length + 1; check(n <= 99999999, 'Ledger sequence exhausted');
@@ -550,7 +567,7 @@ function append(root, input) {
 function roundStats(events, round, resolve = assetKey) {
   const registered = registeredAssets(events, resolve), isEligible = e => eligible(e, registered, resolve);
   // Re-listing files registered in an earlier round is not a new read for this round.
-  const freshInRound = e => e.assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind) && workBound(a, e.work) && registered.get(resolve(a.path))?.roundId === e.roundId && (registered.firstByHash(a.sha256)?.roundId ?? e.roundId) === e.roundId);
+  const freshInRound = e => e.assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind) && !unusable(resolve, a) && workBound(a, e.work) && registered.get(resolve(a.path))?.roundId === e.roundId && (registered.firstByHash(a.sha256)?.roundId ?? e.roundId) === e.roundId);
   const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && isEligible(e) && freshInRound(e));
   const metricsOnly = e => e.assets.every(a => METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined);
   const distinct = new Map(); for (const e of captures) if (!distinct.has(e.work.id)) distinct.set(e.work.id, e);
@@ -562,7 +579,8 @@ function roundStats(events, round, resolve = assetKey) {
     platformCounts[first.work.platform]++;
     // A lead found through recommendations and read later still counts; metrics-only revisit captures do not decide the route.
     if (events.some(e => e.type === 'capture' && e.roundId === round.roundId && e.work.id === wid && !metricsOnly(e) && ['recommendation', 'related'].includes(e.route))) recommended[first.work.platform]++;
-    if (!events.some(e => e.type === 'capture' && earlierRounds.has(e.roundId) && e.work.id === wid && isEligible(e))) newWorks++;
+    // A read stays a past read even if its files were lost later.
+    if (!events.some(e => e.type === 'capture' && earlierRounds.has(e.roundId) && e.work.id === wid && eligible(e, registered, resolve, { intact: false }))) newWorks++;
     if (captures.some(e => e.work.id === wid && e.practicalMethod === true)) practical++;
   }
   const c = round.config, countComplete = Object.keys(platformCounts).every(k => platformCounts[k] >= c.targets[k]);
@@ -597,12 +615,11 @@ function growth(observations, c = DEFAULTS) {
 }
 function snapshot(events, now = new Date().toISOString(), root, integrity = []) {
   time(now); const source = events;
-  // Changed or missing registered files stay in the ledger history but no longer support derived results.
+  // Changed or missing registered files keep their ownership and read history but no longer support derived results.
   const broken = new Set(integrity.filter(x => x.kind === 'asset' && typeof x.path === 'string').map(x => assetKey(x.path)));
-  if (broken.size) events = events.map(e => e.type === 'capture' && e.assets.some(a => broken.has(assetKey(a.path))) ? { ...e, assets: e.assets.filter(a => !broken.has(assetKey(a.path))) } : e);
   const works = new Map(), rounds = events.filter(e => e.type === 'round_started');
   const resolve = root ? fileResolver(root) : file => assetKey(file);
-  resolve.ledger = events; resolve.filtered = true;
+  resolve.ledger = events; resolve.filtered = true; resolve.broken = broken;
   const observationChecks = new Map(), reviewChecks = new Map(), draftChecks = new Map();
   const internals = root ? lazyInternals(root) : undefined;
   for (let i = 0; i < events.length; i++) if (events[i].type === 'observation') {
@@ -636,10 +653,12 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     };
     const reviewGaps = reviews.filter(e => reviewChecks.get(e.id)).map(e => ({ reviewId: e.id, recordedAt: e.recordedAt, reason: reviewChecks.get(e.id) }));
     const review = reviews.findLast(e => !reviewChecks.get(e.id)) || null;
+    // When the newest review has lost support, an older recommendation is not promoted in its place.
+    const reviewBlocked = Boolean(review && reviews.at(-1) !== review);
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
     return { work, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
-      review, reviews, reviewGaps, decision,
+      review, reviewBlocked, reviews, reviewGaps, decision,
       drafts: draftHistory.filter(e => !draftChecks.get(e.id)), draftHistory, draftGaps, integrityIssues: integrity.filter(x => x.workId === workId) };
   });
   // Pending work on a rejected topic stays in history but is no longer due.
@@ -661,7 +680,7 @@ function pausedPlatforms(attempts) {
 }
 function summary(state) {
   // Compact view for an agent resuming work; status and snapshot.json keep the full history.
-  const candidates = state.items.filter(i => i.review?.recommendation === 'shortlist' && !['watch', 'rejected', 'selected'].includes(i.decision?.decision)).sort((a, b) => time(b.review.recordedAt) - time(a.review.recordedAt));
+  const candidates = state.items.filter(i => i.review?.recommendation === 'shortlist' && !i.reviewBlocked && !['watch', 'rejected', 'selected'].includes(i.decision?.decision)).sort((a, b) => time(b.review.recordedAt) - time(a.review.recordedAt));
   const recentSince = time(state.generatedAt) - 7 * 86400000, priority = candidates.filter(i => time(i.review.recordedAt) >= recentSince);
   return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
