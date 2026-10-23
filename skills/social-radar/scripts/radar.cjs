@@ -77,8 +77,10 @@ function authorUrl(work) {
   check(profileId(work.platform, work.authorUrl), 'Author URL must identify a profile on the work platform');
 }
 function sourcePlatform(sourceUrl) {
-  const host = new URL(sourceUrl).hostname.replace(/^www\./, '');
-  return ({ 'douyin.com': 'douyin', 'xiaohongshu.com': 'xiaohongshu', 'x.com': 'x', 'twitter.com': 'x' })[host];
+  // Subdomains such as mobile.x.com belong to the same platform.
+  const host = new URL(sourceUrl).hostname, platforms = { 'douyin.com': 'douyin', 'xiaohongshu.com': 'xiaohongshu', 'x.com': 'x', 'twitter.com': 'x' };
+  const domain = Object.keys(platforms).find(d => host === d || host.endsWith(`.${d}`));
+  return domain && platforms[domain];
 }
 function assetMatchesWork(a, work) {
   try { url(a.sourceUrl); } catch { return false; }
@@ -461,11 +463,12 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
       const baseline = prior.find(x => x.id === e.baselineObservationId && x.type === 'observation' && x.workId === e.workId && x.metrics.likes && x.metrics.likes.precision !== 'unavailable');
       check(baseline, 'Revisit needs a saved like observation');
       if (!previous) check(!supersededObservations(prior).has(baseline.id), 'Baseline observation was corrected; use its latest correction as the baseline');
-      observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)), undefined, resolve);
+      // The standing correction, not a superseded original, is the baseline whose record must still be usable.
+      const standing = latestCorrection(prior, baseline.id);
+      observationEvidence(standing, prior.slice(0, prior.indexOf(standing)), undefined, resolve);
       check(time(e.dueAt) >= time(baseline.sampledAt) + round.config.minIntervalMinutes * 60000, 'Revisit is earlier than the minimum interval');
       const superseded = supersededObservations(prior);
       if (e.status === 'done') {
-        const standing = latestCorrection(prior, baseline.id);
         check(standing?.metrics.likes && standing.metrics.likes.precision !== 'unavailable', 'Revisit baseline was corrected to an unavailable reading; record a new baseline and task');
         try { observationEvidence(standing, prior.slice(0, prior.indexOf(standing)), root, resolve); } catch (error) { check(false, `Revisit baseline evidence is not intact: ${error.message}`); }
       }
@@ -570,6 +573,10 @@ function append(root, input) {
       check(!outer, `New store ${root} would sit inside the existing store ${dir}; use a sibling directory`);
       if (path.dirname(dir) === dir) break;
     }
+    // Nor may a new store wrap existing stores in its subdirectories (checked two levels deep).
+    const hasJournal = dir => { try { return fs.readdirSync(path.join(dir, 'events')).some(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)); } catch { return false; } };
+    const children = dir => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory() && d.name !== 'events').map(d => path.join(dir, d.name)); } catch { return []; } };
+    for (const child of children(root)) for (const inner of [child, ...children(child)]) check(!hasJournal(inner), `New store ${root} would contain the existing store ${inner}; use a sibling directory`);
   }
   fs.mkdirSync(root, { recursive: true });
   fs.mkdirSync(eventDirectory(root), { recursive: true }); const dir = eventDirectory(root);
@@ -656,7 +663,9 @@ function growth(observations, c = DEFAULTS) {
   const minutes = (time(b.sampledAt) - time(a.sampledAt)) / 60000, delta = b.metrics.likes.value - a.metrics.likes.value;
   result.delta = delta; result.minutes = minutes;
   // A drop between any two readings in the window is a decrease to check, never net growth; the delta is kept only for a net fall.
-  if (points.slice(points.indexOf(a)).some((p, k, w) => k > 0 && p.metrics.likes.value < w[k - 1].metrics.likes.value)) return { ...result, delta: delta < 0 ? delta : null, status: 'count_decreased' };
+  // A one- or two-like wobble is noise; a fall of at least minNewLikes between readings is reported instead of growth.
+  const dropped = window => window.some((p, k) => k > 0 && window[k - 1].metrics.likes.value - p.metrics.likes.value >= c.minNewLikes);
+  if (delta < 0 || dropped(points.slice(points.indexOf(a)))) return { ...result, delta: delta < 0 ? delta : null, status: 'count_decreased' };
   if (startIndex < 0) return { ...result, status: 'interval_too_short' };
   result.perHour = delta / (minutes / 60);
   result.relative = a.metrics.likes.value > 0 ? delta / a.metrics.likes.value : null;
@@ -669,7 +678,7 @@ function growth(observations, c = DEFAULTS) {
   if (previousIndex >= 0) {
     const p = points[previousIndex], previousMinutes = (time(a.sampledAt) - time(p.sampledAt)) / 60000;
     const previousWindow = points.slice(previousIndex, startIndex + 1);
-    if (previousWindow.every((x, k) => x.metrics.likes.precision === 'exact' && (k === 0 || x.metrics.likes.value >= previousWindow[k - 1].metrics.likes.value)) && previousMinutes <= c.shortWindowHours * 60) {
+    if (previousWindow.every(x => x.metrics.likes.precision === 'exact') && !dropped(previousWindow) && previousMinutes <= c.shortWindowHours * 60) {
       const previousSpeed = (a.metrics.likes.value - p.metrics.likes.value) / (previousMinutes / 60);
       result.accelerating = previousSpeed > 0 && result.perHour >= previousSpeed * c.accelerationRatio;
     }
@@ -808,7 +817,7 @@ function main(argv) {
   state.storeExists = fs.existsSync(path.resolve(opts.store)); state.journalGaps = journalGaps(opts.store);
   if (!state.storeExists) process.stderr.write(`Warning: store ${path.resolve(opts.store)} does not exist; check --store before appending.\n`);
   if (state.journalGaps.length) process.stderr.write(`Warning: journal sequence numbers ${state.journalGaps.join(', ')} are missing; an event file was removed.\n`);
-  if (command === 'render') { check(opts.out, '--out required'); return require('./render-radar.cjs').writeReport(state, opts.store, opts.out); }
+  if (command === 'render') { check(opts.out, '--out required'); return require('./render-radar.cjs').writeReport(state, opts.store, opts.out, events); }
   return command === 'summary' ? summary(state) : state;
 }
 if (require.main === module) { try { console.log(JSON.stringify(main(process.argv.slice(2)), null, 2)); } catch (e) { console.error(e.message); process.exitCode = 1; } }

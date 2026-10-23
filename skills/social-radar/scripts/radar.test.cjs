@@ -1978,3 +1978,61 @@ test('a new store cannot be created inside an existing store, and null input get
   assert.ok(!fs.existsSync(path.join(root, 'stores')));
   assert.throws(() => append(root, null), /Event object required/);
 });
+
+test('render protects drafts of a work whose capture record was lost', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  append(root, review());
+  append(root, event('decision', 'selected', { workId, decision: 'selected', userRequest: 'Synthetic user: select this', reason: 'Useful' }));
+  fs.mkdirSync(path.join(root, 'drafts'));
+  for (const file of ['brief.md', 'report.html', 'evidence.md']) fs.writeFileSync(path.join(root, 'drafts', file), `Synthetic ${file}`);
+  append(root, event('draft', 'draft1', { workId, selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'drafts/brief.md', scriptPath: 'drafts/report.html', evidencePath: 'drafts/evidence.md' }));
+  fs.rmSync(path.join(root, 'events', fs.readdirSync(path.join(root, 'events')).find(n => n.endsWith('-capture1.json'))));
+  const run = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'render', '--store', root, '--out', path.join(root, 'drafts')], { encoding: 'utf8' });
+  assert.equal(run.status, 1); assert.match(run.stderr, /overlaps a registered ledger file/);
+  assert.equal(fs.readFileSync(path.join(root, 'drafts/report.html'), 'utf8'), 'Synthetic report.html');
+});
+
+test('a corrected baseline completes its revisit even after the original baseline capture is lost', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task);
+  saveObservation(root, { ...obs('baseline-fix', '09:00:00', 18), correctsObservationId: 'baseline' });
+  saveObservation(root, obs('due', '09:20:00', 30));
+  fs.rmSync(path.join(root, 'events', fs.readdirSync(path.join(root, 'events')).find(n => n.endsWith('-capture-baseline.json'))));
+  append(root, { ...task, id: 'task1-done', status: 'done' });
+  assert.equal(snapshot(load(root), '2026-10-21T10:00:00+08:00').tasks[0].status, 'done');
+});
+
+test('a small wobble keeps measured growth while a real fall is still reported', () => {
+  const wobble = growth([obs('a', '09:00:00', 30), obs('b', '09:25:00', 95), obs('c', '09:35:00', 94)]);
+  assert.equal(wobble.status, 'short_window'); assert.equal(wobble.delta, 64); assert.equal(wobble.fast, true);
+  assert.equal(growth([obs('a', '09:00:00', 10), obs('b', '09:30:00', 200), obs('c', '09:31:00', 150)]).status, 'count_decreased');
+});
+
+test('a new store cannot wrap existing stores, and subdomain sources keep their platform', t => {
+  const parent = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'autody-radar-parent-'));
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const inner = path.join(parent, 'social-radar-2026-10');
+  fs.mkdirSync(path.join(inner, 'materials'), { recursive: true });
+  append(inner, round());
+  assert.throws(() => append(parent, round('outer')), /would contain the existing store/);
+  const root = fixture(t);
+  fs.writeFileSync(path.join(root, 'materials/mobile-x.md'), 'Synthetic replies on mobile X');
+  append(root, capture('mobile-x', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'source_comments', path: 'materials/mobile-x.md', sourceUrl: 'https://mobile.x.com/example/status/1' }] }));
+  append(root, { ...review('x-discussion'), comments: [{ platform: 'x', kind: 'support', sampledCount: 2, summary: 'Synthetic replies', evidencePaths: ['materials/mobile-x.md'] }] });
+});
+
+test('documented bindings hold: draft selection, clip seconds, task identity and the round follower ceiling', t => {
+  const root = draftedFixture(t), workId = 'xiaohongshu:example';
+  for (const file of ['brief2.md', 'script2.md', 'evidence2.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  assert.throws(() => append(root, event('draft', 'wrong-selection', { workId, selectionEventId: 'review1', reviewId: 'review1', status: 'draft', briefPath: 'brief2.md', scriptPath: 'script2.md', evidencePath: 'evidence2.md' })), /current explicit user selection/);
+  fs.writeFileSync(path.join(root, 'materials/clip.mp4'), 'Synthetic clip');
+  assert.throws(() => append(root, capture('bad-clip', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'clip', path: 'materials/clip.mp4', coverage: 'Synthetic clip' }] })), /start\/end seconds/);
+  saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'task1', { roundId: 'r1', workId, taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task);
+  assert.throws(() => append(root, { ...task, id: 'task-kind-change', kind: 'backfill', dueAt: null }), /identity is immutable/);
+  const low = fixture(t); append(low, round('r2', { lowFollowerCeiling: 10 }));
+  saveObservation(low, event('observation', 'followers', { roundId: 'r2', workId, sampledAt: '2026-10-21T09:00:00+08:00', metrics: { followers: { value: 4000, raw: '4000', precision: 'exact' } } }));
+  assert.equal(snapshot(load(low)).items[0].lowFollower, false);
+});
