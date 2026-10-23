@@ -1363,9 +1363,9 @@ test('byte-identical copies cannot relabel metrics, move evidence to another wor
   fs.copyFileSync(path.join(root, original.path), path.join(root, 'materials/m2.json'));
   const relabelled = { ...original, path: 'materials/m2.json', capturedAt: '2026-10-21T09:40:00+08:00', metrics: { likes: { value: 400, raw: '400', precision: 'exact' } } };
   delete relabelled.sha256;
-  assert.throws(() => append(root, capture('relabel', { readKinds: [], assets: [relabelled] })), /different time and reading/);
+  assert.throws(() => append(root, capture('relabel', { readKinds: [], assets: [relabelled] })), /different capture time/);
   assert.deepEqual(load(root), before);
-  append(root, capture('same-reading-later', { readKinds: [], assets: [{ ...relabelled, metrics: original.metrics }] }));
+  assert.throws(() => append(root, capture('same-reading-later', { readKinds: [], assets: [{ ...relabelled, metrics: original.metrics }] })), /different capture time/);
   const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
   fs.copyFileSync(path.join(root, 'materials/page.png'), path.join(root, 'materials/other-page.png'));
   fs.writeFileSync(path.join(root, 'materials/other-caption.md'), 'Synthetic caption of the other work');
@@ -1617,4 +1617,74 @@ test('a reposted identical video may be saved for another work but does not coun
   const state = snapshot(load(root));
   assert.equal(state.rounds[0].platformCounts.xiaohongshu, 1);
   assert.ok(!state.items.find(i => i.work.id === other.id).assets.some(a => a.path === 'materials/repost.mp4'));
+});
+
+test('revisit completion checks the standing baseline correction and its files', t => {
+  const setup = () => {
+    const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+    const task = event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+    append(root, task);
+    saveObservation(root, { ...obs('baseline-fix', '09:00:00', 18), correctsObservationId: 'baseline' });
+    saveObservation(root, obs('due', '09:20:00', 30));
+    return { root, done: { ...task, id: 'task1-done', status: 'done' } };
+  };
+  const lostFix = setup();
+  fs.rmSync(path.join(lostFix.root, 'materials/metrics-baseline-fix.json'));
+  assert.throws(() => append(lostFix.root, lostFix.done), /Missing\/empty|not intact/);
+  const lostOriginal = setup();
+  fs.rmSync(path.join(lostOriginal.root, 'materials/metrics-baseline.json'));
+  append(lostOriginal.root, lostOriginal.done);
+  assert.equal(snapshot(load(lostOriginal.root), '2026-10-21T10:00:00+08:00', lostOriginal.root, require('./radar.cjs').integrityIssues(lostOriginal.root, load(lostOriginal.root))).tasks[0].status, 'done');
+});
+
+test('the capture day for a relative label comes from the page capture time, not the save time', t => {
+  const root = fixture(t);
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/late-'); freshCopy(root, a.path, file); return { ...a, path: file, capturedAt: '2026-10-21T23:55:00+08:00' }; });
+  append(root, { ...capture('late-save', { assets }), recordedAt: '2026-10-22T00:05:00+08:00' });
+  append(root, { ...review(), captureIds: ['late-save'], evidencePaths: [assets[0].path], claims: [], recordedAt: '2026-10-22T00:05:00+08:00' });
+  const html = render(snapshot(load(root), '2026-10-23T12:00:00+08:00', root), root, path.join(root, 'reports'));
+  assert.match(html, /日期：昨天（采集于 2026\/10\/21）/);
+});
+
+test('report outputs cannot reach a missing registered file through a directory alias', t => {
+  const root = fixture(t);
+  fs.writeFileSync(path.join(root, 'materials/snapshot.json'), 'Synthetic registered snapshot named like a report file');
+  append(root, capture('named-like-report', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'research_note', path: 'materials/snapshot.json', sourceUrl: 'https://example.org/note' }] }));
+  fs.rmSync(path.join(root, 'materials/snapshot.json'));
+  try { fs.symlinkSync(path.join(root, 'materials'), path.join(root, 'report-alias'), 'junction'); } catch { t.skip('directory links unavailable'); return; }
+  const state = snapshot(load(root), undefined, root);
+  assert.throws(() => writeReport(state, root, path.join(root, 'report-alias')), /overlaps a registered ledger file/);
+  assert.ok(!fs.existsSync(path.join(root, 'materials/snapshot.json')));
+});
+
+test('an unchanged count needs its own snapshot bytes, and a copied snapshot cannot fake a later revisit', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example', metrics = { likes: { value: 17, raw: '17', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/am.json'), JSON.stringify({ page: 'example', metrics }));
+  append(root, capture('am', { readKinds: [], assets: [{ kind: 'metric_snapshot', path: 'materials/am.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T09:00:00+08:00', coverage: 'Synthetic snapshot without a time', metrics }] }));
+  append(root, event('observation', 'am-obs', { roundId: 'r1', workId, sampledAt: '2026-10-21T09:00:00+08:00', metrics, evidencePaths: ['materials/am.json'] }));
+  fs.copyFileSync(path.join(root, 'materials/am.json'), path.join(root, 'materials/later.json'));
+  assert.throws(() => append(root, capture('later', { readKinds: [], assets: [{ kind: 'metric_snapshot', path: 'materials/later.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T09:30:00+08:00', coverage: 'Same bytes later', metrics }] })), /different capture time/);
+  fs.writeFileSync(path.join(root, 'materials/later.json'), JSON.stringify({ page: 'example', sampledAt: '2026-10-21T09:30:00+08:00', metrics }));
+  append(root, capture('later', { readKinds: [], assets: [{ kind: 'metric_snapshot', path: 'materials/later.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T09:30:00+08:00', coverage: 'Unchanged count with its own time', metrics }] }));
+  append(root, event('observation', 'later-obs', { roundId: 'r1', workId, sampledAt: '2026-10-21T09:30:00+08:00', metrics, evidencePaths: ['materials/later.json'] }));
+  assert.equal(snapshot(load(root)).items[0].growth.delta, 0);
+  assert.throws(() => append(root, event('observation', 'wrong-time', { roundId: 'r1', workId, sampledAt: '2026-10-21T09:31:00+08:00', metrics: { likes: { value: 18, raw: '18', precision: 'exact' } }, evidencePaths: ['materials/later.json'] })), /was captured at 2026-10-21T09:30:00\+08:00/);
+});
+
+test('growth compares the newest reading with one at least the minimum interval earlier', () => {
+  const g = growth([obs('a', '09:00:00', 10), obs('b', '10:00:00', 400), obs('c', '10:05:00', 405)]);
+  assert.equal(g.status, 'short_window'); assert.equal(g.from, '2026-10-21T09:00:00+08:00'); assert.equal(g.delta, 395);
+  assert.equal(g.fast, true); assert.equal(g.lowLikeFast, true);
+  assert.equal(growth([obs('a', '09:00:00', 10), obs('r', '09:10:00', null, 'rounded', '1万'), obs('c', '09:30:00', 50)]).status, 'rounded_counts');
+  assert.equal(growth([obs('a', '09:00:00', 10), obs('b', '09:40:00', 30), obs('c', '10:20:00', 120)]).accelerating, true);
+});
+
+test('duplicate media within one capture is rejected, summary carries the creator profile and fast growth is shown', t => {
+  const root = fixture(t);
+  fs.writeFileSync(path.join(root, 'materials/v1.mp4'), 'Synthetic video'); fs.copyFileSync(path.join(root, 'materials/v1.mp4'), path.join(root, 'materials/v2.mp4'));
+  const video = { ...capture().assets[0], kind: 'video', coverage: 'Synthetic video' };
+  assert.throws(() => append(root, capture('two-videos', { readKinds: [], assets: [{ ...video, path: 'materials/v1.mp4' }, { ...video, path: 'materials/v2.mp4' }] })), /Duplicate media or metric content/);
+  assert.equal(summary(snapshot(load(root))).profile, 'Synthetic test creator');
+  saveObservation(root, obs('slow', '09:00:00', 10)); saveObservation(root, obs('quick', '09:30:00', 200)); append(root, review());
+  assert.match(render(snapshot(load(root), undefined, root), root, path.join(root, 'reports')), /快增（工作阈值）/);
 });

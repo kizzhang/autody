@@ -267,7 +267,7 @@ function copiedContent(entry, registry) {
   const first = typeof entry.asset.sha256 === 'string' ? registry.firstByHash(entry.asset.sha256) : undefined;
   if (!first || first === entry || first.asset === entry.asset) return null;
   if (CONTENT_IDENTITY_KINDS.has(entry.asset.kind) && first.workId !== entry.workId) return `Asset content of ${entry.asset.path} is already registered for another work (${first.workId}: ${first.asset.path}); save this work's own file`;
-  if (METRIC_ASSET_KINDS.has(entry.asset.kind) && entry.asset.metrics !== undefined && time(first.asset.capturedAt) !== time(entry.asset.capturedAt) && !isDeepStrictEqual(first.asset.metrics, entry.asset.metrics)) return 'Metric evidence copies earlier content under a different time and reading';
+  if (METRIC_ASSET_KINDS.has(entry.asset.kind) && entry.asset.metrics !== undefined && time(first.asset.capturedAt) !== time(entry.asset.capturedAt)) return 'Metric evidence repeats earlier bytes under a different capture time; a fresh snapshot must record its own sampling time and page state';
   return null;
 }
 function assetsFor(events, workId, resolve = assetKey, roundId) {
@@ -290,10 +290,14 @@ function observationEvidence(e, prior, root, resolve = assetKey) {
   // The first registration owns the timestamp/metric readings for a path.
   for (const a of assetsFor(prior, e.workId, resolve, e.roundId)) if (!known.has(a.path)) known.set(a.path, a);
   check(Array.isArray(e.evidencePaths) && e.evidencePaths.length > 0, 'Fresh metric evidence required');
-  const referenced = e.evidencePaths.map(p => known.get(p));
-  for (const a of referenced) {
-    check(a && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && time(a.capturedAt) === time(e.sampledAt), 'Observation requires metric-bearing evidence captured at its sampling time and in its round');
-  }
+  const base = 'Observation requires metric-bearing evidence captured at its sampling time and in its round';
+  const referenced = e.evidencePaths.map(p => {
+    const a = known.get(p);
+    check(a, `${base}: ${p} is not usable metric evidence of this work in round ${e.roundId} (unregistered, lost, copied, or first saved in another round)`);
+    check(METRIC_ASSET_KINDS.has(a.kind) && a.metrics, `${base}: ${p} carries no metric readings`);
+    check(time(a.capturedAt) === time(e.sampledAt), `${base}: ${p} was captured at ${a.capturedAt}`);
+    return a;
+  });
   for (const [k, m] of Object.entries(e.metrics)) {
     validateMetric(k, m);
     const sources = referenced.filter(a => Object.hasOwn(a.metrics, k));
@@ -381,7 +385,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
         const copied = copiedContent({ asset: a, workId: e.work.id }, registered); if (copied) check(!contentOwned(a.kind), copied);
       }
     }
-    const owned = e.assets.filter(a => contentOwned(a.kind));
+    const owned = e.assets.filter(a => CONTENT_IDENTITY_KINDS.has(a.kind));
     check(new Set(owned.map(a => a.sha256)).size === owned.length, 'Duplicate media or metric content within one capture');
     if (e.readKinds.includes('verified_transcript')) check(e.assets.some(a => a.kind === 'transcript_candidate' && a.status === 'verified'), 'Verified transcript evidence required');
     const bound = e.assets.filter(a => workBound(a, e.work));
@@ -453,6 +457,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
       if (e.status === 'done') {
         const standing = latestCorrection(prior, baseline.id);
         check(standing?.metrics.likes && standing.metrics.likes.precision !== 'unavailable', 'Revisit baseline was corrected to an unavailable reading; record a new baseline and task');
+        try { observationEvidence(standing, prior.slice(0, prior.indexOf(standing)), root, resolve); } catch (error) { check(false, `Revisit baseline evidence is not intact: ${error.message}`); }
       }
       if (e.status === 'done') check(prior.some((x, i) => {
         if (x.type !== 'observation' || superseded.has(x.id) || x.workId !== e.workId || !x.metrics.likes || x.metrics.likes.precision === 'unavailable' || time(x.sampledAt) < time(e.dueAt)) return false;
@@ -524,7 +529,7 @@ function referencedPaths(input, events, resolve = assetKey) {
     add(e.evidencePaths); add(e.assets?.map(a => a.path));
     for (const c of [...(e.claims || []), ...(e.comments || [])]) add(c.evidencePaths);
     add([e.briefPath, e.scriptPath, e.evidencePath]);
-    const ids = e.type === 'task' && e.status !== 'cancelled' ? [e.baselineObservationId] : [];
+    const ids = e.type === 'task' && e.status !== 'cancelled' ? [latestCorrection(events, e.baselineObservationId)?.id] : [];
     for (const id of ids) if (byId.has(id)) pending.push(byId.get(id));
   }
   return refs;
@@ -603,22 +608,27 @@ function growth(observations, c = DEFAULTS) {
   const points = observations.filter(o => o.metrics.likes && o.metrics.likes.precision !== 'unavailable').sort((a, b) => time(a.sampledAt) - time(b.sampledAt));
   const result = { status: 'single_snapshot', delta: null, perHour: null, relative: null, lowLikeFast: false, fast: false, accelerating: false, points: points.map(o => ({ id: o.id, at: o.sampledAt, ...o.metrics.likes })) };
   if (points.length < 2) return result;
-  const b = points.at(-1), a = points.at(-2);
+  // Compare the newest reading with the most recent one at least the minimum interval earlier, so an extra
+  // nearby reading does not erase a measured window. Rounded readings inside the window break exactness.
+  const b = points.at(-1), olderBy = (end, p) => time(end.sampledAt) - time(p.sampledAt) >= c.minIntervalMinutes * 60000;
+  const startIndex = points.findLastIndex(p => olderBy(b, p)), a = startIndex >= 0 ? points[startIndex] : points.at(-2);
   result.from = a.sampledAt; result.to = b.sampledAt;
-  if (a.metrics.likes.precision !== 'exact' || b.metrics.likes.precision !== 'exact') return { ...result, status: 'rounded_counts' };
+  if (points.slice(points.indexOf(a)).some(p => p.metrics.likes.precision !== 'exact')) return { ...result, status: 'rounded_counts' };
   const minutes = (time(b.sampledAt) - time(a.sampledAt)) / 60000, delta = b.metrics.likes.value - a.metrics.likes.value;
   result.delta = delta; result.minutes = minutes;
   if (delta < 0) return { ...result, status: 'count_decreased' };
-  if (minutes < c.minIntervalMinutes) return { ...result, status: 'interval_too_short' };
+  if (startIndex < 0) return { ...result, status: 'interval_too_short' };
   result.perHour = delta / (minutes / 60);
   result.relative = a.metrics.likes.value > 0 ? delta / a.metrics.likes.value : null;
   if (minutes > c.shortWindowHours * 60) return { ...result, status: 'cross_round_average' };
   result.status = 'short_window';
   result.lowLikeFast = b.metrics.likes.value < c.lowLikeCeiling && delta >= c.minNewLikes && (a.metrics.likes.value === 0 || result.relative >= c.minRelativeGrowth);
   result.fast = delta >= c.minNewLikes && result.perHour >= c.fastLikesPerHour;
-  if (points.length >= 3 && delta >= c.minNewLikes) {
-    const p = points.at(-3), previousMinutes = (time(a.sampledAt) - time(p.sampledAt)) / 60000;
-    if (p.metrics.likes.precision === 'exact' && previousMinutes >= c.minIntervalMinutes && previousMinutes <= c.shortWindowHours * 60) {
+  // Acceleration compares this window with the preceding window built the same way.
+  const previousIndex = delta >= c.minNewLikes ? points.findLastIndex(p => olderBy(a, p)) : -1;
+  if (previousIndex >= 0) {
+    const p = points[previousIndex], previousMinutes = (time(a.sampledAt) - time(p.sampledAt)) / 60000;
+    if (points.slice(previousIndex, startIndex + 1).every(x => x.metrics.likes.precision === 'exact') && previousMinutes <= c.shortWindowHours * 60) {
       const previousSpeed = (a.metrics.likes.value - p.metrics.likes.value) / (previousMinutes / 60);
       result.accelerating = previousSpeed > 0 && result.perHour >= previousSpeed * c.accelerationRatio;
     }
@@ -695,7 +705,7 @@ function summary(state) {
   // Compact view for an agent resuming work; status and snapshot.json keep the full history.
   const candidates = state.items.filter(i => i.review?.recommendation === 'shortlist' && !i.reviewBlocked && !['watch', 'rejected', 'selected'].includes(i.decision?.decision)).sort((a, b) => time(b.review.recordedAt) - time(a.review.recordedAt));
   const recentSince = time(state.generatedAt) - 7 * 86400000, priority = candidates.filter(i => time(i.review.recordedAt) >= recentSince);
-  return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
+  return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, profile: state.rounds.at(-1)?.profile ?? null, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
     rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, pausedPlatforms: pausedPlatforms(r.attempts), lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
     pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened, baselineUnavailable }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}), ...(baselineUnavailable ? { baselineUnavailable } : {}) })),
