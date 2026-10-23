@@ -601,7 +601,9 @@ function roundStats(events, round, resolve = assetKey) {
     return ['page_screenshot', 'video', 'clip'].includes(a.kind) && !unusable(resolve, a) && workBound(a, e.work) && first?.workId === e.work.id && !first.fromDraft && !copiedContent(first, registered) && first.roundId === e.roundId && (registered.firstByHash(a.sha256)?.roundId ?? e.roundId) === e.roundId;
   });
   const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && isEligible(e) && freshInRound(e));
-  const metricsOnly = e => e.assets.every(a => METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined);
+  // A discovery capture newly saves non-metric evidence of the work; re-listed files do not change what a revisit was.
+  const position = new Map(events.map((e, i) => [e, i]));
+  const discovers = e => e.assets.some(a => !(METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined) && registered.get(resolve(a.path))?.index === position.get(e));
   const distinct = new Map(); for (const e of captures) if (!distinct.has(e.work.id)) distinct.set(e.work.id, e);
   const platformCounts = { douyin: 0, xiaohongshu: 0 }, recommended = { douyin: 0, xiaohongshu: 0 };
   let newWorks = 0, practical = 0;
@@ -610,7 +612,7 @@ function roundStats(events, round, resolve = assetKey) {
   for (const [wid, first] of distinct) {
     platformCounts[first.work.platform]++;
     // A lead found through recommendations and read later still counts; metrics-only revisit captures do not decide the route.
-    if (events.some(e => e.type === 'capture' && e.roundId === round.roundId && e.work.id === wid && !metricsOnly(e) && ['recommendation', 'related'].includes(e.route))) recommended[first.work.platform]++;
+    if (events.some(e => e.type === 'capture' && e.roundId === round.roundId && e.work.id === wid && discovers(e) && ['recommendation', 'related'].includes(e.route))) recommended[first.work.platform]++;
     // A read stays a past read even if its files were lost later.
     if (!events.some(e => e.type === 'capture' && earlierRounds.has(e.roundId) && e.work.id === wid && eligible(e, registered, resolve, { intact: false }))) newWorks++;
     if (captures.some(e => e.work.id === wid && e.practicalMethod === true)) practical++;
@@ -700,8 +702,8 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     // The latest capture that newly saved the work page or caption with this label supplies its anchor.
     // Date fields come from the latest capture that newly saved the work page or caption with a label, so a
     // metrics-only revisit cannot overwrite or blank them. A confirmed publication date still wins.
-    const dated = work.publishedAt != null ? null : captures.findLast(c => nonempty(c.work.dateLabel) && c.assets.some(a => seesWork(c, a)));
-    const shownWork = dated ? { ...work, dateKind: dated.work.dateKind, dateLabel: dated.work.dateLabel } : work;
+    const dated = captures.findLast(c => nonempty(c.work.dateLabel) && c.assets.some(a => seesWork(c, a)));
+    const shownWork = dated ? { ...work, dateKind: work.publishedAt != null ? 'published' : dated.work.dateKind, dateLabel: dated.work.dateLabel } : work;
     const labelRead = captures.findLast(c => c.work.dateLabel === shownWork.dateLabel && c.assets.some(a => seesWork(c, a)));
     const dateSeenAt = labelRead ? labelRead.assets.filter(a => seesWork(labelRead, a)).map(a => a.capturedAt).sort((x, y) => time(x) - time(y))[0] : null;
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
@@ -741,13 +743,22 @@ function summary(state) {
   // Compact view for an agent resuming work; status and snapshot.json keep the full history.
   const candidates = state.items.filter(i => i.review?.recommendation === 'shortlist' && !i.reviewBlocked && !['watch', 'rejected', 'selected'].includes(i.decision?.decision)).sort((a, b) => time(b.review.recordedAt) - time(a.review.recordedAt));
   const recentSince = time(state.generatedAt) - 7 * 86400000, priority = candidates.filter(i => time(i.review.recordedAt) >= recentSince);
-  return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, profile: state.rounds.at(-1)?.profile ?? null, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
+  return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, profile: state.rounds.at(-1)?.profile ?? null, storeExists: state.storeExists ?? true, journalGaps: state.journalGaps ?? [], integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
     rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, pausedPlatforms: pausedPlatforms(r.attempts), lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
     pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened, baselineUnavailable, baselineEvidenceLost }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}), ...(baselineUnavailable ? { baselineUnavailable } : {}), ...(baselineEvidenceLost ? { baselineEvidenceLost } : {}) })),
     shortlist: priority.map(i => ({ workId: i.work.id, title: i.work.title, angle: i.review.angle, reviewId: i.review.id })),
     decisions: state.items.filter(i => i.decision).map(i => ({ workId: i.work.id, decision: i.decision.decision, recordedAt: i.decision.recordedAt })),
     gaps: state.items.filter(i => i.evidenceGaps.length || i.reviewGaps.length || i.draftGaps.length || i.integrityIssues.length).map(i => ({ workId: i.work.id, evidenceGaps: i.evidenceGaps.length, reviewGaps: i.reviewGaps.length, draftGaps: i.draftGaps.length, integrityIssues: i.integrityIssues.length })) };
+}
+function journalGaps(root) {
+  // Missing sequence numbers mean a journal file was removed, for example by a sync conflict or quarantine.
+  const dir = eventDirectory(root);
+  if (!fs.existsSync(dir)) return [];
+  const seen = new Set(fs.readdirSync(dir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).map(n => Number(n.slice(0, 8))));
+  const gaps = [];
+  for (let n = 1; n <= Math.max(0, ...seen); n++) if (!seen.has(n)) gaps.push(n);
+  return gaps;
 }
 function readUtf8(file) {
   // Reject UTF-16 and legacy code pages instead of saving garbled text into the append-only ledger.
@@ -764,6 +775,9 @@ function main(argv) {
   if (command === 'append') { check(opts.input, '--input required'); return append(opts.store, JSON.parse(readUtf8(opts.input))); }
   const events = load(opts.store), issues = integrityIssues(opts.store, events, { hashes: command !== 'summary' }), state = snapshot(events, opts.now, opts.store, issues);
   if (issues.length) process.stderr.write(`Warning: ${issues.length} registered file(s) are missing or changed and are excluded from derived results; see integrityIssues.\n`);
+  state.storeExists = fs.existsSync(path.resolve(opts.store)); state.journalGaps = journalGaps(opts.store);
+  if (!state.storeExists) process.stderr.write(`Warning: store ${path.resolve(opts.store)} does not exist; check --store before appending.\n`);
+  if (state.journalGaps.length) process.stderr.write(`Warning: journal sequence numbers ${state.journalGaps.join(', ')} are missing; an event file was removed.\n`);
   if (command === 'render') { check(opts.out, '--out required'); return require('./render-radar.cjs').writeReport(state, opts.store, opts.out); }
   return command === 'summary' ? summary(state) : state;
 }

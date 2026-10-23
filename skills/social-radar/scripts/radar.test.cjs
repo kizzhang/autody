@@ -1877,3 +1877,34 @@ test('metrics-only revisits cannot overwrite or blank the date label read from t
     assert.equal(item.work.dateLabel, '昨天'); assert.equal(item.dateSeenAt, '2026-10-21T09:00:00+08:00');
   }
 });
+
+test('a metrics revisit that re-lists an old caption does not count as recommendation discovery', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/direct-only-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
+  append(root, capture('direct-read', { roundId: 'r2', route: 'direct', assets }));
+  const metrics = { likes: { value: 40, raw: '40', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/revisit-with-caption.json'), JSON.stringify({ synthetic: 'revisit', sampledAt: '2026-10-21T11:00:00+08:00', metrics }));
+  append(root, capture('revisit-relist', { roundId: 'r2', route: 'recommendation', readKinds: [], practicalMethod: false, assets: [assets[0], { kind: 'metric_snapshot', path: 'materials/revisit-with-caption.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T11:00:00+08:00', coverage: 'Synthetic revisit', metrics }] }));
+  const r = snapshot(load(root)).rounds[1];
+  assert.equal(r.unique, 1); assert.equal(r.recommended.xiaohongshu, 0); assert.equal(r.coverageComplete, false);
+});
+
+test('a metrics-only revisit cannot blank the label of a work with a confirmed publication date', t => {
+  const root = fixture(t), work = { ...capture().work, dateKind: 'published', dateLabel: '2026-10-20', publishedAt: '2026-10-20T09:00:00+08:00' };
+  const fresh = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/confirmed-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
+  append(root, capture('confirmed', { work, assets: fresh }));
+  const metrics = { likes: { value: 30, raw: '30', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/published-revisit.json'), JSON.stringify({ synthetic: 'published revisit', sampledAt: '2026-10-21T11:00:00+08:00', metrics }));
+  append(root, capture('published-revisit', { work: { ...work, dateLabel: '' }, readKinds: [], assets: [{ kind: 'metric_snapshot', path: 'materials/published-revisit.json', sourceUrl: work.url, capturedAt: '2026-10-21T11:00:00+08:00', coverage: 'Synthetic revisit', metrics }] }));
+  const item = snapshot(load(root), undefined, root).items[0];
+  assert.equal(item.work.dateKind, 'published'); assert.equal(item.work.dateLabel, '2026-10-20'); assert.ok(item.dateSeenAt);
+});
+
+test('summary warns about a missing store and about gaps in the journal sequence', t => {
+  const parent = fs.realpathSync(os.tmpdir()), missing = path.join(parent, `autody-radar-typo-${process.pid}-${Date.now()}`);
+  const run = store => spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'summary', '--store', store], { encoding: 'utf8' });
+  const typo = run(missing); assert.equal(typo.status, 0); assert.equal(JSON.parse(typo.stdout).storeExists, false); assert.match(typo.stderr, /does not exist/);
+  const root = fixture(t); append(root, round('r2'));
+  fs.rmSync(path.join(root, 'events', fs.readdirSync(path.join(root, 'events')).sort()[1]));
+  const gap = run(root); assert.equal(gap.status, 0); assert.deepEqual(JSON.parse(gap.stdout).journalGaps, [2]); assert.match(gap.stderr, /sequence numbers 2 are missing/);
+});
