@@ -81,14 +81,21 @@ function render(state, store, out) {
   function reveal(){const el=document.getElementById(decodeURIComponent(location.hash.slice(1)));if(el&&el.tagName==='DETAILS')el.open=true;}addEventListener('hashchange',reveal);reveal();
   </script></body></html>`;
 }
-function physicalPath(file) {
+function physicalPath(file, depth = 0) {
+  // Follow directory links even when their target is missing, so a dangling alias still shows where it points.
   let current = path.resolve(file); const suffix = [];
-  while (!fs.existsSync(current)) {
+  for (;;) {
+    let entry = null;
+    try { entry = fs.lstatSync(current); } catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
+    if (entry && fs.existsSync(current)) return path.resolve(fs.realpathSync(current), ...suffix);
+    if (entry?.isSymbolicLink()) {
+      if (depth >= 32) throw new Error('Cannot resolve report path');
+      return physicalPath(path.resolve(fs.realpathSync(path.dirname(current)), fs.readlinkSync(current), ...suffix), depth + 1);
+    }
     const parent = path.dirname(current);
     if (parent === current) throw new Error('Cannot resolve report path');
     suffix.unshift(path.basename(current)); current = parent;
   }
-  return path.resolve(fs.realpathSync(current), ...suffix);
 }
 function writeReport(state, store, out, events) {
   const eventsDir = path.resolve(store, 'events'), lockPath = path.resolve(store, '.writer.lock');
@@ -127,7 +134,6 @@ function writeReport(state, store, out, events) {
     if (protectedKeys.has(pathKey(current)) || protectedKeys.has(pathKey(physicalPath(current)))) throw new Error('Report output overlaps a registered ledger file');
     if (path.dirname(current) === current) break;
   }
-  fs.mkdirSync(out, { recursive: true });
   const targets = new Set();
   for (const name of ['report.html', 'snapshot.json', 'tracking.csv']) {
     const file = path.join(out, name);
@@ -138,6 +144,8 @@ function writeReport(state, store, out, events) {
     if (targets.has(key || resolved)) throw new Error('Report output files must be separate');
     targets.add(key || resolved);
   }
+  // Create the directory only after every check, so a refused report leaves no directory behind.
+  fs.mkdirSync(out, { recursive: true });
   const htmlPath = path.join(out, 'report.html');
   fs.writeFileSync(htmlPath, render(state, store, out));
   fs.writeFileSync(path.join(out, 'snapshot.json'), `${JSON.stringify(state, null, 2)}\n`);

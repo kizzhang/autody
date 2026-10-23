@@ -174,13 +174,13 @@ function brokenAssets(root, events, selected) {
 }
 function withBroken(resolve, broken) {
   // Same ledger and ownership history; the listed files no longer count as evidence.
-  return Object.assign(file => resolve(file), { ledger: resolve.ledger, index: resolve.index, broken: new Set([...(resolve.broken || []), ...broken]), filtered: true });
+  return Object.assign(file => resolve(file), { ledger: resolve.ledger, index: resolve.index, split: resolve.split, broken: new Set([...(resolve.broken || []), ...broken]), filtered: true });
 }
 function unusable(resolve, asset) { return Boolean(resolve.broken?.has(assetKey(asset.path))); }
 function fileResolver(root) {
   const known = new Map();
   let realRoot;
-  return file => {
+  const resolve = file => {
     const key = assetKey(file);
     if (!known.has(key)) {
       // Registered paths need only their identity here: containment was checked at registration and
@@ -195,6 +195,11 @@ function fileResolver(root) {
     }
     return known.get(key);
   };
+  // A registered path that now shares another registration's file identity, though both were saved with
+  // different bytes, was replaced after registration. It keeps an identity of its own, so neither path takes
+  // over the other's ownership history; the integrity check reports whichever file changed.
+  resolve.split = file => { const key = assetKey(file), own = `path:${key}`; known.set(key, own); return own; };
+  return resolve;
 }
 function config(input = {}) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Invalid config');
@@ -245,7 +250,9 @@ function ledgerIndex(events, resolve) {
     if (e.type !== 'capture') return;
     works.set(e.work.id, mergeWork(works.get(e.work.id), e.work));
     for (const asset of e.assets) {
-      const key = resolve(asset.path);
+      let key = resolve(asset.path);
+      const prior = entries.get(key);
+      if (prior && resolve.split && assetKey(prior.asset.path) !== assetKey(asset.path) && prior.asset.sha256 !== asset.sha256) key = resolve.split(asset.path);
       if (entries.has(key)) continue;
       const entry = { index: i, workId: e.work.id, work: works.get(e.work.id), roundId: e.roundId, asset, fromDraft: generated.has(key) || draftHashes.has(asset.sha256) };
       entries.set(key, entry);
@@ -585,7 +592,9 @@ function append(root, input) {
       let entries = [];
       try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
       for (const d of entries) {
-        if (!d.isDirectory() || d.isSymbolicLink() || d.name === 'events') continue;
+        // A directory named events is scanned too: the new store's own holds no journal yet, and elsewhere it may
+        // itself be a store.
+        if (!d.isDirectory() || d.isSymbolicLink()) continue;
         const inner = path.join(dir, d.name);
         check(!hasJournal(inner), `New store ${root} would contain the existing store ${inner}; use a sibling directory`);
         check(++visited <= 2000 && depth < 8, `New store ${root} has too many subdirectories to check; create the store in a new directory`);

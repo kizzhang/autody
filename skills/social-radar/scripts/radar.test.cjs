@@ -2151,3 +2151,37 @@ test('summary reports a journal sequence number used twice', t => {
   const run = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'summary', '--store', root], { encoding: 'utf8' });
   assert.deepEqual(JSON.parse(run.stdout).journalDuplicates, [2]); assert.match(run.stderr, /used more than once/);
 });
+
+test('a registered file replaced by a hard link to another work s evidence does not take that evidence over', t => {
+  const root = fixture(t), other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  fs.writeFileSync(path.join(root, 'materials/other-caption.md'), 'Synthetic caption of the other work');
+  append(root, capture('other', { work: other, readKinds: [], assets: [{ ...capture().assets[0], path: 'materials/other-caption.md', sourceUrl: other.url }] }));
+  saveObservation(root, { ...obs('other-o', '09:00:00', 17), workId: other.id });
+  fs.rmSync(path.join(root, 'materials/caption.md'));
+  try { fs.linkSync(path.join(root, 'materials/metrics-other-o.json'), path.join(root, 'materials/caption.md')); } catch { t.skip('hard links unavailable'); return; }
+  const state = checkedSnapshot(root);
+  assert.equal(state.items.find(i => i.work.id === other.id).latest.likes.value, 17);
+  assert.deepEqual(state.items.find(i => i.work.id === other.id).evidenceGaps, []);
+  assert.deepEqual(state.integrityIssues.map(x => x.path), ['materials/caption.md']);
+});
+
+test('a new store cannot wrap an existing store kept in a directory named events', t => {
+  const parent = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'autody-radar-nest-'));
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const outer = path.join(parent, 'outer'); append(path.join(outer, 'events'), round('inner'));
+  assert.throws(() => append(outer, round('outer')), /would contain the existing store/);
+  const wrapper = path.join(parent, 'wrapper'); append(path.join(wrapper, 'archive', 'events'), round('deep'));
+  assert.throws(() => append(wrapper, round('wrapper')), /would contain the existing store/);
+  assert.equal(load(path.join(outer, 'events')).length, 1);
+});
+
+test('a report cannot take over a registered path behind a dangling directory link', t => {
+  const root = fixture(t), target = path.join(root, 'media'), alias = path.join(root, 'linked-media');
+  fs.mkdirSync(target);
+  try { fs.symlinkSync(target, alias, 'junction'); } catch { t.skip('directory links unavailable'); return; }
+  fs.writeFileSync(path.join(target, 'snapshot.json'), 'Synthetic caption saved through a directory link');
+  append(root, capture('linked', { readKinds: [], assets: [{ ...capture().assets[0], path: 'linked-media/snapshot.json' }] }));
+  fs.rmSync(path.join(target, 'snapshot.json')); fs.rmdirSync(target);
+  assert.throws(() => writeReport(checkedSnapshot(root), root, target, load(root)), /overlaps a registered ledger file/);
+  assert.equal(fs.existsSync(target), false);
+});
