@@ -687,7 +687,8 @@ test('unsupported historical reviews remain history without driving current reco
   assert.equal(item.review.id, 'review1'); assert.equal(item.reviews.at(-1).id, invalid.id);
   assert.equal(item.reviewGaps[0].reviewId, invalid.id);
   assert.ok(!render(state, root, path.join(root, 'reports')).includes(invalid.angle));
-  append(root, draft);
+  // The newest review is unsupported, so drafting waits for a new review instead of using review1.
+  assert.throws(() => append(root, draft), /legacy-unsupported is no longer valid/);
   assert.deepEqual(fs.readFileSync(file), before);
 });
 
@@ -1172,8 +1173,10 @@ test('draft registration uses the same current review as status when a newer rev
   for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
   const draft = event('draft', 'draft1', { workId, selectionEventId: 'selected', reviewId: 'review2', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' });
   assert.throws(() => append(root, draft), /current review revision|no longer valid/);
-  append(root, { ...draft, reviewId: 'review1' });
-  assert.equal(load(root).at(-1).reviewId, 'review1');
+  assert.throws(() => append(root, { ...draft, reviewId: 'review1' }), /review2 is no longer valid/);
+  append(root, { ...review('review3'), recordedAt: load(root).at(-1).recordedAt });
+  append(root, { ...draft, reviewId: 'review3' });
+  assert.equal(load(root).at(-1).reviewId, 'review3');
 });
 
 test('journal files reached through a contained events alias cannot be registered', t => {
@@ -1510,8 +1513,8 @@ test('CSV gaps come from the latest substantive capture', t => {
   const root = fixture(t);
   const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/complete-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
   append(root, capture('complete', { gaps: [], assets }));
-  const csv = fs.readFileSync(writeReport(snapshot(load(root), undefined, root), root, path.join(root, 'reports')).csv, 'utf8');
-  assert.ok(!csv.includes('video unavailable'));
+  const [header, row] = fs.readFileSync(writeReport(snapshot(load(root), undefined, root), root, path.join(root, 'reports')).csv, 'utf8').replace(/^\uFEFF/, '').split('\r\n').map(line => line.slice(1, -1).split('","'));
+  assert.ok(!row[header.indexOf('gaps')].includes('video unavailable'));
 });
 
 test('render reports a missing --out before hashing the store', t => {
@@ -1552,4 +1555,66 @@ test('the low-follower flag includes the ceiling and excludes the next count', t
     saveObservation(root, event('observation', `followers-${count}`, { roundId: 'r1', workId: 'xiaohongshu:example', sampledAt: '2026-10-21T09:00:00+08:00', metrics: { followers: { value: count, raw: String(count), precision: 'exact' } } }));
     assert.equal(snapshot(load(root)).items[0].lowFollower, expected);
   }
+});
+
+test('a revisit cannot complete, and reopens, when its baseline is corrected to an unavailable reading', t => {
+  const unavailable = { value: null, raw: '', precision: 'unavailable' };
+  const setup = () => { const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17)); const task = event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' }); append(root, task); return { root, task }; };
+  const first = setup();
+  saveObservation(first.root, { ...obs('baseline-fix', '09:00:00', null, 'unavailable', ''), correctsObservationId: 'baseline', metrics: { likes: unavailable } });
+  saveObservation(first.root, obs('due', '09:20:00', 20));
+  assert.throws(() => append(first.root, { ...first.task, id: 'task1-done', status: 'done' }), /corrected to an unavailable reading/);
+  const second = setup();
+  saveObservation(second.root, obs('due', '09:20:00', 20)); append(second.root, { ...second.task, id: 'task1-done', status: 'done' });
+  saveObservation(second.root, { ...obs('baseline-fix', '09:00:00', null, 'unavailable', ''), correctsObservationId: 'baseline', metrics: { likes: unavailable } });
+  const [task] = snapshot(load(second.root), '2026-10-21T10:00:00+08:00').tasks;
+  assert.equal(task.status, 'pending'); assert.equal(task.reopened, true); assert.equal(task.baselineUnavailable, true);
+});
+
+test('a draft file shared by two revisions is reported missing for both', t => {
+  const root = draftedFixture(t);
+  for (const file of ['script2.md', 'evidence2.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  append(root, event('draft', 'draft2', { workId: 'xiaohongshu:example', selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script2.md', evidencePath: 'evidence2.md' }));
+  fs.rmSync(path.join(root, 'brief.md')); fs.rmSync(path.join(root, 'materials/page.png'));
+  const state = checkedSnapshot(root), html = render(state, root, path.join(root, 'reports'));
+  assert.match(html, /初稿文件缺失（2 份）/); assert.ok(!html.includes('href="../brief.md"'));
+  assert.ok(!/file:[^"]*brief\.md/.test(fs.readFileSync(writeReport(state, root, path.join(root, 'reports')).csv, 'utf8')));
+});
+
+test('cards show the capture day next to a relative date label', t => {
+  const root = fixture(t); append(root, review());
+  const html = render(snapshot(load(root), '2026-10-27T12:00:00+08:00', root), root, path.join(root, 'reports'));
+  assert.match(html, /日期：昨天（采集于 2026\/10\/21）/);
+});
+
+test('a byte-identical copy cannot move an earlier sample into a later round', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example', sampledAt = '2026-10-21T09:00:00+08:00', metrics = { likes: { value: 17, raw: '17', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/r1-metrics.json'), JSON.stringify({ synthetic: 'r1 metrics', metrics }));
+  const asset = { kind: 'metric_snapshot', path: 'materials/r1-metrics.json', sourceUrl: capture().work.url, capturedAt: sampledAt, coverage: 'Synthetic r1 metrics', metrics };
+  append(root, capture('r1-metrics', { readKinds: [], assets: [asset] }));
+  append(root, round('r2'));
+  fs.copyFileSync(path.join(root, asset.path), path.join(root, 'materials/r2-copy.json'));
+  append(root, capture('r2-copy', { roundId: 'r2', readKinds: [], assets: [{ ...asset, path: 'materials/r2-copy.json' }] }));
+  assert.throws(() => append(root, event('observation', 'moved', { roundId: 'r2', workId, sampledAt, metrics, evidencePaths: ['materials/r2-copy.json'] })), /metric-bearing evidence/);
+  append(root, event('observation', 'in-r1', { roundId: 'r1', workId, sampledAt, metrics, evidencePaths: [asset.path] }));
+});
+
+test('CSV keeps earlier capture gaps in their own column', t => {
+  const root = fixture(t);
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/later-read-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
+  append(root, capture('later-read', { gaps: ['comments not loaded'], assets }));
+  const [header, row] = fs.readFileSync(writeReport(snapshot(load(root), undefined, root), root, path.join(root, 'reports')).csv, 'utf8').replace(/^\uFEFF/, '').split('\r\n').map(line => line.slice(1, -1).split('","'));
+  assert.equal(row[header.indexOf('gaps')], 'comments not loaded'); assert.equal(row[header.indexOf('earlier_capture_gaps')], 'video unavailable');
+});
+
+test('a reposted identical video may be saved for another work but does not count as its evidence', t => {
+  const root = fixture(t), other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  fs.writeFileSync(path.join(root, 'materials/video.mp4'), 'Synthetic original video');
+  append(root, capture('with-video', { readKinds: ['video_fragment'], assets: [...capture().assets, { ...capture().assets[0], kind: 'video', path: 'materials/video.mp4', coverage: 'Synthetic video' }] }));
+  fs.copyFileSync(path.join(root, 'materials/video.mp4'), path.join(root, 'materials/repost.mp4'));
+  fs.writeFileSync(path.join(root, 'materials/other-caption.md'), 'Synthetic caption of the repost');
+  append(root, capture('repost', { work: other, readKinds: ['caption_body', 'video_fragment'], assets: [{ ...capture().assets[0], path: 'materials/other-caption.md', sourceUrl: other.url }, { ...capture().assets[0], kind: 'video', path: 'materials/repost.mp4', sourceUrl: other.url, coverage: 'Reposted video' }] }));
+  const state = snapshot(load(root));
+  assert.equal(state.rounds[0].platformCounts.xiaohongshu, 1);
+  assert.ok(!state.items.find(i => i.work.id === other.id).assets.some(a => a.path === 'materials/repost.mp4'));
 });

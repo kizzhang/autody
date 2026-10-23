@@ -18,7 +18,10 @@ const METRIC_ASSET_KINDS = new Set(['page_screenshot', 'metric_snapshot']);
 const EXTERNAL_ASSET_KINDS = new Set(['source_page', 'source_image', 'source_comments', 'research_note']);
 // Identical media or metric bytes belong to one work; text such as captions, OCR, subtitles, comments and
 // external sources may legitimately repeat across a propagation cluster.
-const CONTENT_OWNED_KINDS = new Set(['page_screenshot', 'original_image', 'video', 'clip', 'frame', 'metric_snapshot']);
+// Screenshots and metric snapshots are unique to a capture, so another work cannot register a copy. Reposted
+// originals (images, videos, clips, frames) may be saved for another work but never count as its evidence.
+const CONTENT_OWNED_KINDS = new Set(['page_screenshot', 'metric_snapshot']);
+const CONTENT_IDENTITY_KINDS = new Set([...CONTENT_OWNED_KINDS, 'original_image', 'video', 'clip', 'frame']);
 const contentOwned = kind => CONTENT_OWNED_KINDS.has(kind);
 const INDEPENDENT_SOURCE_KINDS = new Set(['research_note', 'source_page', 'source_image']);
 const READ_KINDS = new Set(['caption_body', 'image_text', 'video_fragment', 'original_subtitles', 'verified_transcript']);
@@ -263,14 +266,20 @@ function copiedContent(entry, registry) {
   // old metric evidence into a new time and reading. A correction keeps the original capture time.
   const first = typeof entry.asset.sha256 === 'string' ? registry.firstByHash(entry.asset.sha256) : undefined;
   if (!first || first === entry || first.asset === entry.asset) return null;
-  if (contentOwned(entry.asset.kind) && first.workId !== entry.workId) return `Asset content of ${entry.asset.path} is already registered for another work (${first.workId}: ${first.asset.path}); save this work's own file`;
+  if (CONTENT_IDENTITY_KINDS.has(entry.asset.kind) && first.workId !== entry.workId) return `Asset content of ${entry.asset.path} is already registered for another work (${first.workId}: ${first.asset.path}); save this work's own file`;
   if (METRIC_ASSET_KINDS.has(entry.asset.kind) && entry.asset.metrics !== undefined && time(first.asset.capturedAt) !== time(entry.asset.capturedAt) && !isDeepStrictEqual(first.asset.metrics, entry.asset.metrics)) return 'Metric evidence copies earlier content under a different time and reading';
   return null;
 }
 function assetsFor(events, workId, resolve = assetKey, roundId) {
   // A legacy cross-work registration or copied content must not transfer the first owner's evidence.
   const registry = registeredAssets(events, resolve);
-  return registry.forWork(workId).filter(a => !a.fromDraft && !unusable(resolve, a.asset) && (roundId === undefined || a.roundId === roundId) && assetMatchesWork(a.asset, a.work) && !copiedContent(a, registry)).map(a => a.asset);
+  return registry.forWork(workId).filter(a => !a.fromDraft && !unusable(resolve, a.asset) && (roundId === undefined || (a.roundId === roundId && (registry.firstByHash(a.asset.sha256)?.roundId ?? roundId) === roundId)) && assetMatchesWork(a.asset, a.work) && !copiedContent(a, registry)).map(a => a.asset);
+}
+function latestCorrection(events, id) {
+  // Follow correctsObservationId links to the reading that currently stands for this sample.
+  let current = events.find(x => x.type === 'observation' && x.id === id);
+  for (let next; current && (next = events.find(x => x.type === 'observation' && x.correctsObservationId === current.id)); ) current = next;
+  return current;
 }
 function supersededObservations(events) {
   return new Set(events.filter(x => x.type === 'observation' && typeof x.correctsObservationId === 'string').map(x => x.correctsObservationId));
@@ -369,7 +378,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
         check(isDeepStrictEqual(old.asset, a), 'Registered asset and its metadata are immutable; use a new path');
       } else {
         check(!registered.draftContent(hash), 'Captured sources cannot reuse registered draft content');
-        const copied = copiedContent({ asset: a, workId: e.work.id }, registered); check(!copied, copied);
+        const copied = copiedContent({ asset: a, workId: e.work.id }, registered); if (copied) check(!contentOwned(a.kind), copied);
       }
     }
     const owned = e.assets.filter(a => contentOwned(a.kind));
@@ -441,6 +450,10 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
       observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)), undefined, resolve);
       check(time(e.dueAt) >= time(baseline.sampledAt) + round.config.minIntervalMinutes * 60000, 'Revisit is earlier than the minimum interval');
       const superseded = supersededObservations(prior);
+      if (e.status === 'done') {
+        const standing = latestCorrection(prior, baseline.id);
+        check(standing?.metrics.likes && standing.metrics.likes.precision !== 'unavailable', 'Revisit baseline was corrected to an unavailable reading; record a new baseline and task');
+      }
       if (e.status === 'done') check(prior.some((x, i) => {
         if (x.type !== 'observation' || superseded.has(x.id) || x.workId !== e.workId || !x.metrics.likes || x.metrics.likes.precision === 'unavailable' || time(x.sampledAt) < time(e.dueAt)) return false;
         try { observationEvidence(x, prior.slice(0, i), root, resolve); return true; } catch { return false; }
@@ -453,13 +466,12 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
     requireWork(); const selection = prior.findLast(x => x.type === 'decision' && x.workId === e.workId);
     check(selection && selection.decision === 'selected' && selection.id === e.selectionEventId, 'Draft requires the current explicit user selection');
     const viewResolve = root && !resolve.filtered ? withBroken(resolve, brokenAssets(root, prior, c => c.work.id === e.workId)) : resolve;
-    const currentReview = prior.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !eventIssue(root, x, prior.slice(0, i), viewResolve, internals));
-    if (!currentReview || currentReview.id !== e.reviewId) {
-      // Say why a draft fails when the review it cites has since lost its support.
-      const cited = prior.findIndex(x => x.type === 'review' && x.id === e.reviewId && x.workId === e.workId);
-      const issue = cited >= 0 ? eventIssue(root, prior[cited], prior.slice(0, cited), viewResolve, internals) : null;
-      check(false, issue ? `Draft review ${e.reviewId} is no longer valid: ${issue}. Recapture the missing evidence and record a new review before registering a new draft` : 'Draft must reference the current review revision');
-    }
+    // Only the newest review counts; when it has lost support an older review is not used in its place.
+    const at = prior.findLastIndex(x => x.type === 'review' && x.workId === e.workId);
+    check(at >= 0, 'Draft requires a review of this work');
+    const issue = eventIssue(root, prior[at], prior.slice(0, at), viewResolve, internals);
+    check(!issue, `Draft review ${prior[at].id} is no longer valid: ${issue}. Recapture the missing evidence and record a new review before registering a new draft`);
+    check(prior[at].id === e.reviewId, 'Draft must reference the current review revision');
     check(e.status === 'draft', 'Generated script remains draft');
     if (e.hashes === undefined) e.hashes = {};
     check(e.hashes && typeof e.hashes === 'object' && !Array.isArray(e.hashes), 'Draft hashes must be a plain object');
@@ -663,13 +675,14 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
   });
   // Pending work on a rejected topic stays in history but is no longer due.
   const rejected = new Set(items.filter(i => i.decision?.decision === 'rejected').map(i => i.work.id));
-  const revisitDone = t => (groups.get(t.workId)?.observations || []).some(o => !observationChecks.get(o.id) && !superseded.has(o.id) && o.metrics.likes && o.metrics.likes.precision !== 'unavailable' && time(o.sampledAt) >= time(t.dueAt));
+  const baselineStands = t => { const b = latestCorrection(groups.get(t.workId)?.observations || [], t.baselineObservationId); return Boolean(b && !observationChecks.get(b.id) && b.metrics.likes && b.metrics.likes.precision !== 'unavailable'); };
+  const revisitDone = t => baselineStands(t) && (groups.get(t.workId)?.observations || []).some(o => !observationChecks.get(o.id) && !superseded.has(o.id) && o.metrics.likes && o.metrics.likes.precision !== 'unavailable' && time(o.sampledAt) >= time(t.dueAt));
   return { generatedAt: now, eventCount: source.length, integrityIssues: integrity, items,
     rounds: rounds.map(r => ({ ...r, ...roundStats(events, r, resolve), attempts: events.filter(e => e.type === 'attempt' && e.roundId === r.roundId) })),
     tasks: [...taskMap.values()].map(t => {
       const reopened = t.kind === 'revisit' && t.status === 'done' && !revisitDone(t), status = reopened ? 'pending' : t.status;
       const suppressed = status === 'pending' && rejected.has(t.workId);
-      return { ...t, status, ...(reopened ? { recordedStatus: 'done', reopened: true } : {}), suppressed, due: status === 'pending' && !suppressed && (t.dueAt == null || time(t.dueAt) <= time(now)) };
+      return { ...t, status, ...(reopened ? { recordedStatus: 'done', reopened: true } : {}), ...(t.kind === 'revisit' && !baselineStands(t) ? { baselineUnavailable: true } : {}), suppressed, due: status === 'pending' && !suppressed && (t.dueAt == null || time(t.dueAt) <= time(now)) };
     }) };
 }
 function pausedPlatforms(attempts) {
@@ -685,7 +698,7 @@ function summary(state) {
   return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
     rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, pausedPlatforms: pausedPlatforms(r.attempts), lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
-    pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}) })),
+    pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened, baselineUnavailable }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}), ...(baselineUnavailable ? { baselineUnavailable } : {}) })),
     shortlist: priority.map(i => ({ workId: i.work.id, title: i.work.title, angle: i.review.angle, reviewId: i.review.id })),
     decisions: state.items.filter(i => i.decision).map(i => ({ workId: i.work.id, decision: i.decision.decision, recordedAt: i.decision.recordedAt })),
     gaps: state.items.filter(i => i.evidenceGaps.length || i.reviewGaps.length || i.draftGaps.length || i.integrityIssues.length).map(i => ({ workId: i.work.id, evidenceGaps: i.evidenceGaps.length, reviewGaps: i.reviewGaps.length, draftGaps: i.draftGaps.length, integrityIssues: i.integrityIssues.length })) };
