@@ -100,6 +100,8 @@ function mergeWork(previous, next) {
   if (!previous) return next;
   const merged = { ...next };
   if (merged.authorUrl === undefined && previous.authorUrl !== undefined) merged.authorUrl = previous.authorUrl;
+  // A conflicting profile (rejected at append, possible only in hand-written history) never replaces the creator.
+  else if (previous.authorUrl !== undefined && profileId(merged.platform, merged.authorUrl) !== profileId(previous.platform, previous.authorUrl)) Object.assign(merged, { authorUrl: previous.authorUrl, author: previous.author });
   if (merged.publishedAt == null && previous.publishedAt != null) Object.assign(merged, { dateKind: previous.dateKind, dateLabel: previous.dateLabel, publishedAt: previous.publishedAt });
   return merged;
 }
@@ -493,7 +495,9 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
       const hash = digest(root, e[k]); if (e.hashes[k]) check(e.hashes[k] === hash, `Draft file changed: ${e[k]}`);
       check(!sources.firstByHash(hash), 'Draft files must differ from captured source content');
       for (const old of prior.filter(x => x.type === 'draft')) for (const oldKey of ['briefPath', 'scriptPath', 'evidencePath']) {
-        if (resolve(old[oldKey]) === resolved[k]) check(old.hashes[oldKey] === hash, `Registered draft cannot be overwritten: ${e[k]}`);
+        // Draft files and their content belong to the work that first registered them.
+        if (resolve(old[oldKey]) === resolved[k]) { check(old.workId === e.workId, `Draft file already registered for another work: ${e[k]}`); check(old.hashes[oldKey] === hash, `Registered draft cannot be overwritten: ${e[k]}`); }
+        else check(old.workId === e.workId || old.hashes?.[oldKey] !== hash, `Draft content of ${e[k]} is already registered for another work`);
       }
       e.hashes[k] = hash;
     }

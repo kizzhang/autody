@@ -107,7 +107,6 @@ function writeReport(state, store, out) {
     if (dirId(current) === eventsId) throw new Error('Report output cannot be inside the ledger events directory');
     if (path.dirname(current) === current) break;
   }
-  fs.mkdirSync(out, { recursive: true });
   const pathKey = file => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
   const identity = file => {
     try {
@@ -122,6 +121,12 @@ function writeReport(state, store, out) {
   if (fs.existsSync(eventsDir)) protectedFiles.push(...fs.readdirSync(eventsDir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).map(n => path.join(eventsDir, n)));
   // A registered file that no longer exists has no identity, so also compare its physical location.
   const protectedKeys = new Set(protectedFiles.flatMap(file => { const id = identity(file); return [pathKey(file), id, id ? null : pathKey(physicalPath(file))]; }).filter(Boolean));
+  // The report directory itself must not take over a registered path, even one whose file is missing.
+  for (let current = path.resolve(out); ; current = path.dirname(current)) {
+    if (protectedKeys.has(pathKey(current)) || protectedKeys.has(pathKey(physicalPath(current)))) throw new Error('Report output overlaps a registered ledger file');
+    if (path.dirname(current) === current) break;
+  }
+  fs.mkdirSync(out, { recursive: true });
   const targets = new Set();
   for (const name of ['report.html', 'snapshot.json', 'tracking.csv']) {
     const file = path.join(out, name);

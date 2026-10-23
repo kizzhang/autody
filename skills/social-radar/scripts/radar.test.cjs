@@ -1834,3 +1834,36 @@ test('a missing journal file does not block later saves or leave temporary files
   const after = fs.readdirSync(dir).sort();
   assert.ok(after.at(-1).startsWith('00000004-')); assert.ok(!after.some(n => n.endsWith('.tmp')));
 });
+
+test('a report directory cannot take over a missing registered file path', t => {
+  const root = fixture(t);
+  fs.rmSync(path.join(root, 'materials/page.png'));
+  const state = snapshot(load(root), undefined, root, require('./radar.cjs').integrityIssues(root, load(root)));
+  for (const out of [path.join(root, 'materials/page.png'), path.join(root, 'materials/page.png/reports')]) {
+    assert.throws(() => writeReport(state, root, out), /overlaps a registered ledger file/);
+    assert.ok(!fs.existsSync(path.join(root, 'materials/page.png')));
+  }
+});
+
+test('a conflicting author profile in hand-written history does not replace the creator', t => {
+  const root = fixture(t), authorUrl = 'https://www.xiaohongshu.com/user/profile/synthetic-author';
+  append(root, capture('with-profile', { work: { ...capture().work, authorUrl } }));
+  const legacy = { ...load(root).at(-1), id: 'legacy-other-profile', work: { ...capture().work, author: 'Someone else', authorUrl: 'https://www.xiaohongshu.com/user/profile/someone-else' } };
+  fs.writeFileSync(path.join(root, 'events', `${String(load(root).length + 1).padStart(8, '0')}-legacy-other-profile.json`), JSON.stringify(legacy));
+  const work = snapshot(load(root)).items[0].work;
+  assert.equal(work.authorUrl, authorUrl); assert.equal(work.author, 'Test author');
+});
+
+test('draft files and draft content belong to the work that first registered them', t => {
+  const root = draftedFixture(t), other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/other-'); freshCopy(root, a.path, file); return { ...a, path: file, sourceUrl: other.url }; });
+  append(root, capture('other-read', { work: other, assets }));
+  append(root, { ...review('other-review'), workId: other.id, captureIds: ['other-read'], evidencePaths: [assets[0].path], claims: [] });
+  append(root, event('decision', 'other-selected', { workId: other.id, decision: 'selected', userRequest: 'Synthetic user: select the other', reason: 'Useful' }));
+  const draft = event('draft', 'other-draft', { workId: other.id, selectionEventId: 'other-selected', reviewId: 'other-review', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' });
+  assert.throws(() => append(root, draft), /Draft file already registered for another work/);
+  for (const name of ['brief', 'script', 'evidence']) fs.copyFileSync(path.join(root, `${name}.md`), path.join(root, `other-${name}.md`));
+  assert.throws(() => append(root, { ...draft, briefPath: 'other-brief.md', scriptPath: 'other-script.md', evidencePath: 'other-evidence.md' }), /already registered for another work/);
+  for (const name of ['brief', 'script', 'evidence']) fs.writeFileSync(path.join(root, `other-${name}.md`), `Synthetic ${name} for the other work`);
+  append(root, { ...draft, briefPath: 'other-brief.md', scriptPath: 'other-script.md', evidencePath: 'other-evidence.md' });
+});
