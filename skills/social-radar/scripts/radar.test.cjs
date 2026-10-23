@@ -1908,3 +1908,34 @@ test('summary warns about a missing store and about gaps in the journal sequence
   fs.rmSync(path.join(root, 'events', fs.readdirSync(path.join(root, 'events')).sort()[1]));
   const gap = run(root); assert.equal(gap.status, 0); assert.deepEqual(JSON.parse(gap.stdout).journalGaps, [2]); assert.match(gap.stderr, /sequence numbers 2 are missing/);
 });
+
+test('an edit label read after a confirmed publication is shown as an edit, not as the publication', t => {
+  const root = fixture(t), work = { ...capture().work, dateKind: 'published', dateLabel: '2026-09-01', publishedAt: '2026-09-01T09:00:00+08:00' };
+  append(root, capture('published-long-ago', { work }));
+  const fresh = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/edited-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
+  append(root, capture('edited-yesterday', { work: { ...work, dateKind: 'edited', dateLabel: '昨天', publishedAt: null }, assets: fresh }));
+  const item = snapshot(load(root), undefined, root).items[0];
+  assert.equal(item.work.dateKind, 'edited'); assert.equal(item.work.dateLabel, '昨天'); assert.equal(item.work.publishedAt, '2026-09-01T09:00:00+08:00');
+  append(root, review());
+  assert.match(render(snapshot(load(root), undefined, root), root, path.join(root, 'reports')), /编辑：昨天/);
+});
+
+test('external source comments in a metrics revisit do not count as recommendation discovery', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/direct-x-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
+  append(root, capture('direct-read', { roundId: 'r2', route: 'direct', assets }));
+  const metrics = { likes: { value: 41, raw: '41', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/x-comments.md'), 'Synthetic replies on the X source');
+  fs.writeFileSync(path.join(root, 'materials/revisit-x.json'), JSON.stringify({ synthetic: 'revisit x', sampledAt: '2026-10-21T11:00:00+08:00', metrics }));
+  append(root, capture('revisit-x', { roundId: 'r2', route: 'recommendation', readKinds: [], practicalMethod: false, assets: [{ ...capture().assets[0], kind: 'source_comments', path: 'materials/x-comments.md', sourceUrl: 'https://x.com/example/status/1' }, { kind: 'metric_snapshot', path: 'materials/revisit-x.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T11:00:00+08:00', coverage: 'Synthetic revisit', metrics }] }));
+  const r = snapshot(load(root)).rounds[1];
+  assert.equal(r.recommended.xiaohongshu, 0); assert.equal(r.coverageComplete, false);
+});
+
+test('append refuses to start a ledger at a mistyped path except with a round start', t => {
+  const parent = fs.realpathSync(os.tmpdir()), fresh = path.join(parent, `autody-radar-new-${process.pid}-${Date.now()}`);
+  t.after(() => fs.rmSync(fresh, { recursive: true, force: true }));
+  assert.throws(() => append(fresh, capture()), /No ledger at/);
+  assert.ok(!fs.existsSync(fresh));
+  append(fresh, round()); assert.equal(load(fresh).length, 1);
+});

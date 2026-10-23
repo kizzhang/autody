@@ -160,8 +160,10 @@ function registeredFile(root, file, internals = lazyInternals(root), realRoot = 
 function registrationKey(root, file, internals) { return registeredFile(root, file, internals).key; }
 function brokenAssets(root, events, selected) {
   // Mirror status/render: a missing or changed file of the selected captures stops supporting records.
-  const broken = new Set();
+  const broken = new Set(), checked = new Set();
   for (const e of events) if (e.type === 'capture' && selected(e)) for (const a of e.assets) {
+    // A file re-listed by several captures is hashed once.
+    if (checked.has(assetKey(a.path))) continue; checked.add(assetKey(a.path));
     let intact = false;
     try { intact = digest(root, a.path) === a.sha256; } catch { /* Missing or unreadable. */ }
     if (!intact) broken.add(assetKey(a.path));
@@ -553,7 +555,10 @@ function sameReplay(existing, input) {
   return isDeepStrictEqual(saved, input);
 }
 function append(root, input) {
-  root = path.resolve(root); fs.mkdirSync(root, { recursive: true });
+  root = path.resolve(root);
+  // Only a round start may create a store, so a mistyped --store path cannot silently start a new ledger.
+  check(fs.existsSync(path.join(root, 'events')) || input?.type === 'round_started', `No ledger at ${root}; check --store, or start a new store with a round_started event`);
+  fs.mkdirSync(root, { recursive: true });
   fs.mkdirSync(eventDirectory(root), { recursive: true }); const dir = eventDirectory(root);
   const lock = path.join(root, '.writer.lock');
   let fd; try { fd = fs.openSync(lock, 'wx'); } catch (error) { if (error.code === 'EEXIST') throw new Error('Writer locked; inspect the active writer before retrying'); throw error; }
@@ -590,7 +595,11 @@ function append(root, input) {
       check(!fs.readdirSync(dir).some(name => name.startsWith(prefix) && name.endsWith('.json')), 'Sequence conflict: an event already uses this sequence number'); fs.renameSync(tmp, target);
     } finally { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); }
     return { appended: true, id: e.id };
-  } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
+  } finally {
+    fs.closeSync(fd);
+    // A security scanner may briefly hold the lock; report it without turning a committed save into a failure.
+    try { fs.unlinkSync(lock); } catch (error) { process.stderr.write(`Warning: could not remove ${lock} (${error.code || error.message}); remove it once no writer is running.\n`); }
+  }
 }
 function roundStats(events, round, resolve = assetKey) {
   const registered = registeredAssets(events, resolve), isEligible = e => eligible(e, registered, resolve);
@@ -603,7 +612,7 @@ function roundStats(events, round, resolve = assetKey) {
   const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && isEligible(e) && freshInRound(e));
   // A discovery capture newly saves non-metric evidence of the work; re-listed files do not change what a revisit was.
   const position = new Map(events.map((e, i) => [e, i]));
-  const discovers = e => e.assets.some(a => !(METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined) && registered.get(resolve(a.path))?.index === position.get(e));
+  const discovers = e => e.assets.some(a => !(METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined) && workBound(a, e.work) && registered.get(resolve(a.path))?.index === position.get(e));
   const distinct = new Map(); for (const e of captures) if (!distinct.has(e.work.id)) distinct.set(e.work.id, e);
   const platformCounts = { douyin: 0, xiaohongshu: 0 }, recommended = { douyin: 0, xiaohongshu: 0 };
   let newWorks = 0, practical = 0;
@@ -702,8 +711,16 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     // The latest capture that newly saved the work page or caption with this label supplies its anchor.
     // Date fields come from the latest capture that newly saved the work page or caption with a label, so a
     // metrics-only revisit cannot overwrite or blank them. A confirmed publication date still wins.
-    const dated = captures.findLast(c => nonempty(c.work.dateLabel) && c.assets.some(a => seesWork(c, a)));
-    const shownWork = dated ? { ...work, dateKind: work.publishedAt != null ? 'published' : dated.work.dateKind, dateLabel: dated.work.dateLabel } : work;
+    const pageRead = c => nonempty(c.work.dateLabel) && c.assets.some(a => seesWork(c, a));
+    const latestRead = captures.findLast(pageRead);
+    let shown = latestRead && { dateKind: latestRead.work.dateKind, dateLabel: latestRead.work.dateLabel };
+    if (work.publishedAt != null && latestRead?.work.dateKind !== 'edited') {
+      // A confirmed publication stays shown, labelled from the latest page read that recorded it, unless a newer
+      // page read shows an edit label; kind and label never come from different readings.
+      const published = captures.findLast(c => pageRead(c) && c.work.dateKind === 'published');
+      shown = { dateKind: 'published', dateLabel: published ? published.work.dateLabel : work.dateLabel };
+    }
+    const shownWork = shown ? { ...work, ...shown } : work;
     const labelRead = captures.findLast(c => c.work.dateLabel === shownWork.dateLabel && c.assets.some(a => seesWork(c, a)));
     const dateSeenAt = labelRead ? labelRead.assets.filter(a => seesWork(labelRead, a)).map(a => a.capturedAt).sort((x, y) => time(x) - time(y))[0] : null;
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
