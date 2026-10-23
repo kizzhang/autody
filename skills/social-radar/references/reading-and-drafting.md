@@ -28,7 +28,7 @@ Use `summary`, `opportunity`, `angle`, `recommendation`, `evidencePaths`, `captu
 
 Only a real user selection creates `decision: selected`; a model's shortlist is not selection. Preserve the user's request in `userRequest`. Read the selected review and its evidence before drafting. If material new evidence changes the angle, show the change rather than silently using an old selection for a different topic.
 
-Create three files under `drafts/<work-key>/<revision>/`:
+Create three files under `drafts/<work-key>/<revision>/`, where `<work-key>` is `<platform>-<native-id>`:
 
 - `brief.md`: audience/problem, central viewpoint, what the creator adds, hook options, structure, sources, known gaps and any proposed experiment.
 - `script.md`: an original, speakable first draft with an opening, a concrete example or explanation, a supported conclusion, and natural transitions. Choose a length appropriate to the user's channel; record a provisional target if none is supplied. It is a draft, not a published work or approved scientific conclusion.

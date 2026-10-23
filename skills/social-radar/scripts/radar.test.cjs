@@ -1781,3 +1781,30 @@ test('the dashboard asks to cancel revisits whose baseline is lost or unavailabl
   fs.rmSync(path.join(root, 'materials/metrics-baseline.json'));
   assert.match(render(checkedSnapshot(root), root, path.join(root, 'reports')), /基线失效，请取消并重建/);
 });
+
+test('a new date label is anchored to the page saved with it, not to a re-listed older caption', t => {
+  const root = fixture(t);
+  fs.writeFileSync(path.join(root, 'materials/page-next-day.png'), 'Synthetic next-day screenshot');
+  const work = { ...capture().work, dateLabel: '前天' };
+  append(root, { ...capture('next-day', { work, assets: [capture().assets[0], { ...capture().assets[1], path: 'materials/page-next-day.png', capturedAt: '2026-10-22T09:00:00+08:00' }] }), recordedAt: '2026-10-22T09:05:00+08:00' });
+  const state = snapshot(load(root), '2026-10-23T00:00:00+08:00', root);
+  assert.equal(state.items[0].work.dateLabel, '前天'); assert.equal(state.items[0].dateSeenAt, '2026-10-22T09:00:00+08:00');
+});
+
+test('a corrupt journal entry is named in the error and stray draft hash keys are rejected', t => {
+  const root = draftedFixture(t);
+  for (const file of ['brief2.md', 'script2.md', 'evidence2.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  const draft2 = event('draft', 'draft2', { workId: 'xiaohongshu:example', selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief2.md', scriptPath: 'script2.md', evidencePath: 'evidence2.md' });
+  assert.throws(() => append(root, { ...draft2, hashes: { brief: '0'.repeat(64) } }), /may only name briefPath/);
+  const name = `${String(load(root).length + 1).padStart(8, '0')}-broken.json`;
+  fs.writeFileSync(path.join(root, 'events', name), '{"id": "broken"');
+  assert.throws(() => load(root), new RegExp(`Journal entry ${name} is not valid JSON`));
+});
+
+test('CSV carries date columns and cards show when the growth window ended', t => {
+  const root = fixture(t); saveObservation(root, obs('a', '09:00:00', 10)); saveObservation(root, obs('b', '09:30:00', 200)); append(root, review());
+  const state = snapshot(load(root), undefined, root);
+  const [header, row] = fs.readFileSync(writeReport(state, root, path.join(root, 'reports')).csv, 'utf8').replace(/^\uFEFF/, '').split('\r\n').map(line => line.slice(1, -1).split('","'));
+  assert.equal(row[header.indexOf('date_label')], '昨天'); assert.equal(row[header.indexOf('date_seen_at')], '2026-10-21T09:00:00+08:00');
+  assert.match(render(state, root, path.join(root, 'reports')), /截至 2026\/10\/21 09:30:00/);
+});

@@ -218,7 +218,10 @@ function files(root) {
   for (const name of names) { const entry = fs.lstatSync(path.join(dir, name)); check(entry.isFile() && !entry.isSymbolicLink(), `Journal entries must be regular files: ${name}`); }
   return names;
 }
-function load(root) { const dir = eventDirectory(root); return files(root).map(n => JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))); }
+function load(root) {
+  const dir = eventDirectory(root);
+  return files(root).map(n => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); } catch (error) { throw new Error(`Journal entry ${n} is not valid JSON: ${error.message}`); } });
+}
 function assetKey(file) {
   const normalized = path.posix.normalize(file);
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
@@ -480,6 +483,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
     check(e.status === 'draft', 'Generated script remains draft');
     if (e.hashes === undefined) e.hashes = {};
     check(e.hashes && typeof e.hashes === 'object' && !Array.isArray(e.hashes), 'Draft hashes must be a plain object');
+    check(Object.keys(e.hashes).every(k => ['briefPath', 'scriptPath', 'evidencePath'].includes(k)), 'Draft hashes may only name briefPath, scriptPath and evidencePath');
     const draftKeys = ['briefPath', 'scriptPath', 'evidencePath'];
     const resolved = Object.fromEntries(draftKeys.map(k => [k, registerFile(e[k])]));
     check(new Set(Object.values(resolved)).size === 3, 'Brief, script and evidence must be separate files');
@@ -658,7 +662,7 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     const checks = events[i].type === 'review' ? reviewChecks : draftChecks;
     checks.set(events[i].id, eventIssue(root, events[i], events.slice(0, i), resolve, internals));
   }
-  const superseded = supersededObservations(events), order = new Map(events.map((e, i) => [e, i]));
+  const superseded = supersededObservations(events), order = new Map(events.map((e, i) => [e, i])), registry = registeredAssets(events, resolve);
   const taskMap = new Map(); for (const e of events) if (e.type === 'task') taskMap.set(e.taskId, e);
   const groups = new Map(), group = workId => { if (!groups.has(workId)) groups.set(workId, { captures: [], observations: [], reviews: [], drafts: [], decision: null }); return groups.get(workId); };
   for (const e of source) if (e.type === 'capture') group(e.work.id).captures.push(e);
@@ -683,8 +687,9 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     const review = reviews.findLast(e => !reviewChecks.get(e.id)) || null;
     // When the newest review has lost support, an older recommendation is not promoted in its place.
     const reviewBlocked = reviews.length > 0 && reviews.at(-1) !== review;
-    // A relative date label is anchored to when the work page or caption showing it was first read.
-    const seesWork = (c, a) => ['page_screenshot', 'caption'].includes(a.kind) && workBound(a, c.work);
+    // A relative date label is anchored to the work page or caption first saved by the capture that recorded it;
+    // files re-listed from earlier captures keep their own, older times.
+    const seesWork = (c, a) => ['page_screenshot', 'caption'].includes(a.kind) && workBound(a, c.work) && registry.get(resolve(a.path))?.index === order.get(c);
     const labelRead = captures.find(c => c.work.dateLabel === work.dateLabel && c.assets.some(a => seesWork(c, a)));
     const dateSeenAt = labelRead ? labelRead.assets.filter(a => seesWork(labelRead, a)).map(a => a.capturedAt).sort((x, y) => time(x) - time(y))[0] : null;
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
