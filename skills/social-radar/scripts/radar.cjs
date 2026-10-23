@@ -397,13 +397,14 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
     const owned = e.assets.filter(a => CONTENT_IDENTITY_KINDS.has(a.kind));
     check(new Set(owned.map(a => a.sha256)).size === owned.length, 'Duplicate media or metric content within one capture');
     if (e.readKinds.includes('verified_transcript')) check(e.assets.some(a => a.kind === 'transcript_candidate' && a.status === 'verified'), 'Verified transcript evidence required');
-    const bound = e.assets.filter(a => workBound(a, e.work));
+    // Read kinds need the work's own evidence, judged as eligibility does: a reposted copy cannot support them.
+    const bound = e.assets.filter(a => workBound(a, e.work) && !copiedContent({ asset: a, workId: e.work.id }, registered));
     for (const kind of e.readKinds) check(supportsRead(kind, bound), `Read kind ${kind} requires compatible saved evidence from the work itself`);
   } else if (e.type === 'observation') {
     requireWork(); check(round, 'Unknown round'); check(time(e.sampledAt) <= recorded, 'Sample time is after event time');
     check(e.metrics && typeof e.metrics === 'object' && !Array.isArray(e.metrics) && Object.keys(e.metrics).length > 0, 'Metrics required');
     const superseded = supersededObservations(prior);
-    if (e.correctsObservationId !== undefined) {
+    if (e.correctsObservationId != null) {
       const target = prior.find(x => x.type === 'observation' && x.id === e.correctsObservationId);
       check(target && target.workId === e.workId && target.roundId === e.roundId && time(target.sampledAt) === time(e.sampledAt), 'A correction must name an earlier observation of the same work, round and sampling time');
       check(!superseded.has(target.id), 'Observation already corrected; correct its latest correction instead');
@@ -564,11 +565,12 @@ function append(root, input) {
   root = path.resolve(root);
   // Only a round start may create a store, so a mistyped --store path cannot silently start a new ledger.
   check(input && typeof input === 'object' && !Array.isArray(input), 'Event object required');
-  check(fs.existsSync(path.join(root, 'events')) || input.type === 'round_started', `No ledger at ${root}; check --store, or start a new store with a round_started event`);
-  if (!fs.existsSync(path.join(root, 'events'))) {
+  // A store exists once its journal holds an event; an empty events/ directory does not make one.
+  const hasJournal = dir => { try { return fs.readdirSync(path.join(dir, 'events')).some(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)); } catch { return false; } };
+  check(hasJournal(root) || input.type === 'round_started', `No ledger at ${root}; check --store, or start a new store with a round_started event`);
+  if (!hasJournal(root)) {
     // A new store nested inside another one, or wrapping one, would be deleted with it when the outer store is
     // retired. Check both the given path and its physical location (directory links can hide nesting).
-    const hasJournal = dir => { try { return fs.readdirSync(path.join(dir, 'events')).some(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)); } catch { return false; } };
     let existing = root; const suffix = [];
     while (!fs.existsSync(existing) && path.dirname(existing) !== existing) { suffix.unshift(path.basename(existing)); existing = path.dirname(existing); }
     const physicalRoot = path.join(real(existing), ...suffix);
@@ -604,6 +606,7 @@ function append(root, input) {
     if (typeof e.recordedAt === 'string' && Number.isFinite(Date.parse(e.recordedAt))) check(Date.parse(e.recordedAt) <= Date.now() + 5 * 60000, 'recordedAt is later than this machine clock; record the actual save time');
     const resolve = fileResolver(root); resolve.ledger = events;
     if (existing && sameReplay(existing, e)) return { appended: false, id: e.id };
+    check(!existing || existing.type === e.type, `ID ${e.id} is already used by a ${existing?.type} event; choose a new ID`);
     const refs = referencedPaths(e, events, resolve);
     for (const old of events) {
       if (old.type === 'capture') for (const a of old.assets) {
@@ -803,7 +806,7 @@ function summary(state) {
   // Compact view for an agent resuming work; status and snapshot.json keep the full history.
   const candidates = state.items.filter(i => i.review?.recommendation === 'shortlist' && !i.reviewBlocked && !['watch', 'rejected', 'selected'].includes(i.decision?.decision)).sort((a, b) => time(b.review.recordedAt) - time(a.review.recordedAt));
   const recentSince = time(state.generatedAt) - 7 * 86400000, priority = candidates.filter(i => time(i.review.recordedAt) >= recentSince);
-  return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, profile: state.rounds.at(-1)?.profile ?? null, storeExists: state.storeExists ?? true, journalGaps: state.journalGaps ?? [], integrityChecked: 'presence', integrityIssues: state.integrityIssues,
+  return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, profile: state.rounds.at(-1)?.profile ?? null, storeExists: state.storeExists ?? true, journalGaps: state.journalGaps ?? [], journalDuplicates: state.journalDuplicates ?? [], integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
     rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, pausedPlatforms: pausedPlatforms(r.attempts), lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
     pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened, baselineUnavailable, baselineEvidenceLost }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}), ...(baselineUnavailable ? { baselineUnavailable } : {}), ...(baselineEvidenceLost ? { baselineEvidenceLost } : {}) })),
@@ -812,13 +815,17 @@ function summary(state) {
     gaps: state.items.filter(i => i.evidenceGaps.length || i.reviewGaps.length || i.draftGaps.length || i.integrityIssues.length).map(i => ({ workId: i.work.id, evidenceGaps: i.evidenceGaps.length, reviewGaps: i.reviewGaps.length, draftGaps: i.draftGaps.length, integrityIssues: i.integrityIssues.length })) };
 }
 function journalGaps(root) {
-  // Missing sequence numbers mean a journal file was removed, for example by a sync conflict or quarantine.
+  // Missing sequence numbers mean a journal file was removed, for example by a sync conflict or quarantine;
+  // a repeated number means a removed file came back after a newer event took its place. A lost last file
+  // leaves no trace.
   const dir = eventDirectory(root);
-  if (!fs.existsSync(dir)) return [];
-  const seen = new Set(fs.readdirSync(dir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).map(n => Number(n.slice(0, 8))));
+  if (!fs.existsSync(dir)) return { gaps: [], duplicates: [] };
+  const numbers = fs.readdirSync(dir).filter(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n)).map(n => Number(n.slice(0, 8)));
+  const seen = new Set(), duplicates = new Set();
+  for (const n of numbers) { if (seen.has(n)) duplicates.add(n); seen.add(n); }
   const gaps = [];
   for (let n = 1; n <= Math.max(0, ...seen); n++) if (!seen.has(n)) gaps.push(n);
-  return gaps;
+  return { gaps, duplicates: [...duplicates].sort((a, b) => a - b) };
 }
 function readUtf8(file) {
   // Reject UTF-16 and legacy code pages instead of saving garbled text into the append-only ledger.
@@ -835,7 +842,9 @@ function main(argv) {
   if (command === 'append') { check(opts.input, '--input required'); return append(opts.store, JSON.parse(readUtf8(opts.input))); }
   const events = load(opts.store), issues = integrityIssues(opts.store, events, { hashes: command !== 'summary' }), state = snapshot(events, opts.now, opts.store, issues);
   if (issues.length) process.stderr.write(`Warning: ${issues.length} registered file(s) are missing or changed and are excluded from derived results; see integrityIssues.\n`);
-  state.storeExists = fs.existsSync(path.resolve(opts.store)); state.journalGaps = journalGaps(opts.store);
+  const journal = journalGaps(opts.store);
+  state.storeExists = fs.existsSync(path.resolve(opts.store)); state.journalGaps = journal.gaps; state.journalDuplicates = journal.duplicates;
+  if (state.journalDuplicates.length) process.stderr.write(`Warning: journal sequence numbers ${state.journalDuplicates.join(', ')} are used more than once; a removed event file may have come back.\n`);
   if (!state.storeExists) process.stderr.write(`Warning: store ${path.resolve(opts.store)} does not exist; check --store before appending.\n`);
   if (state.journalGaps.length) process.stderr.write(`Warning: journal sequence numbers ${state.journalGaps.join(', ')} are missing; an event file was removed.\n`);
   if (command === 'render') { check(opts.out, '--out required'); return require('./render-radar.cjs').writeReport(state, opts.store, opts.out, events); }

@@ -796,7 +796,9 @@ test('journal directory aliases must remain beneath their selected store', t => 
   assert.throws(() => load(outside), /Events directory.*store/);
   assert.throws(() => append(outside, round('escaped')), /Events directory.*store/);
   assert.deepEqual(load(root), before); assert.ok(!fs.existsSync(path.join(outside, '.writer.lock')));
-  const inside = path.join(root, 'contained-store'), journal = path.join(inside, 'journal'); fs.mkdirSync(journal, { recursive: true });
+  // A separate store whose events/ is an alias to a directory inside itself (not nested in another store).
+  const separate = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'autody-radar-alias-')); t.after(() => fs.rmSync(separate, { recursive: true, force: true }));
+  const inside = path.join(separate, 'contained-store'), journal = path.join(inside, 'journal'); fs.mkdirSync(journal, { recursive: true });
   fs.symlinkSync(journal, path.join(inside, 'events'), kind);
   append(inside, round('contained'));
   assert.equal(load(inside)[0].roundId, 'contained'); assert.equal(fs.readdirSync(journal).length, 1);
@@ -1613,7 +1615,8 @@ test('a reposted identical video may be saved for another work but does not coun
   append(root, capture('with-video', { readKinds: ['video_fragment'], assets: [...capture().assets, { ...capture().assets[0], kind: 'video', path: 'materials/video.mp4', coverage: 'Synthetic video' }] }));
   fs.copyFileSync(path.join(root, 'materials/video.mp4'), path.join(root, 'materials/repost.mp4'));
   fs.writeFileSync(path.join(root, 'materials/other-caption.md'), 'Synthetic caption of the repost');
-  append(root, capture('repost', { work: other, readKinds: ['caption_body', 'video_fragment'], assets: [{ ...capture().assets[0], path: 'materials/other-caption.md', sourceUrl: other.url }, { ...capture().assets[0], kind: 'video', path: 'materials/repost.mp4', sourceUrl: other.url, coverage: 'Reposted video' }] }));
+  assert.throws(() => append(root, capture('repost-read', { work: other, readKinds: ['caption_body', 'video_fragment'], assets: [{ ...capture().assets[0], path: 'materials/other-caption.md', sourceUrl: other.url }, { ...capture().assets[0], kind: 'video', path: 'materials/repost.mp4', sourceUrl: other.url, coverage: 'Reposted video' }] })), /from the work itself/);
+  append(root, capture('repost', { work: other, readKinds: ['caption_body'], assets: [{ ...capture().assets[0], path: 'materials/other-caption.md', sourceUrl: other.url }, { ...capture().assets[0], kind: 'video', path: 'materials/repost.mp4', sourceUrl: other.url, coverage: 'Reposted video' }] }));
   const state = snapshot(load(root));
   assert.equal(state.rounds[0].platformCounts.xiaohongshu, 1);
   assert.ok(!state.items.find(i => i.work.id === other.id).assets.some(a => a.path === 'materials/repost.mp4'));
@@ -2124,4 +2127,27 @@ test('documented field rules reject their counterexamples', t => {
   let linked = true; try { fs.symlinkSync(outside, path.join(root, 'materials', 'outside-link'), 'junction'); } catch { linked = false; }
   if (linked) assert.throws(() => append(root, capture('escape', { readKinds: [], assets: [{ ...capture().assets[1], path: 'materials/outside-link/page.png' }] })), /Symlink escapes store/);
   assert.equal(render({ ...snapshot(load(root)), items: snapshot(load(root)).items.map(i => ({ ...i, work: { ...i.work, url: 'javascript:alert(1)' } })) }, root, path.join(root, 'reports')).includes('href="javascript:'), false);
+});
+
+test('a pre-created empty events directory does not bypass the nested-store checks', t => {
+  const root = fixture(t), inner = path.join(root, 'next-month');
+  fs.mkdirSync(path.join(inner, 'events'), { recursive: true });
+  assert.throws(() => append(inner, round('nested')), /inside the existing store/);
+  assert.throws(() => append(inner, capture()), /No ledger at/);
+  assert.deepEqual(fs.readdirSync(path.join(inner, 'events')), []);
+});
+
+test('a reused ID of another event type and a null correction link get clear handling', t => {
+  const root = fixture(t);
+  assert.throws(() => saveObservation(root, { ...obs('capture1', '09:00:00', 17) }), /already used by a capture event/);
+  saveObservation(root, { ...obs('plain', '09:00:00', 17), correctsObservationId: null });
+  assert.equal(snapshot(load(root)).items[0].latest.likes.value, 17);
+});
+
+test('summary reports a journal sequence number used twice', t => {
+  const root = fixture(t), dir = path.join(root, 'events');
+  const first = fs.readdirSync(dir).sort()[1];
+  fs.copyFileSync(path.join(dir, first), path.join(dir, first.replace('-capture1.json', '-restored-copy.json')));
+  const run = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'summary', '--store', root], { encoding: 'utf8' });
+  assert.deepEqual(JSON.parse(run.stdout).journalDuplicates, [2]); assert.match(run.stderr, /used more than once/);
 });
