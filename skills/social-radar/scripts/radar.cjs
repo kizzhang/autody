@@ -50,11 +50,19 @@ function workUrl(work) {
   const nativeId = route.exec(u.pathname)?.[1];
   check(nativeId && [domain, `www.${domain}`].includes(u.hostname) && `${work.platform}:${nativeId}` === work.id, 'Work URL must match the declared platform and native ID; use a canonical work URL');
 }
+function profileId(platform, value) {
+  // Query strings such as Xiaohongshu xsec_token vary between visits; the user ID identifies the profile.
+  try {
+    const u = new URL(value), domain = platform === 'douyin' ? 'douyin.com' : 'xiaohongshu.com';
+    const route = platform === 'douyin' ? /^\/user\/([a-zA-Z0-9_-]+)\/?$/ : /^\/user\/profile\/([a-zA-Z0-9_-]+)\/?$/;
+    const user = route.exec(u.pathname)?.[1];
+    return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password && [domain, `www.${domain}`].includes(u.hostname) && user ? `${platform}:${user}` : null;
+  } catch { return null; }
+}
 function authorUrl(work) {
   if (work.authorUrl === undefined) return;
-  const u = new URL(url(work.authorUrl)), domain = work.platform === 'douyin' ? 'douyin.com' : 'xiaohongshu.com';
-  const route = work.platform === 'douyin' ? /^\/user\/[a-zA-Z0-9_-]+\/?$/ : /^\/user\/profile\/[a-zA-Z0-9_-]+\/?$/;
-  check([domain, `www.${domain}`].includes(u.hostname) && route.test(u.pathname), 'Author URL must identify a profile on the work platform');
+  url(work.authorUrl);
+  check(profileId(work.platform, work.authorUrl), 'Author URL must identify a profile on the work platform');
 }
 function sourcePlatform(sourceUrl) {
   const host = new URL(sourceUrl).hostname.replace(/^www\./, '');
@@ -65,10 +73,8 @@ function assetMatchesWork(a, work) {
   if (!publicationAllowsAsset(a, work)) return false;
   if (EXTERNAL_ASSET_KINDS.has(a.kind)) return true;
   try { workUrl(work); workUrl({ ...work, url: a.sourceUrl }); return true; } catch {
-    if (nonempty(work.authorUrl) && a.sourceUrl === work.authorUrl && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && Object.keys(a.metrics).length && Object.keys(a.metrics).every(k => k === 'followers')) {
-      try { authorUrl(work); return true; } catch { /* Invalid profile provenance. */ }
-    }
-    return false;
+    const profile = profileId(work.platform, work.authorUrl);
+    return Boolean(profile && profileId(work.platform, a.sourceUrl) === profile && METRIC_ASSET_KINDS.has(a.kind) && a.metrics && Object.keys(a.metrics).length && Object.keys(a.metrics).every(k => k === 'followers'));
   }
 }
 function publicationAllowsAsset(a, work) {
@@ -76,6 +82,16 @@ function publicationAllowsAsset(a, work) {
   try { workUrl({ ...work, url: a.sourceUrl }); } catch { return true; }
   try { return work.dateKind === 'published' && time(work.publishedAt) <= time(a.capturedAt); } catch { return false; }
 }
+function workBound(a, work) { try { workUrl({ ...work, url: a.sourceUrl }); return true; } catch { return false; } }
+function mergeWork(previous, next) {
+  // A confirmed publication date and the author profile persist unless a later capture explicitly revises them.
+  if (!previous) return next;
+  const merged = { ...next };
+  if (merged.authorUrl === undefined && previous.authorUrl !== undefined) merged.authorUrl = previous.authorUrl;
+  if (merged.publishedAt == null && previous.publishedAt != null) Object.assign(merged, { dateKind: previous.dateKind, dateLabel: previous.dateLabel, publishedAt: previous.publishedAt });
+  return merged;
+}
+function knownWork(events, workId) { let work; for (const e of events) if (e.type === 'capture' && e.work.id === workId) work = mergeWork(work, e.work); return work; }
 function supportsRead(kind, assets) {
   return assets.some(a => READ_EVIDENCE[kind]?.includes(a.kind) && (kind !== 'verified_transcript' || a.status === 'verified'));
 }
@@ -83,41 +99,53 @@ function storagePath(file) {
   const key = assetKey(file.replaceAll('\\', '/'));
   check(key !== '.writer.lock' && key !== 'events' && !key.startsWith('events/'), `Ledger-internal path cannot be registered: ${file}`);
 }
-function relativeFile(root, file) {
+function storedFile(root, file, realRoot = fs.realpathSync(root)) {
   check(nonempty(file) && !path.isAbsolute(file) && !/^[A-Za-z]:|\\|\0/.test(file), 'Use a store-relative path with forward slashes');
   storagePath(file);
   const resolved = path.resolve(root, file), rel = path.relative(path.resolve(root), resolved);
   check(rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel), `Path escapes store: ${file}`);
-  const realRoot = fs.realpathSync(root), realFile = fs.realpathSync(resolved), realRel = path.relative(realRoot, realFile);
+  let realFile;
+  try { realFile = fs.realpathSync(resolved); } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) throw new Error(`Missing/empty asset: ${file}`); throw error; }
+  const realRel = path.relative(realRoot, realFile);
   check(realRel && realRel !== '..' && !realRel.startsWith(`..${path.sep}`) && !path.isAbsolute(realRel), `Symlink escapes store: ${file}`);
   storagePath(realRel);
-  check(fs.statSync(realFile).isFile() && fs.statSync(realFile).size > 0, `Missing/empty asset: ${file}`);
-  return realFile;
+  const stat = fs.statSync(realFile, { bigint: true });
+  check(stat.isFile() && stat.size > 0n, `Missing/empty asset: ${file}`);
+  return { realFile, stat };
 }
+function relativeFile(root, file) { return storedFile(root, file).realFile; }
 function digest(root, file) { return crypto.createHash('sha256').update(fs.readFileSync(relativeFile(root, file))).digest('hex'); }
-function physicalFileKey(file) {
-  const stat = fs.statSync(file, { bigint: true });
-  return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${assetKey(fs.realpathSync(file))}`;
-}
-function fileKey(root, file) { return physicalFileKey(relativeFile(root, file)); }
+function identity(realFile, stat) { return stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : `path:${assetKey(realFile)}`; }
+function physicalFileKey(file) { return identity(fs.realpathSync(file), fs.statSync(file, { bigint: true })); }
+function fileKey(root, file, realRoot) { const { realFile, stat } = storedFile(root, file, realRoot); return identity(realFile, stat); }
 function internalFileKeys(root) {
   const dir = eventDirectory(root), paths = files(root).map(n => path.join(dir, n)), lock = path.join(root, '.writer.lock');
   if (fs.existsSync(lock)) paths.push(lock);
   return new Set(paths.map(physicalFileKey));
 }
-function registrationKey(root, file, internals) {
-  const key = fileKey(root, file);
-  check(!internals.has(key), `Ledger-internal file cannot be registered: ${file}`);
+function lazyInternals(root) { let keys; return () => keys ||= internalFileKeys(root); }
+function registrationKey(root, file, internals = lazyInternals(root)) {
+  const { realFile, stat } = storedFile(root, file), key = identity(realFile, stat);
+  // Only a multiply-linked file can be a journal entry or the writer lock under another name;
+  // other paths into events/ and the lock are rejected by name before this point.
+  if (stat.nlink > 1n) check(!internals().has(key), `Ledger-internal file cannot be registered: ${file}`);
   return key;
 }
 function fileResolver(root) {
   const known = new Map();
+  let realRoot;
   return file => {
     const key = assetKey(file);
     if (!known.has(key)) {
-      // Missing unrelated history must not prevent recovery under new paths.
-      // Referenced files still pass strict path/hash checks before append.
-      try { known.set(key, fileKey(root, file)); } catch { known.set(key, `path:${key}`); }
+      // Registered paths need only their identity here: containment was checked at registration and
+      // the integrity pass rechecks it. Missing unrelated history must not prevent recovery under new
+      // paths; referenced files still pass strict path/hash checks before append.
+      let found = `path:${key}`;
+      try {
+        const stat = fs.statSync(path.resolve(root, file), { bigint: true });
+        found = stat.isFile() && stat.ino !== 0n ? `inode:${stat.dev}:${stat.ino}` : fileKey(root, file, realRoot ??= fs.realpathSync(root));
+      } catch { /* Keep the path identity. */ }
+      known.set(key, found);
     }
     return known.get(key);
   };
@@ -133,6 +161,8 @@ function config(input = {}) {
   for (const [k, v] of Object.entries(c)) if (k !== 'targets') check(Number.isFinite(v) && v >= 0, `Invalid config value: ${k}`);
   for (const k of ['minNew', 'minRecommended', 'practicalSlots', 'lowFollowerCeiling', 'lowLikeCeiling', 'minNewLikes']) check(Number.isSafeInteger(c[k]), `${k} must be an integer`);
   check(c.minIntervalMinutes > 0 && c.shortWindowHours * 60 >= c.minIntervalMinutes && c.accelerationRatio > 1, 'Invalid growth windows');
+  const total = c.targets.douyin + c.targets.xiaohongshu;
+  check(c.minNew <= total && c.practicalSlots <= total && Object.values(c.targets).every(t => t === 0 || c.minRecommended <= t), 'minNew/practicalSlots cannot exceed the round target and minRecommended cannot exceed an active platform target');
   return c;
 }
 function eventDirectory(root) {
@@ -154,20 +184,43 @@ function assetKey(file) {
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 function draftPaths(e) { return ['briefPath', 'scriptPath', 'evidencePath'].map(k => e[k]).filter(nonempty); }
-function registeredAssets(events, resolve = assetKey) {
-  const known = new Map(), generated = new Set();
-  for (const e of events) {
-    if (e.type === 'draft') for (const file of draftPaths(e)) generated.add(resolve(file));
-    if (e.type === 'capture') for (const asset of e.assets) {
+function ledgerIndex(events, resolve) {
+  // First registration per file identity, with the position of its event and the work metadata known then.
+  const pos = new Map(), entries = new Map(), byWork = new Map(), generated = new Map(), works = new Map();
+  events.forEach((e, i) => {
+    pos.set(e, i);
+    if (e.type === 'draft') for (const file of draftPaths(e)) { const key = resolve(file); if (!generated.has(key)) generated.set(key, i); }
+    if (e.type !== 'capture') return;
+    works.set(e.work.id, mergeWork(works.get(e.work.id), e.work));
+    for (const asset of e.assets) {
       const key = resolve(asset.path);
-      if (!known.has(key)) known.set(key, { workId: e.work.id, work: e.work, roundId: e.roundId, asset, fromDraft: generated.has(key) });
+      if (entries.has(key)) continue;
+      const entry = { index: i, workId: e.work.id, work: works.get(e.work.id), roundId: e.roundId, asset, fromDraft: generated.has(key) };
+      entries.set(key, entry);
+      if (!byWork.has(e.work.id)) byWork.set(e.work.id, []);
+      byWork.get(e.work.id).push(entry);
     }
+  });
+  return { first: events[0], pos, entries, byWork, generated };
+}
+function registeredAssets(events, resolve = assetKey) {
+  // A resolver bound to a full ledger shares one index across every prefix of that ledger.
+  const n = events.length;
+  let index = null;
+  if (resolve.ledger) {
+    resolve.index ||= ledgerIndex(resolve.ledger, resolve);
+    if (n === 0 || (resolve.index.first === events[0] && resolve.index.pos.get(events[n - 1]) === n - 1)) index = resolve.index;
   }
-  return known;
+  index ||= ledgerIndex(events, resolve);
+  const get = key => { const entry = index.entries.get(key); return entry && entry.index < n ? entry : undefined; };
+  return { get, has: key => get(key) !== undefined, forWork: workId => (index.byWork.get(workId) || []).filter(entry => entry.index < n), generated: key => (index.generated.get(key) ?? Infinity) < n };
 }
 function assetsFor(events, workId, resolve = assetKey, roundId) {
   // A legacy cross-work registration must not transfer the first owner's evidence.
-  return [...registeredAssets(events, resolve).values()].filter(a => !a.fromDraft && a.workId === workId && (roundId === undefined || a.roundId === roundId) && assetMatchesWork(a.asset, a.work)).map(a => a.asset);
+  return registeredAssets(events, resolve).forWork(workId).filter(a => !a.fromDraft && (roundId === undefined || a.roundId === roundId) && assetMatchesWork(a.asset, a.work)).map(a => a.asset);
+}
+function supersededObservations(events) {
+  return new Set(events.filter(x => x.type === 'observation' && typeof x.correctsObservationId === 'string').map(x => x.correctsObservationId));
 }
 function observationEvidence(e, prior, root, resolve = assetKey) {
   check(prior.some(r => r.type === 'round_started' && r.roundId === e.roundId), 'Unknown observation round');
@@ -191,18 +244,20 @@ function eligible(e, registered, resolve = assetKey) {
   const known = registered || registeredAssets([e], resolve);
   const assets = e.assets.filter(a => {
     const first = known.get(resolve(a.path));
-    return first?.workId === e.work.id && !first.fromDraft && isDeepStrictEqual(first.asset, a) && assetMatchesWork(a, e.work);
+    return first?.workId === e.work.id && !first.fromDraft && isDeepStrictEqual(first.asset, a) && assetMatchesWork(a, first.work) && assetMatchesWork(a, e.work);
   });
-  return new Set(assets.map(a => resolve(a.path))).size === assets.length && e.readKinds.length > 0 && e.readKinds.every(k => READ_KINDS.has(k) && supportsRead(k, assets)) && assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && assets.some(a => a.kind === 'caption');
+  // Author-profile follower samples are valid metrics but never show the work itself.
+  const bound = assets.filter(a => workBound(a, e.work));
+  return new Set(assets.map(a => resolve(a.path))).size === assets.length && e.readKinds.length > 0 && e.readKinds.every(k => READ_KINDS.has(k) && supportsRead(k, bound)) && bound.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind)) && bound.some(a => a.kind === 'caption');
 }
-function validate(root, e, prior, resolve = fileResolver(root), internals) {
+function validate(root, e, prior, resolve = fileResolver(root), internals = lazyInternals(root)) {
   check(e && typeof e === 'object' && !Array.isArray(e), 'Event object required');
   id(e.id); const recorded = time(e.recordedAt);
   if (prior.length) check(recorded >= time(prior.at(-1).recordedAt), 'Save time cannot precede the preceding committed event');
   const round = prior.find(x => x.type === 'round_started' && x.roundId === e.roundId);
   const work = prior.find(x => x.type === 'capture' && x.work.id === e.workId);
   const requireWork = () => check(work, `Unknown work: ${e.workId}`);
-  const registerFile = file => registrationKey(root, file, internals ||= internalFileKeys(root));
+  const registerFile = file => registrationKey(root, file, internals);
   const knownPaths = () => new Set(assetsFor(prior, e.workId, resolve).map(a => a.path));
   const evidence = (paths) => { check(Array.isArray(paths) && paths.length > 0, 'Evidence paths required'); const known = knownPaths(); for (const p of paths) check(known.has(p), `Evidence not captured for work: ${p}`); };
   if (e.type === 'round_started') {
@@ -221,9 +276,9 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
     check(typeof e.work.id === 'string' && new RegExp(`^${e.work.platform}:[a-zA-Z0-9_-]+$`).test(e.work.id), 'Use platform:native-id');
     workUrl(e.work); authorUrl(e.work); check(nonempty(e.work.title) && nonempty(e.work.author), 'Work title and author required');
     const earlierCaptures = prior.filter(x => x.type === 'capture' && x.work.id === e.work.id);
-    // The profile URL identifies whose follower samples belong to this work; display names may be corrected.
-    const profile = earlierCaptures.find(x => x.work.authorUrl !== undefined);
-    if (profile && e.work.authorUrl !== undefined) check(profile.work.authorUrl === e.work.authorUrl, 'Author profile URL conflicts with the profile already registered for this work');
+    const known = knownWork(earlierCaptures, e.work.id), effective = mergeWork(known, e.work);
+    // The profile identifies whose follower samples belong to this work; display names may be corrected.
+    if (known?.authorUrl !== undefined && e.work.authorUrl !== undefined) check(profileId(e.work.platform, known.authorUrl) === profileId(e.work.platform, e.work.authorUrl), 'Author profile conflicts with the profile already registered for this work');
     check(['published', 'edited', 'unknown'].includes(e.work.dateKind) && typeof e.work.dateLabel === 'string', 'Date kind/label required');
     if (e.work.publishedAt != null) {
       check(e.work.dateKind === 'published', 'Edited/unknown dates cannot become publication dates'); check(time(e.work.publishedAt) <= recorded, 'Publication timestamp cannot follow its capture event');
@@ -235,12 +290,12 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
     check(Array.isArray(e.assets) && e.assets.length > 0, 'Assets required');
     check(new Set(e.assets.map(a => registerFile(a.path))).size === e.assets.length, 'Duplicate asset path');
     const registered = registeredAssets(prior, resolve);
-    const generated = new Set(prior.filter(x => x.type === 'draft').flatMap(draftPaths).map(resolve));
     for (const a of e.assets) {
-      check(!generated.has(resolve(a.path)), 'Captured sources cannot reuse registered draft files');
+      check(!registered.generated(resolve(a.path)), 'Captured sources cannot reuse registered draft files');
       check(ASSET_KINDS.has(a.kind), `Invalid asset kind: ${a.kind}`); url(a.sourceUrl);
-      check(publicationAllowsAsset(a, e.work), 'Publication timestamp cannot follow work capture evidence');
-      check(assetMatchesWork(a, e.work), 'Asset source must identify the declared work (or its saved follower profile)');
+      // A publication date confirmed by an earlier capture still applies when this capture omits it.
+      check(publicationAllowsAsset(a, effective), 'Publication timestamp cannot follow work capture evidence');
+      check(assetMatchesWork(a, effective), 'Asset source must identify the declared work (or its saved follower profile)');
       check(time(a.capturedAt) <= recorded, 'Asset capture time is after event time');
       check(nonempty(a.coverage), 'Asset coverage required');
       if (a.metrics !== undefined) {
@@ -258,13 +313,22 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
       }
     }
     if (e.readKinds.includes('verified_transcript')) check(e.assets.some(a => a.kind === 'transcript_candidate' && a.status === 'verified'), 'Verified transcript evidence required');
-    for (const kind of e.readKinds) check(supportsRead(kind, e.assets), `Read kind ${kind} requires compatible saved evidence`);
+    const bound = e.assets.filter(a => workBound(a, e.work));
+    for (const kind of e.readKinds) check(supportsRead(kind, bound), `Read kind ${kind} requires compatible saved evidence from the work itself`);
   } else if (e.type === 'observation') {
     requireWork(); check(round, 'Unknown round'); check(time(e.sampledAt) <= recorded, 'Sample time is after event time');
-    check(e.metrics && Object.keys(e.metrics).length > 0, 'Metrics required');
+    check(e.metrics && typeof e.metrics === 'object' && !Array.isArray(e.metrics) && Object.keys(e.metrics).length > 0, 'Metrics required');
+    const superseded = supersededObservations(prior);
+    if (e.correctsObservationId !== undefined) {
+      const target = prior.find(x => x.type === 'observation' && x.id === e.correctsObservationId);
+      check(target && target.workId === e.workId && target.roundId === e.roundId && time(target.sampledAt) === time(e.sampledAt), 'A correction must name an earlier observation of the same work, round and sampling time');
+      check(!superseded.has(target.id), 'Observation already corrected; correct its latest correction instead');
+      check(Object.keys(target.metrics).every(k => Object.hasOwn(e.metrics, k)), 'A correction must restate every metric of the corrected observation');
+      superseded.add(target.id);
+    }
     for (const [k, m] of Object.entries(e.metrics)) {
       validateMetric(k, m);
-      check(!prior.some(x => x.type === 'observation' && x.workId === e.workId && time(x.sampledAt) === time(e.sampledAt) && k in x.metrics), `Duplicate ${k} at sample time`);
+      check(!prior.some(x => x.type === 'observation' && x.workId === e.workId && !superseded.has(x.id) && time(x.sampledAt) === time(e.sampledAt) && k in x.metrics), `Duplicate ${k} at sample time; use correctsObservationId to correct a saved reading`);
     }
     observationEvidence(e, prior, undefined, resolve);
   } else if (e.type === 'review') {
@@ -305,8 +369,9 @@ function validate(root, e, prior, resolve = fileResolver(root), internals) {
       check(baseline, 'Revisit needs a saved like observation');
       observationEvidence(baseline, prior.slice(0, prior.indexOf(baseline)), undefined, resolve);
       check(time(e.dueAt) >= time(baseline.sampledAt) + round.config.minIntervalMinutes * 60000, 'Revisit is earlier than the minimum interval');
+      const superseded = supersededObservations(prior);
       if (e.status === 'done') check(prior.some((x, i) => {
-        if (x.type !== 'observation' || x.workId !== e.workId || !x.metrics.likes || x.metrics.likes.precision === 'unavailable' || time(x.sampledAt) < time(e.dueAt)) return false;
+        if (x.type !== 'observation' || superseded.has(x.id) || x.workId !== e.workId || !x.metrics.likes || x.metrics.likes.precision === 'unavailable' || time(x.sampledAt) < time(e.dueAt)) return false;
         try { observationEvidence(x, prior.slice(0, i), root, resolve); return true; } catch { return false; }
       }), 'No due-time revisit observation saved');
     }
@@ -340,13 +405,26 @@ function eventIssue(root, e, prior, resolve, internals) {
   if (e.type === 'draft' && !root) return 'Store path required to validate a historical draft';
   try { validate(root, JSON.parse(JSON.stringify(e)), prior, resolve, internals); return null; } catch (error) { return error.message; }
 }
-function verifyFiles(root, events) {
-  const internals = internalFileKeys(root);
+function integrityIssues(root, events, { hashes = true } = {}) {
+  // Without hashes only presence is checked: a quick resume view, not proof that bytes are unchanged.
+  const internals = lazyInternals(root), issues = [], seen = new Set();
+  const probe = (e, kind, file, expected) => {
+    const key = `${kind}:${typeof file === 'string' ? assetKey(file) : String(file)}`;
+    if (seen.has(key)) return; seen.add(key);
+    let reason = null;
+    try {
+      if (!hashes) { const stat = fs.statSync(path.resolve(root, file)); check(stat.isFile() && stat.size > 0, `Missing/empty ${kind}: ${file}`); }
+      else { registrationKey(root, file, internals); if (digest(root, file) !== expected) reason = `Registered ${kind} changed: ${file}`; }
+    } catch (error) { reason = error.code === 'ENOENT' ? `Missing/empty ${kind}: ${file}` : error.message; }
+    if (reason) issues.push({ eventId: e.id, workId: e.type === 'capture' ? e.work.id : e.workId, kind, path: file, reason });
+  };
   for (const e of events) {
-    if (e.type === 'capture') for (const a of e.assets) { registrationKey(root, a.path, internals); check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`); }
-    if (e.type === 'draft') for (const k of ['briefPath', 'scriptPath', 'evidencePath']) { registrationKey(root, e[k], internals); check(digest(root, e[k]) === e.hashes[k], `Registered draft changed: ${e[k]}`); }
+    if (e.type === 'capture') for (const a of e.assets) probe(e, 'asset', a.path, a.sha256);
+    if (e.type === 'draft') for (const k of ['briefPath', 'scriptPath', 'evidencePath']) probe(e, 'draft', e[k], e.hashes?.[k]);
   }
+  return issues;
 }
+function verifyFiles(root, events) { const [issue] = integrityIssues(root, events); check(!issue, issue?.reason); }
 function referencedPaths(input, events, resolve = assetKey) {
   const byId = new Map(events.map(e => [e.id, e])), seen = new Set(), refs = new Set(), pending = [input];
   const add = paths => { if (Array.isArray(paths)) for (const p of paths) if (typeof p === 'string') refs.add(assetKey(p)); };
@@ -375,7 +453,9 @@ function append(root, input) {
     const e = JSON.parse(JSON.stringify(input)), existing = events.find(x => x.id === e.id);
     // Hash only reused/referenced files on append; do not reread every historical
     // video for each metric sample. status/render perform the full integrity pass.
-    const refs = referencedPaths(e, events, fileResolver(root));
+    if (typeof e.recordedAt === 'string' && Number.isFinite(Date.parse(e.recordedAt))) check(Date.parse(e.recordedAt) <= Date.now() + 5 * 60000, 'recordedAt is later than this machine clock; record the actual save time');
+    const resolve = fileResolver(root); resolve.ledger = events;
+    const refs = referencedPaths(e, events, resolve);
     for (const old of events) {
       if (old.type === 'capture') for (const a of old.assets) {
         if (refs.has(assetKey(a.path))) check(digest(root, a.path) === a.sha256, `Registered asset changed: ${a.path}`);
@@ -387,7 +467,7 @@ function append(root, input) {
     // Replaying an unchanged legacy record makes no new assertion. Unsupported
     // historical observations remain excluded by snapshot's evidence checks.
     if (existing && e.type === 'observation' && isDeepStrictEqual(existing, e)) return { appended: false, id: e.id };
-    const normalized = validate(root, e, existing ? events.slice(0, events.indexOf(existing)) : events);
+    const normalized = validate(root, e, existing ? events.slice(0, events.indexOf(existing)) : events, resolve);
     if (existing) { check(isDeepStrictEqual(existing, normalized), `Conflicting replay: ${e.id}`); return { appended: false, id: e.id }; }
     const n = files(root).length + 1; check(n <= 99999999, 'Ledger sequence exhausted');
     const target = path.join(dir, `${String(n).padStart(8, '0')}-${e.id}.json`);
@@ -444,11 +524,16 @@ function growth(observations, c = DEFAULTS) {
   }
   return result;
 }
-function snapshot(events, now = new Date().toISOString(), root) {
-  time(now); const works = new Map(), rounds = events.filter(e => e.type === 'round_started');
-  const resolve = root ? fileResolver(root) : assetKey;
+function snapshot(events, now = new Date().toISOString(), root, integrity = []) {
+  time(now); const source = events;
+  // Changed or missing registered files stay in the ledger history but no longer support derived results.
+  const broken = new Set(integrity.filter(x => x.kind === 'asset' && typeof x.path === 'string').map(x => assetKey(x.path)));
+  if (broken.size) events = events.map(e => e.type === 'capture' && e.assets.some(a => broken.has(assetKey(a.path))) ? { ...e, assets: e.assets.filter(a => !broken.has(assetKey(a.path))) } : e);
+  const works = new Map(), rounds = events.filter(e => e.type === 'round_started');
+  const resolve = root ? fileResolver(root) : file => assetKey(file);
+  resolve.ledger = events;
   const observationChecks = new Map(), reviewChecks = new Map(), draftChecks = new Map();
-  const internals = root && events.some(e => e.type === 'draft') ? internalFileKeys(root) : undefined;
+  const internals = root ? lazyInternals(root) : undefined;
   for (let i = 0; i < events.length; i++) if (events[i].type === 'observation') {
     try { observationEvidence(events[i], events.slice(0, i), undefined, resolve); observationChecks.set(events[i].id, null); }
     catch (error) { observationChecks.set(events[i].id, error.message); }
@@ -457,41 +542,61 @@ function snapshot(events, now = new Date().toISOString(), root) {
     const checks = events[i].type === 'review' ? reviewChecks : draftChecks;
     checks.set(events[i].id, eventIssue(root, events[i], events.slice(0, i), resolve, internals));
   }
+  const superseded = new Set(events.filter(e => e.type === 'observation' && typeof e.correctsObservationId === 'string' && !observationChecks.get(e.id)).map(e => e.correctsObservationId));
   const taskMap = new Map(); for (const e of events) if (e.type === 'task') taskMap.set(e.taskId, e);
-  for (const e of events) if (e.type === 'capture') works.set(e.work.id, e.work);
+  const groups = new Map(), group = workId => { if (!groups.has(workId)) groups.set(workId, { captures: [], observations: [], reviews: [], drafts: [], decision: null }); return groups.get(workId); };
+  for (const e of source) if (e.type === 'capture') group(e.work.id).captures.push(e);
+  for (const e of events) {
+    if (e.type === 'capture') works.set(e.work.id, mergeWork(works.get(e.work.id), e.work));
+    else if (groups.has(e.workId)) {
+      const g = groups.get(e.workId);
+      if (e.type === 'observation') g.observations.push(e); else if (e.type === 'review') g.reviews.push(e); else if (e.type === 'draft') g.drafts.push(e); else if (e.type === 'decision') g.decision = e;
+    }
+  }
   const items = [...works].map(([workId, work]) => {
-    const captures = events.filter(e => e.type === 'capture' && e.work.id === workId);
-    const allObservations = events.filter(e => e.type === 'observation' && e.workId === workId);
+    const { captures, observations: allObservations, reviews, drafts: draftHistory, decision } = groups.get(workId);
     const evidenceGaps = allObservations.filter(e => observationChecks.get(e.id)).map(e => ({ observationId: e.id, sampledAt: e.sampledAt, reason: observationChecks.get(e.id) }));
-    const observations = allObservations.filter(e => !observationChecks.get(e.id)).sort((a, b) => time(a.sampledAt) - time(b.sampledAt));
+    const correctedObservations = allObservations.filter(e => superseded.has(e.id)).map(e => e.id);
+    const observations = allObservations.filter(e => !observationChecks.get(e.id) && !superseded.has(e.id)).sort((a, b) => time(a.sampledAt) - time(b.sampledAt));
     const latest = {}; for (const o of observations) for (const [k, v] of Object.entries(o.metrics)) if (v.precision !== 'unavailable') latest[k] = { ...v, sampledAt: o.sampledAt, observationId: o.id };
     const metricConfig = metric => {
       const sample = observations.find(o => o.id === latest[metric]?.observationId);
       return rounds.find(r => r.roundId === sample?.roundId)?.config || DEFAULTS;
     };
-    const reviews = events.filter(e => e.type === 'review' && e.workId === workId);
     const reviewGaps = reviews.filter(e => reviewChecks.get(e.id)).map(e => ({ reviewId: e.id, recordedAt: e.recordedAt, reason: reviewChecks.get(e.id) }));
     const review = reviews.findLast(e => !reviewChecks.get(e.id)) || null;
-    const draftHistory = events.filter(e => e.type === 'draft' && e.workId === workId);
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
-    return { work, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, growth: growth(observations, metricConfig('likes')),
+    return { work, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
-      review, reviews, reviewGaps, decision: events.findLast(e => e.type === 'decision' && e.workId === workId) || null,
-      drafts: draftHistory.filter(e => !draftChecks.get(e.id)), draftHistory, draftGaps };
+      review, reviews, reviewGaps, decision,
+      drafts: draftHistory.filter(e => !draftChecks.get(e.id)), draftHistory, draftGaps, integrityIssues: integrity.filter(x => x.workId === workId) };
   });
-  return { generatedAt: now, eventCount: events.length, items,
+  // Pending work on a rejected topic stays in history but is no longer due.
+  const rejected = new Set(items.filter(i => i.decision?.decision === 'rejected').map(i => i.work.id));
+  return { generatedAt: now, eventCount: source.length, integrityIssues: integrity, items,
     rounds: rounds.map(r => ({ ...r, ...roundStats(events, r, resolve), attempts: events.filter(e => e.type === 'attempt' && e.roundId === r.roundId) })),
-    tasks: [...taskMap.values()].map(t => ({ ...t, due: t.status === 'pending' && (t.dueAt == null || time(t.dueAt) <= time(now)) })) };
+    tasks: [...taskMap.values()].map(t => { const suppressed = t.status === 'pending' && rejected.has(t.workId); return { ...t, suppressed, due: t.status === 'pending' && !suppressed && (t.dueAt == null || time(t.dueAt) <= time(now)) }; }) };
+}
+function summary(state) {
+  // Compact view for an agent resuming work; status and snapshot.json keep the full history.
+  const priority = state.items.filter(i => i.review?.recommendation === 'shortlist' && !['watch', 'rejected'].includes(i.decision?.decision));
+  return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
+    rounds: state.rounds.map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
+    pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed })),
+    shortlist: priority.map(i => ({ workId: i.work.id, title: i.work.title, angle: i.review.angle, reviewId: i.review.id })),
+    decisions: state.items.filter(i => i.decision).map(i => ({ workId: i.work.id, decision: i.decision.decision, recordedAt: i.decision.recordedAt })),
+    gaps: state.items.filter(i => i.evidenceGaps.length || i.reviewGaps.length || i.draftGaps.length || i.integrityIssues.length).map(i => ({ workId: i.work.id, evidenceGaps: i.evidenceGaps.length, reviewGaps: i.reviewGaps.length, draftGaps: i.draftGaps.length, integrityIssues: i.integrityIssues.length })) };
 }
 function main(argv) {
   const command = argv[0], opts = {};
   for (let i = 1; i < argv.length; i += 2) { check(argv[i].startsWith('--') && argv[i + 1], 'Use --name value options'); check(['--store', '--input', '--out', '--now'].includes(argv[i]), `Unknown option: ${argv[i]}`); opts[argv[i].slice(2)] = argv[i + 1]; }
-  check(opts.store, 'Usage: radar.cjs append|status|render --store <directory> [--input event.json] [--out report-directory] [--now ISO-time]');
-  check(['append', 'status', 'render'].includes(command), 'Unknown command');
+  check(opts.store, 'Usage: radar.cjs append|summary|status|render --store <directory> [--input event.json] [--out report-directory] [--now ISO-time]');
+  check(['append', 'summary', 'status', 'render'].includes(command), 'Unknown command');
   if (command === 'append') { check(opts.input, '--input required'); return append(opts.store, JSON.parse(fs.readFileSync(opts.input, 'utf8').replace(/^\uFEFF/, ''))); }
-  const events = load(opts.store); verifyFiles(opts.store, events); const state = snapshot(events, opts.now, opts.store);
+  const events = load(opts.store), issues = integrityIssues(opts.store, events, { hashes: command !== 'summary' }), state = snapshot(events, opts.now, opts.store, issues);
+  if (issues.length) process.stderr.write(`Warning: ${issues.length} registered file(s) are missing or changed and are excluded from derived results; see integrityIssues.\n`);
   if (command === 'render') { check(opts.out, '--out required'); return require('./render-radar.cjs').writeReport(state, opts.store, opts.out); }
-  return state;
+  return command === 'summary' ? summary(state) : state;
 }
 if (require.main === module) { try { console.log(JSON.stringify(main(process.argv.slice(2)), null, 2)); } catch (e) { console.error(e.message); process.exitCode = 1; } }
-module.exports = { DEFAULTS, append, load, snapshot, growth, roundStats, eligible, verifyFiles, relativeFile, main };
+module.exports = { DEFAULTS, append, load, snapshot, summary, growth, roundStats, eligible, verifyFiles, integrityIssues, relativeFile, main };

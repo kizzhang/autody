@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { append, load, snapshot, growth, DEFAULTS, verifyFiles } = require('./radar.cjs');
+const { append, load, snapshot, summary, growth, DEFAULTS, verifyFiles } = require('./radar.cjs');
 const { render, writeReport, csvCell } = require('./render-radar.cjs');
 
 function fixture(t) {
@@ -989,7 +989,7 @@ test('a work keeps its registered author profile while display names may be corr
   append(root, capture('with-profile', { work: { ...capture().work, authorUrl: profile } }));
   append(root, capture('renamed', { work: { ...capture().work, author: 'Renamed author', authorUrl: profile } }));
   const before = load(root);
-  assert.throws(() => append(root, capture('other-profile', { work: { ...capture().work, authorUrl: 'https://www.xiaohongshu.com/user/profile/someone-else' } })), /profile URL conflicts/);
+  assert.throws(() => append(root, capture('other-profile', { work: { ...capture().work, authorUrl: 'https://www.xiaohongshu.com/user/profile/someone-else' } })), /Author profile conflicts/);
   assert.deepEqual(load(root), before);
   assert.equal(snapshot(load(root)).items[0].work.author, 'Renamed author');
 });
@@ -1024,4 +1024,114 @@ test('a lead later read directly keeps its discovery route for round coverage', 
   append(root, capture('direct-read', { roundId: 'r2', route: 'direct' }));
   const r = snapshot(load(root)).rounds[1];
   assert.equal(r.unique, 1); assert.equal(r.recommended.xiaohongshu, 1); assert.equal(r.coverageComplete, true);
+});
+
+test('author profile screenshots cannot stand in for the work page or its read evidence', t => {
+  const root = fixture(t), authorUrl = 'https://www.xiaohongshu.com/user/profile/synthetic-author', work = { ...capture().work, authorUrl };
+  fs.writeFileSync(path.join(root, 'materials/profile.png'), 'Synthetic author profile screenshot');
+  fs.writeFileSync(path.join(root, 'materials/caption-only.md'), 'Synthetic caption');
+  const profileShot = { kind: 'page_screenshot', path: 'materials/profile.png', sourceUrl: authorUrl, capturedAt: '2026-10-21T09:00:00+08:00', coverage: 'Synthetic author profile', metrics: { followers: { value: 4, raw: '4', precision: 'exact' } } };
+  append(root, round('r2'));
+  append(root, capture('profile-as-page', { roundId: 'r2', work, assets: [{ ...capture().assets[0], path: 'materials/caption-only.md' }, profileShot] }));
+  assert.equal(snapshot(load(root)).rounds[1].unique, 0);
+  assert.throws(() => append(root, { ...review('profile-review'), captureIds: ['profile-as-page'] }), /substantive.*capture/);
+  assert.throws(() => append(root, capture('profile-image-text', { roundId: 'r2', work, readKinds: ['image_text'], assets: [profileShot] })), /from the work itself/);
+});
+
+test('a confirmed publication date and author profile persist when later captures omit them', t => {
+  const root = fixture(t), authorUrl = 'https://www.xiaohongshu.com/user/profile/synthetic-author';
+  const published = { ...capture().work, dateKind: 'published', dateLabel: 'Synthetic publication', publishedAt: '2026-10-21T08:30:00+08:00', authorUrl };
+  append(root, capture('confirmed', { work: published }));
+  fs.writeFileSync(path.join(root, 'materials/early.png'), 'Synthetic screenshot');
+  const early = { ...capture().assets[1], path: 'materials/early.png', capturedAt: '2026-10-21T08:00:00+08:00', metrics: { likes: { value: 1, raw: '1', precision: 'exact' } } };
+  const before = load(root);
+  assert.throws(() => append(root, capture('omitted-date', { readKinds: [], assets: [early] })), /Publication timestamp cannot follow/);
+  assert.deepEqual(load(root), before);
+  append(root, capture('omitted-later', { readKinds: [], assets: [{ ...early, capturedAt: '2026-10-21T09:30:00+08:00' }] }));
+  const work = snapshot(load(root)).items[0].work;
+  assert.equal(work.publishedAt, published.publishedAt); assert.equal(work.dateKind, 'published'); assert.equal(work.authorUrl, authorUrl);
+});
+
+test('a mistaken metric reading is corrected by a later observation that names it', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  saveObservation(root, obs('typo', '09:00:00', 17));
+  assert.throws(() => saveObservation(root, obs('unlinked', '09:00:00', 71)), /Duplicate likes.*correctsObservationId/);
+  saveObservation(root, { ...obs('fix', '09:00:00', 71), correctsObservationId: 'typo' });
+  let item = snapshot(load(root)).items[0];
+  assert.equal(item.latest.likes.value, 71); assert.deepEqual(item.correctedObservations, ['typo']); assert.equal(item.growth.points.length, 1);
+  assert.throws(() => saveObservation(root, { ...obs('again', '09:00:00', 70), correctsObservationId: 'typo' }), /already corrected/);
+  assert.throws(() => saveObservation(root, { ...obs('wrong-time', '09:01:00', 70), correctsObservationId: 'fix' }), /same work, round and sampling time/);
+  assert.throws(() => saveObservation(root, { ...event('observation', 'partial', { roundId: 'r1', workId, sampledAt: '2026-10-21T09:00:00+08:00', metrics: { favorites: { value: 3, raw: '3', precision: 'exact' } } }), correctsObservationId: 'fix' }), /restate every metric/);
+  saveObservation(root, { ...obs('fix2', '09:00:00', 72), correctsObservationId: 'fix' });
+  item = snapshot(load(root)).items[0];
+  assert.equal(item.latest.likes.value, 72); assert.deepEqual([...item.correctedObservations].sort(), ['fix', 'typo']);
+});
+
+test('CSV export carries the user decision next to the review recommendation', t => {
+  const root = fixture(t); append(root, review());
+  append(root, event('decision', 'reject', { workId: 'xiaohongshu:example', decision: 'rejected', userRequest: 'Synthetic user: not interested', reason: 'Off topic' }));
+  const report = writeReport(snapshot(load(root), undefined, root), root, path.join(root, 'reports'));
+  const [header, row] = fs.readFileSync(report.csv, 'utf8').replace(/^\uFEFF/, '').split('\r\n').map(line => line.slice(1, -1).split('","'));
+  assert.equal(row[header.indexOf('recommendation')], 'shortlist'); assert.equal(row[header.indexOf('decision')], 'rejected');
+});
+
+test('changed or missing registered files are reported and excluded without disabling the CLI', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  saveObservation(root, obs('o1', '09:00:00', 17)); append(root, review());
+  append(root, event('decision', 'selected', { workId, decision: 'selected', userRequest: 'Synthetic user: select this', reason: 'Useful' }));
+  for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  append(root, event('draft', 'draft1', { workId, selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' }));
+  fs.writeFileSync(path.join(root, 'script.md'), 'Synthetic draft edited in place');
+  fs.rmSync(path.join(root, 'materials/page.png'));
+  const run = command => spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), command, '--store', root, ...(command === 'render' ? ['--out', path.join(root, 'reports')] : [])], { encoding: 'utf8' });
+  const status = run('status'); assert.equal(status.status, 0, status.stderr); assert.match(status.stderr, /2 registered file/);
+  const state = JSON.parse(status.stdout), item = state.items[0];
+  assert.deepEqual(state.integrityIssues.map(x => x.path).sort(), ['materials/page.png', 'script.md']);
+  assert.equal(item.integrityIssues.length, 2); assert.equal(item.drafts.length, 0); assert.equal(item.draftGaps.length, 1);
+  assert.ok(!item.assets.some(a => a.path === 'materials/page.png')); assert.equal(item.captures[0].assets.length, 2);
+  assert.equal(state.rounds[0].unique, 0); assert.equal(item.review, null); assert.equal(item.latest.likes.value, 17);
+  const brief = run('summary'), quick = JSON.parse(brief.stdout); assert.equal(brief.status, 0, brief.stderr); assert.equal(quick.integrityChecked, 'presence'); assert.deepEqual(quick.integrityIssues.map(x => x.path), ['materials/page.png']);
+  const rendered = run('render'); assert.equal(rendered.status, 0, rendered.stderr);
+  assert.match(fs.readFileSync(path.join(root, 'reports/report.html'), 'utf8'), /2 个已登记文件被改动或缺失/);
+  assert.throws(() => verifyFiles(root, load(root)), /Missing\/empty|Registered draft changed/);
+  saveObservation(root, obs('o2', '09:30:00', 30));
+  assert.equal(snapshot(load(root)).items[0].latest.likes.value, 30);
+});
+
+test('save times later than the machine clock are rejected so real saves cannot be locked out', t => {
+  const root = fixture(t), before = load(root);
+  assert.throws(() => append(root, { ...round('future'), recordedAt: '2099-01-01T00:00:00Z' }), /later than this machine clock/);
+  assert.deepEqual(load(root), before);
+  append(root, { ...round('now'), recordedAt: new Date().toISOString() });
+});
+
+test('author profiles compare by platform user ID so changing query tokens are accepted', t => {
+  const root = fixture(t), base = 'https://www.xiaohongshu.com/user/profile/synthetic-author';
+  append(root, capture('token-a', { work: { ...capture().work, authorUrl: `${base}?xsec_token=a` } }));
+  append(root, capture('token-b', { work: { ...capture().work, authorUrl: `${base}?xsec_token=b` } }));
+  const metrics = { followers: { value: 4, raw: '4', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/profile-token.json'), JSON.stringify(metrics));
+  append(root, capture('profile-token', { readKinds: [], assets: [{ kind: 'metric_snapshot', path: 'materials/profile-token.json', sourceUrl: `${base}?xsec_token=c`, capturedAt: '2026-10-21T09:00:00+08:00', coverage: 'Synthetic profile reading', metrics }] }));
+  append(root, event('observation', 'profile-count', { roundId: 'r1', workId: 'xiaohongshu:example', sampledAt: '2026-10-21T09:00:00+08:00', metrics, evidencePaths: ['materials/profile-token.json'] }));
+  assert.equal(snapshot(load(root)).items[0].latest.followers.value, 4);
+  assert.throws(() => append(root, capture('other-user', { work: { ...capture().work, authorUrl: 'https://www.xiaohongshu.com/user/profile/someone-else?xsec_token=a' } })), /Author profile conflicts/);
+});
+
+test('round coverage minimums must be reachable within the round targets', t => {
+  const root = fixture(t), before = load(root), targets = { douyin: 2, xiaohongshu: 3 };
+  for (const config of [{ targets, minNew: 6 }, { targets, practicalSlots: 6 }, { targets, minRecommended: 3 }]) {
+    assert.throws(() => append(root, round('unreachable', config)), /cannot exceed/);
+    assert.deepEqual(load(root), before);
+  }
+  append(root, round('reachable', { targets: { douyin: 0, xiaohongshu: 3 }, minNew: 3, practicalSlots: 3, minRecommended: 3 }));
+});
+
+test('pending tasks on rejected works stay in history but are no longer due', t => {
+  const root = fixture(t), at = '2026-10-21T10:00:00+08:00'; saveObservation(root, obs('baseline', '09:00:00', 17));
+  append(root, event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' }));
+  assert.equal(snapshot(load(root), at).tasks[0].due, true);
+  append(root, event('decision', 'reject', { workId: 'xiaohongshu:example', decision: 'rejected', userRequest: 'Synthetic user: drop it', reason: 'Off topic' }));
+  const state = snapshot(load(root), at), [task] = state.tasks;
+  assert.equal(task.status, 'pending'); assert.equal(task.suppressed, true); assert.equal(task.due, false);
+  assert.deepEqual(summary(state).pendingTasks.map(x => [x.taskId, x.due, x.suppressed]), [['revisit', false, true]]);
 });
