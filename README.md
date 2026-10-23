@@ -2,22 +2,23 @@
   <img src="assets/logo.png" alt="Autody logo" width="220">
 </p>
 
-# Autody: 抖音分析 + 小红书点点提取
+# Autody: 创作者复盘与选题雷达
 
-Autody 是一组给 Codex 使用的创作者分析 skills，通过 Codex Chrome Extension 操作你已经登录的 Chrome 会话。
+Autody 是一组给 Codex 使用的创作者分析与选题研究 skills，通过 Codex Chrome Extension 操作你已经登录的 Chrome 会话。
 
 | 平台 | 入口 | 当前支持 |
 | --- | --- | --- |
 | 抖音 | `/kaishi`、`/gengxin`、`/buchong`、`/tijian`、`/baogao`、`/html` | 创作者后台底账、逐字稿、深度指标、评论和 Lumina HTML 报告 |
 | 小红书（预发布） | `$xiaohongshu-analysis` | 将笔记链接交给首页点点，提取视频口播候选稿，核对原页正文与可见互动数，导出 JSON、CSV 和文本 |
+| 公开选题研究（预发布） | `$social-radar` | 浏览抖音、小红书，保存素材与评论、追踪短时增长、核对 X 来源，选定题目后生成口播初稿 |
 
 小红书有独立的 Skill 和数据口径。现有六个短命令与指标、评分、报告脚本仍用于抖音。
 
 ![Autody：抖音深度复盘与小红书点点提取，两条独立处理流程](assets/hero.png)
 
-## 只分析自己的账号
+## 账号复盘与公开内容研究
 
-Autody 只面向你本人拥有或被授权管理的抖音、小红书账号与内容数据。请勿用本项目分析、抓取或规避访问任何他人的非授权数据。若使用者将本项目用于分析他人视频、账号或未授权内容，由使用者自行承担全部法律、合规与平台责任。
+现有账号分析 Skill 面向你本人拥有或被授权管理的抖音、小红书账号。新增 `social-radar` 用于正常页面可见的公开内容研究，独立保存原文、评论、来源和互动观测；公开赞数不能推导后台播放、留存或曝光。研究材料留在本地，遇到验证暂停对应平台，不绕过访问限制。
 
 ## 30 秒上手
 
@@ -31,22 +32,43 @@ cd autody
 node bin/autody.js install
 ```
 
-安装器会复制全部 8 个 Skill。已有旧版时，先备份自己修改过的 Skill，再在仓库目录运行 `git pull --ff-only` 和 `node bin/autody.js install --force`；`--force` 会替换已有同名 Skill 目录。
+安装器会复制全部 9 个 Skill。已有旧版时，先备份自己修改过的 Skill，再在仓库目录运行 `git pull --ff-only` 和 `node bin/autody.js install --force`；`--force` 会替换已有同名 Skill 目录。
 
 也可以手动复制 skill：
 
 ```bash
 mkdir -p ~/.codex/skills
-cp -R skills/{douyin-analysis,kaishi,gengxin,buchong,tijian,baogao,html,xiaohongshu-analysis} ~/.codex/skills/
+cp -R skills/{douyin-analysis,kaishi,gengxin,buchong,tijian,baogao,html,xiaohongshu-analysis,social-radar} ~/.codex/skills/
 ```
 
-需要小红书扩展时，优先使用包含 `skills/xiaohongshu-analysis` 的 GitHub 版本。npm 的 `latest` 不一定包含预发布扩展；仅在确认所需版本已发布后使用：
+需要小红书扩展或选题雷达时，优先使用包含对应 Skill 的 GitHub 版本。npm 的 `latest` 不一定包含预发布扩展；仅在确认所需版本已发布后使用：
 
 ```bash
 npx autody@latest install --force
 ```
 
 ![Autody 快速上手：统一安装，按平台选择 Skill 入口](assets/quickstart.svg)
+
+## 选题雷达：发现、保存、复看，再写初稿
+
+```text
+使用 $social-radar，研究适合我的 AI、科学、数学和观点选题。
+用 Chrome 推荐流与相关推荐发现内容，默认每轮抖音25条、小红书25条；
+关注低粉、低总赞但短时增长的候选，以及从 X 原帖改编来的实用方法。
+先保存原图、文案、链接、视频文本和评论，再并行读已保存材料；
+复看重点候选，展示选题卡、观察池、素材和运行进度。
+我选择题目后，生成口播初稿、创作简报和证据/镜头表。
+```
+
+新模块保留每次准确采样时间、原始显示、素材覆盖与缺口。标题卡片或平台摘要不计作完整阅读；一个快照不能说明短时上涨。浏览器由一个执行器控制，允许的阅读代理只读已保存材料。遇到验证保存断点，恢复后继续同一轮；重复作品不补完成数。
+
+本地工具提供只追加的事件记录、到期复看队列、真实增量计算，以及可筛选 HTML、JSON 和 Excel 可读 CSV。报告按钮生成发给 agent 的操作指令；选题后的初稿由 agent 根据原始材料撰写，脚本检查用户选择和来源关联。选题价值、传播证据、评论争论与自己的创作观点分别展示。初稿登记后会记录文件哈希：直接修改原文件，看板会保留链接并标注"已修改"；要保留修改，请另存为新文件，让 agent 登记新修订；登记后顶部提醒消失，旧版本仍在素材区标注。
+
+公开研究仍须遵守平台条款与著作权。原视频、原图和评论只保存在本地供研究引用，不要再分发；评论者昵称等个人信息只保留必要部分，并按你自己的保存期限清理。
+
+自动浏览可能触发平台风控，首次使用建议调低每轮数量。资料库建议每月新建一个并列目录：换库后新发现计数、增长基线和拒绝记录都要重新建立，旧库只读保留。安装不会创建定时任务。需要早晚自动运行时，在支持调度的持久聊天里明确设置时间、时区和资料库路径；建议09:00／21:00，未变化时安静更新。本地脚本不自带浏览器、模型服务或后台调度器。
+
+第一版已测试本地记录、增速边界、续跑、安装和报告导出；新模块尚未完成真实平台50条端到端验收，媒体可获取性和点点／豆包文本完整性需现场核对。详见 [Skill](skills/social-radar/SKILL.md)、[数据与命令](skills/social-radar/references/data-contract.md) 和 [精读与初稿](skills/social-radar/references/reading-and-drafting.md)。
 
 ## 小红书：链接交给首页点点
 
@@ -74,7 +96,7 @@ evidence/
 
 详见 [小红书 Skill](skills/xiaohongshu-analysis/SKILL.md) 与 [点点提示词及数据口径](skills/xiaohongshu-analysis/references/diandian-workflow.md)。
 
-## 两条处理路径
+## 账号分析的两条处理路径
 
 ![Autody 流程：抖音经豆包和分析生成报告，小红书经点点和原页核对导出文本](assets/pipeline.svg)
 
@@ -142,6 +164,7 @@ report_lumina.html
 
 ## Agent 入口
 
+- 公开内容选题雷达：[skills/social-radar/SKILL.md](skills/social-radar/SKILL.md)
 - 小红书点点提取：[skills/xiaohongshu-analysis/SKILL.md](skills/xiaohongshu-analysis/SKILL.md)
 - `/kaishi` 开始建档：[skills/kaishi/SKILL.md](skills/kaishi/SKILL.md)
 - `/gengxin` 更新：[skills/gengxin/SKILL.md](skills/gengxin/SKILL.md)

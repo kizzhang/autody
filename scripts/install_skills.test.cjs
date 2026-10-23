@@ -7,7 +7,7 @@ const test = require("node:test");
 
 const packageRoot = path.resolve(__dirname, "..");
 const legacySkills = ["douyin-analysis", "kaishi", "gengxin", "buchong", "tijian", "baogao", "html"];
-const allSkills = [...legacySkills, "xiaohongshu-analysis"];
+const allSkills = [...legacySkills, "xiaohongshu-analysis", "social-radar"];
 
 function temporaryDirectory(t) {
   const parent = fs.realpathSync(os.tmpdir());
@@ -42,7 +42,7 @@ function assertTreeMatches(source, destination) {
   }
 }
 
-test("install includes the complete Xiaohongshu skill alongside all Douyin skills", (t) => {
+test("install includes complete Xiaohongshu and radar skills alongside all Douyin skills", (t) => {
   const home = path.join(temporaryDirectory(t), "codex-home");
   const result = cli(["install", "--codex-home", home]);
   assert.equal(result.status, 0, result.stderr);
@@ -53,6 +53,9 @@ test("install includes the complete Xiaohongshu skill alongside all Douyin skill
   const location = cli(["skill-path", "xiaohongshu-analysis"]);
   assert.equal(location.status, 0, location.stderr);
   assert.equal(location.stdout.trim(), path.join(packageRoot, "skills", "xiaohongshu-analysis"));
+  const radarLocation = cli(["skill-path", "social-radar"]);
+  assert.equal(radarLocation.status, 0, radarLocation.stderr);
+  assert.equal(radarLocation.stdout.trim(), path.join(packageRoot, "skills", "social-radar"));
   const defaultLocation = cli(["skill-path"]);
   assert.equal(defaultLocation.status, 0, defaultLocation.stderr);
   assert.equal(defaultLocation.stdout.trim(), path.join(packageRoot, "skills", "douyin-analysis"));
@@ -88,14 +91,14 @@ test("upgrading a seven-skill installation requires force and preserves unrelate
   assert.equal(fs.readFileSync(path.join(unrelated, "SKILL.md"), "utf8"), "keep this");
 });
 
-test("doctor and install reject a package missing the Diandian workflow reference", (t) => {
+for (const reference of ["skills/xiaohongshu-analysis/references/diandian-workflow.md", "skills/social-radar/scripts/radar.cjs", "skills/social-radar/scripts/render-radar.cjs"]) {
+test(`doctor and install reject a package missing ${reference}`, (t) => {
   const root = temporaryDirectory(t);
   const fixture = path.join(root, "incomplete-package");
   fs.mkdirSync(fixture);
   for (const entry of ["bin", "skills", "package.json", "AGENTS.md", "LICENSE", "NOTICE.md", "README.md", "RELEASE_NOTES.md"]) {
     fs.cpSync(path.join(packageRoot, entry), path.join(fixture, entry), { recursive: true });
   }
-  const reference = "skills/xiaohongshu-analysis/references/diandian-workflow.md";
   fs.unlinkSync(path.join(fixture, reference));
   const home = path.join(root, "must-not-be-created");
   for (const args of [["doctor", "--package-only"], ["install", "--codex-home", home]]) {
@@ -105,3 +108,4 @@ test("doctor and install reject a package missing the Diandian workflow referenc
   }
   assert.equal(fs.existsSync(home), false);
 });
+}

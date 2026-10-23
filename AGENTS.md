@@ -1,6 +1,8 @@
 # Agent Guide
 
-Use this repository only for the user's own Douyin/Xiaohongshu creator account or explicitly authorized creator data.
+Creator analytics and the existing Douyin/Xiaohongshu analysis skills remain limited to the user's own account or explicitly authorized creator data. Public topic research uses the separate `skills/social-radar/SKILL.md` workflow: visible public works, comments and X source provenance only, without private analytics or account interactions.
+
+For public discovery, watchlists, timed engagement changes, evidence packs or selected-topic spoken drafts, use `social-radar`. Save sources before reading in parallel when delegation is available and permitted; one collector controls Chrome and writes the ledger. Reuse its persistent store and logical round after interruption. The local helper validates records and renders HTML/CSV; collection and drafting run through the agent. Draft only after the user selects a topic, keep status `draft`, and do not publish. Installing the skill does not create a recurring schedule.
 
 For Xiaohongshu note links, use `skills/xiaohongshu-analysis/SKILL.md`. Open the homepage's 点点 AI in the existing logged-in Chrome session, submit one note link at a time, and keep source-page metadata separate from AI-extracted transcript candidates. The following command workflows and metric scripts are Douyin-specific; do not run them against Xiaohongshu data.
 

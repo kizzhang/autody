@@ -1,5 +1,13 @@
 # unreleased
 
+Public topic radar (GitHub preview; no npm release in this change):
+
+- Adds `social-radar` for public Douyin/Xiaohongshu discovery, preserved originals/comments, X provenance, timed revisits and user-selected spoken-script drafts.
+- Includes a local append-only event ledger, file hashes, resumable rounds, due/backfill tasks, growth checks and a searchable HTML/JSON/Excel-readable CSV report. Reports prepare agent instructions; they do not mutate the ledger in-browser.
+- Extends the installer to nine skills and keeps own-account analytics separate from public research. Scheduling remains host-managed and requires a user request.
+- Local synthetic tests cover recording/replay, interrupted rounds, exact/rounded counts, timing boundaries, source integrity, selection-gated drafts and rendering. Live multi-platform collection, media capture and full transcript accuracy remain unverified for this new module.
+- Review hardening binds each observation to fresh metric-bearing evidence and immutable capture metadata, excludes unsupported legacy readings from derived growth, rejects impossible calendar dates, keeps public titles out of copied commands, honors watch/reject decisions, and requires new drafts to use the latest review revision. Captures of one work keep a consistent author profile and publication chronology, earlier-round backfills count as previous reads, and a lead keeps its discovery route for round coverage. Missing or edited registered files are reported and excluded instead of disabling status/render, a compact `summary` command supports resuming, mistaken metric readings can be corrected by a linked observation, future save times are rejected, profile screenshots cannot stand in for work pages, and captured page content is treated as data rather than instructions.
+
 Xiaohongshu prerelease `0.0.4-xhs.1`:
 
 - Adds `xiaohongshu-analysis` for note links submitted to the homepage Diandian AI in the existing Chrome session.
