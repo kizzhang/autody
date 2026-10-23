@@ -1939,3 +1939,42 @@ test('append refuses to start a ledger at a mistyped path except with a round st
   assert.ok(!fs.existsSync(fresh));
   append(fresh, round()); assert.equal(load(fresh).length, 1);
 });
+
+test('a published label keeps the capture time of the page read that recorded it as published', t => {
+  const root = fixture(t), work = { ...capture().work, dateKind: 'published', dateLabel: 'Yesterday', publishedAt: '2026-10-20T09:00:00+08:00' };
+  const first = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/pub-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
+  append(root, capture('published-read', { work, assets: first }));
+  const later = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/later-unknown-'); freshCopy(root, a.path, file); return { ...a, path: file, capturedAt: '2026-10-22T09:00:00+08:00' }; });
+  append(root, { ...capture('unknown-read', { work: { ...work, dateKind: 'unknown', publishedAt: null }, assets: later }), recordedAt: '2026-10-22T09:05:00+08:00' });
+  const item = snapshot(load(root), undefined, root).items[0];
+  assert.equal(item.work.dateKind, 'published'); assert.equal(item.work.dateLabel, 'Yesterday'); assert.equal(item.dateSeenAt, '2026-10-21T09:00:00+08:00');
+});
+
+test('an existing revisit can be cancelled after the capture that registered its baseline is gone', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task);
+  const journal = fs.readdirSync(path.join(root, 'events')).find(n => n.endsWith('-capture-baseline.json'));
+  fs.rmSync(path.join(root, 'events', journal));
+  append(root, { ...task, id: 'task1-cancel', status: 'cancelled', reason: 'Baseline capture lost' });
+  assert.equal(snapshot(load(root), '2026-10-21T10:00:00+08:00').tasks[0].status, 'cancelled');
+});
+
+test('a blocked newest review does not raise the newer-recommendation hint in the watchlist', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  append(root, event('decision', 'watch', { workId, decision: 'watch', userRequest: 'Synthetic user: keep watching', reason: 'Wait' }));
+  append(root, { ...review('later-shortlist'), recordedAt: '2026-10-21T13:00:00+08:00' });
+  fs.writeFileSync(path.join(root, 'materials/archive-comments.md'), 'Synthetic comments behind the archive verdict');
+  append(root, { ...capture('archive-evidence', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'comments', path: 'materials/archive-comments.md', coverage: 'Synthetic comments' }] }), recordedAt: '2026-10-21T13:00:00+08:00' });
+  append(root, { ...review('archive'), recommendation: 'archive', evidencePaths: ['materials/archive-comments.md'], claims: [], recordedAt: '2026-10-21T13:00:00+08:00' });
+  fs.rmSync(path.join(root, 'materials/archive-comments.md'));
+  const html = render(checkedSnapshot(root), root, path.join(root, 'reports'));
+  assert.ok(!html.includes('有新推荐审读'));
+});
+
+test('a new store cannot be created inside an existing store, and null input gets a clear error', t => {
+  const root = fixture(t);
+  assert.throws(() => append(path.join(root, 'stores', '2026-11'), round('nested')), /inside the existing store/);
+  assert.ok(!fs.existsSync(path.join(root, 'stores')));
+  assert.throws(() => append(root, null), /Event object required/);
+});

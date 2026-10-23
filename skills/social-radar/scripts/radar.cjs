@@ -455,6 +455,9 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
     if (previous) check(previous.workId === e.workId && previous.roundId === e.roundId && previous.kind === e.kind, 'Task identity is immutable');
     if (e.kind === 'revisit') {
       if (previous) check(previous.baselineObservationId === e.baselineObservationId && time(previous.dueAt) === time(e.dueAt), 'Revisit baseline and deadline are immutable; use a new task to reschedule');
+    }
+    // Cancelling an existing task asserts nothing about its baseline, so it works even when that evidence is gone.
+    if (e.kind === 'revisit' && !(previous && e.status === 'cancelled')) {
       const baseline = prior.find(x => x.id === e.baselineObservationId && x.type === 'observation' && x.workId === e.workId && x.metrics.likes && x.metrics.likes.precision !== 'unavailable');
       check(baseline, 'Revisit needs a saved like observation');
       if (!previous) check(!supersededObservations(prior).has(baseline.id), 'Baseline observation was corrected; use its latest correction as the baseline');
@@ -557,7 +560,17 @@ function sameReplay(existing, input) {
 function append(root, input) {
   root = path.resolve(root);
   // Only a round start may create a store, so a mistyped --store path cannot silently start a new ledger.
-  check(fs.existsSync(path.join(root, 'events')) || input?.type === 'round_started', `No ledger at ${root}; check --store, or start a new store with a round_started event`);
+  check(input && typeof input === 'object' && !Array.isArray(input), 'Event object required');
+  check(fs.existsSync(path.join(root, 'events')) || input.type === 'round_started', `No ledger at ${root}; check --store, or start a new store with a round_started event`);
+  if (!fs.existsSync(path.join(root, 'events'))) {
+    // A new store nested inside another one would be deleted together with it when the outer store is retired.
+    for (let dir = path.dirname(root); ; dir = path.dirname(dir)) {
+      const journal = path.join(dir, 'events');
+      const outer = fs.existsSync(journal) && fs.statSync(journal).isDirectory() && fs.readdirSync(journal).some(n => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(n));
+      check(!outer, `New store ${root} would sit inside the existing store ${dir}; use a sibling directory`);
+      if (path.dirname(dir) === dir) break;
+    }
+  }
   fs.mkdirSync(root, { recursive: true });
   fs.mkdirSync(eventDirectory(root), { recursive: true }); const dir = eventDirectory(root);
   const lock = path.join(root, '.writer.lock');
@@ -721,7 +734,7 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
       shown = { dateKind: 'published', dateLabel: published ? published.work.dateLabel : work.dateLabel };
     }
     const shownWork = shown ? { ...work, ...shown } : work;
-    const labelRead = captures.findLast(c => c.work.dateLabel === shownWork.dateLabel && c.assets.some(a => seesWork(c, a)));
+    const labelRead = captures.findLast(c => c.work.dateKind === shownWork.dateKind && c.work.dateLabel === shownWork.dateLabel && c.assets.some(a => seesWork(c, a)));
     const dateSeenAt = labelRead ? labelRead.assets.filter(a => seesWork(labelRead, a)).map(a => a.capturedAt).sort((x, y) => time(x) - time(y))[0] : null;
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
     // Ledger order, not equal timestamps, decides whether a review came after the user's decision.
