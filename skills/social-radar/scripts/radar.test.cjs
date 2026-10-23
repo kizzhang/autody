@@ -1808,3 +1808,29 @@ test('CSV carries date columns and cards show when the growth window ended', t =
   assert.equal(row[header.indexOf('date_label')], '昨天'); assert.equal(row[header.indexOf('date_seen_at')], '2026-10-21T09:00:00+08:00');
   assert.match(render(state, root, path.join(root, 'reports')), /截至 2026\/10\/21 09:30:00/);
 });
+
+test('report outputs cannot be created at or under the writer-lock path', t => {
+  const root = fixture(t), state = snapshot(load(root), undefined, root);
+  for (const out of [path.join(root, '.writer.lock'), path.join(root, '.writer.lock', 'reports')]) {
+    assert.throws(() => writeReport(state, root, out), /writer-lock path/);
+    assert.ok(!fs.existsSync(path.join(root, '.writer.lock')));
+  }
+  saveObservation(root, obs('after', '09:00:00', 17));
+});
+
+test('a repeated relative label is anchored to the latest capture that read the work page', t => {
+  const root = fixture(t);
+  fs.writeFileSync(path.join(root, 'materials/page-edited.png'), 'Synthetic page after a later edit');
+  append(root, { ...capture('edited-again', { assets: [capture().assets[0], { ...capture().assets[1], path: 'materials/page-edited.png', capturedAt: '2026-10-22T10:00:00+08:00' }] }), recordedAt: '2026-10-22T10:05:00+08:00' });
+  assert.equal(snapshot(load(root), undefined, root).items[0].dateSeenAt, '2026-10-22T10:00:00+08:00');
+});
+
+test('a missing journal file does not block later saves or leave temporary files', t => {
+  const root = fixture(t), dir = path.join(root, 'events');
+  append(root, round('r2'));
+  const names = fs.readdirSync(dir).sort();
+  fs.rmSync(path.join(dir, names[1]));
+  append(root, round('r3'));
+  const after = fs.readdirSync(dir).sort();
+  assert.ok(after.at(-1).startsWith('00000004-')); assert.ok(!after.some(n => n.endsWith('.tmp')));
+});

@@ -91,10 +91,14 @@ function physicalPath(file) {
   return path.resolve(fs.realpathSync(current), ...suffix);
 }
 function writeReport(state, store, out) {
-  const eventsDir = path.resolve(store, 'events');
+  const eventsDir = path.resolve(store, 'events'), lockPath = path.resolve(store, '.writer.lock');
+  const inside = (base, target) => { const relative = path.relative(base, target); return !relative || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)); };
   for (const [base, target] of [[eventsDir, path.resolve(out)], [physicalPath(eventsDir), physicalPath(out)]]) {
-    const relative = path.relative(base, target);
-    if (!relative || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) throw new Error('Report output cannot be inside the ledger events directory');
+    if (inside(base, target)) throw new Error('Report output cannot be inside the ledger events directory');
+  }
+  // Creating a directory at the writer-lock path would block every later append.
+  for (const [base, target] of [[lockPath, path.resolve(out)], [physicalPath(lockPath), physicalPath(out)]]) {
+    if (inside(base, target)) throw new Error('Report output cannot use the ledger writer-lock path');
   }
   // Directory identity also catches aliases that differ only by case or link spelling.
   const dirId = p => { try { const st = fs.statSync(p, { bigint: true }); return st.ino !== 0n ? `${st.dev}:${st.ino}` : null; } catch { return null; } };

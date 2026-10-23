@@ -575,13 +575,16 @@ function append(root, input) {
     // historical observations remain excluded by snapshot's evidence checks.
     const normalized = validate(root, e, existing ? events.slice(0, events.indexOf(existing)) : events, resolve);
     if (existing) { check(isDeepStrictEqual(existing, normalized), `Conflicting replay: ${e.id}`); return { appended: false, id: e.id }; }
-    const n = events.length + 1; check(n <= 99999999, 'Ledger sequence exhausted');
+    // Continue after the highest existing sequence number, so a missing journal file cannot block every later save.
+    const last = fs.readdirSync(dir).filter(name => /^\d{8}-[a-zA-Z0-9_.-]+\.json$/.test(name)).sort().at(-1), n = (last ? Number(last.slice(0, 8)) : 0) + 1; check(n <= 99999999, 'Ledger sequence exhausted');
     const target = path.join(dir, `${String(n).padStart(8, '0')}-${e.id}.json`);
     const tmp = `${target}.${crypto.randomUUID()}.tmp`;
     const out = fs.openSync(tmp, 'wx');
-    try { fs.writeFileSync(out, `${JSON.stringify(normalized, null, 2)}\n`); fs.fsyncSync(out); } finally { fs.closeSync(out); }
-    const prefix = `${String(n).padStart(8, '0')}-`;
-    check(!fs.readdirSync(dir).some(name => name.startsWith(prefix) && name.endsWith('.json')), 'Sequence conflict: an event already uses this sequence number'); fs.renameSync(tmp, target);
+    try {
+      try { fs.writeFileSync(out, `${JSON.stringify(normalized, null, 2)}\n`); fs.fsyncSync(out); } finally { fs.closeSync(out); }
+      const prefix = `${String(n).padStart(8, '0')}-`;
+      check(!fs.readdirSync(dir).some(name => name.startsWith(prefix) && name.endsWith('.json')), 'Sequence conflict: an event already uses this sequence number'); fs.renameSync(tmp, target);
+    } finally { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); }
     return { appended: true, id: e.id };
   } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
 }
@@ -690,7 +693,8 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     // A relative date label is anchored to the work page or caption first saved by the capture that recorded it;
     // files re-listed from earlier captures keep their own, older times.
     const seesWork = (c, a) => ['page_screenshot', 'caption'].includes(a.kind) && workBound(a, c.work) && registry.get(resolve(a.path))?.index === order.get(c);
-    const labelRead = captures.find(c => c.work.dateLabel === work.dateLabel && c.assets.some(a => seesWork(c, a)));
+    // The latest capture that newly saved the work page or caption with this label supplies its anchor.
+    const labelRead = captures.findLast(c => c.work.dateLabel === work.dateLabel && c.assets.some(a => seesWork(c, a)));
     const dateSeenAt = labelRead ? labelRead.assets.filter(a => seesWork(labelRead, a)).map(a => a.capturedAt).sort((x, y) => time(x) - time(y))[0] : null;
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
     // Ledger order, not equal timestamps, decides whether a review came after the user's decision.
