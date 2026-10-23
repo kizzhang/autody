@@ -945,7 +945,7 @@ test('revisit task verifies both the baseline and the due-time observation files
   verifyFiles(root, load(root));
 });
 
-test('unreferenced media is not rehashed on every append', t => {
+test('a change to unrelated media does not block appends while status still reports it', t => {
   const root = fixture(t), file = path.join(root, 'materials/unrelated.mp4');
   fs.writeFileSync(file, 'Synthetic unrelated video');
   append(root, capture('unrelated-media', { readKinds: [], assets: [{ kind: 'video', path: 'materials/unrelated.mp4', sourceUrl: capture().work.url, capturedAt: '2026-10-21T09:00:00+08:00', coverage: 'Unreferenced synthetic video' }] }));
@@ -1741,4 +1741,43 @@ test('a revisit whose baseline evidence is lost is flagged and no longer due', t
   const state = snapshot(load(root), '2026-10-21T10:00:00+08:00', root, require('./radar.cjs').integrityIssues(root, load(root))), [flagged] = state.tasks;
   assert.equal(flagged.reopened, true); assert.equal(flagged.baselineEvidenceLost, true); assert.equal(flagged.due, false);
   assert.equal(summary(state).pendingTasks[0].baselineEvidenceLost, true);
+});
+
+test('gaps must be strings, and malformed historical gaps do not break exports', t => {
+  const root = fixture(t), before = load(root);
+  assert.throws(() => append(root, capture('object-gap', { gaps: [{ toString: 'Missing transcript' }] })), /each gap is a nonempty string/);
+  assert.throws(() => append(root, { ...review(), gaps: [42] }), /Review gaps \(nonempty strings\)/);
+  assert.deepEqual(load(root), before);
+  const legacy = { ...load(root).find(e => e.id === 'capture1'), id: 'legacy-object-gap', gaps: [{ toString: 'Missing transcript' }] };
+  fs.writeFileSync(path.join(root, 'events', `${String(load(root).length + 1).padStart(8, '0')}-legacy-object-gap.json`), JSON.stringify(legacy));
+  const report = writeReport(snapshot(load(root), undefined, root), root, path.join(root, 'reports'));
+  assert.match(fs.readFileSync(report.csv, 'utf8'), /Missing transcript/);
+});
+
+test('a review saved after a watch decision at the same timestamp still raises the watchlist hint', t => {
+  const root = fixture(t), at = '2026-10-21T13:00:00+08:00';
+  append(root, event('decision', 'watch', { workId: 'xiaohongshu:example', decision: 'watch', userRequest: 'Synthetic user: keep watching', reason: 'Wait', recordedAt: at }));
+  append(root, { ...review('same-time'), recordedAt: at });
+  const state = snapshot(load(root), undefined, root);
+  assert.equal(state.items[0].reviewAfterDecision, true);
+  assert.match(render(state, root, path.join(root, 'reports')).split('<section id="watch">')[1].split('</section>')[0], /有新推荐审读/);
+});
+
+test('a reposted copy of another work video cannot make an earlier read count as new in a later round', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  fs.writeFileSync(path.join(root, 'materials/other-video.mp4'), 'Synthetic video of the other work');
+  fs.writeFileSync(path.join(root, 'materials/other-caption.md'), 'Synthetic caption of the other work');
+  append(root, capture('other-read', { roundId: 'r2', work: other, readKinds: ['caption_body', 'video_fragment'], assets: [{ ...capture().assets[0], path: 'materials/other-caption.md', sourceUrl: other.url }, { ...capture().assets[0], kind: 'video', path: 'materials/other-video.mp4', sourceUrl: other.url, coverage: 'Synthetic video' }] }));
+  fs.copyFileSync(path.join(root, 'materials/other-video.mp4'), path.join(root, 'materials/repost.mp4'));
+  append(root, capture('relisted', { roundId: 'r2', assets: [...capture().assets, { ...capture().assets[0], kind: 'video', path: 'materials/repost.mp4', coverage: 'Reposted video' }] }));
+  const r = snapshot(load(root)).rounds[1];
+  assert.equal(r.unique, 1); assert.equal(r.platformCounts.xiaohongshu, 1);
+});
+
+test('the dashboard asks to cancel revisits whose baseline is lost or unavailable', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+  append(root, event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' }));
+  fs.rmSync(path.join(root, 'materials/metrics-baseline.json'));
+  assert.match(render(checkedSnapshot(root), root, path.join(root, 'reports')), /基线失效，请取消并重建/);
 });

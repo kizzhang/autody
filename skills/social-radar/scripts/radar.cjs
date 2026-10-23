@@ -356,7 +356,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
     }
     check(['recommendation', 'related', 'search', 'direct'].includes(e.route), 'Invalid discovery route');
     check(Array.isArray(e.readKinds) && e.readKinds.every(k => READ_KINDS.has(k)), 'Invalid substantive read kind (summaries/title cards do not count)');
-    check(typeof e.coverage === 'string' && Array.isArray(e.gaps), 'Coverage and gaps required');
+    check(typeof e.coverage === 'string' && Array.isArray(e.gaps) && e.gaps.every(nonempty), 'Coverage and gaps required; each gap is a nonempty string');
     check(Array.isArray(e.assets) && e.assets.length > 0, 'Assets required');
     check(new Set(e.assets.map(a => registerFile(a.path))).size === e.assets.length, 'Duplicate asset path');
     const registered = registeredAssets(prior, resolve);
@@ -423,7 +423,7 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
     });
     const registered = registeredAssets(prior, viewResolve);
     check(readCaptures.some(c => eligible(c, registered, viewResolve)), 'Review requires a substantive eligible capture');
-    check(Array.isArray(e.gaps) && Array.isArray(e.sourceRefs) && Array.isArray(e.claims), 'Review gaps, claims and sourceRefs arrays required');
+    check(Array.isArray(e.gaps) && e.gaps.every(nonempty) && Array.isArray(e.sourceRefs) && Array.isArray(e.claims), 'Review gaps (nonempty strings), claims and sourceRefs arrays required');
     const sourceAssets = workAssets.filter(a => INDEPENDENT_SOURCE_KINDS.has(a.kind) && e.evidencePaths.includes(a.path));
     for (const s of e.sourceRefs) {
       url(s.url); check(['exact', 'account_clue', 'unverified'].includes(s.status) && nonempty(s.note), 'Source status/note required');
@@ -584,7 +584,11 @@ function append(root, input) {
 function roundStats(events, round, resolve = assetKey) {
   const registered = registeredAssets(events, resolve), isEligible = e => eligible(e, registered, resolve);
   // Re-listing files registered in an earlier round is not a new read for this round.
-  const freshInRound = e => e.assets.some(a => ['page_screenshot', 'video', 'clip'].includes(a.kind) && !unusable(resolve, a) && workBound(a, e.work) && registered.get(resolve(a.path))?.roundId === e.roundId && (registered.firstByHash(a.sha256)?.roundId ?? e.roundId) === e.roundId);
+  const freshInRound = e => e.assets.some(a => {
+    // Only the capture's own first-owned, uncopied page or video evidence can make it a new read for this round.
+    const first = registered.get(resolve(a.path));
+    return ['page_screenshot', 'video', 'clip'].includes(a.kind) && !unusable(resolve, a) && workBound(a, e.work) && first?.workId === e.work.id && !first.fromDraft && !copiedContent(first, registered) && first.roundId === e.roundId && (registered.firstByHash(a.sha256)?.roundId ?? e.roundId) === e.roundId;
+  });
   const captures = events.filter(e => e.type === 'capture' && e.roundId === round.roundId && isEligible(e) && freshInRound(e));
   const metricsOnly = e => e.assets.every(a => METRIC_ASSET_KINDS.has(a.kind) && a.metrics !== undefined);
   const distinct = new Map(); for (const e of captures) if (!distinct.has(e.work.id)) distinct.set(e.work.id, e);
@@ -654,7 +658,7 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     const checks = events[i].type === 'review' ? reviewChecks : draftChecks;
     checks.set(events[i].id, eventIssue(root, events[i], events.slice(0, i), resolve, internals));
   }
-  const superseded = supersededObservations(events);
+  const superseded = supersededObservations(events), order = new Map(events.map((e, i) => [e, i]));
   const taskMap = new Map(); for (const e of events) if (e.type === 'task') taskMap.set(e.taskId, e);
   const groups = new Map(), group = workId => { if (!groups.has(workId)) groups.set(workId, { captures: [], observations: [], reviews: [], drafts: [], decision: null }); return groups.get(workId); };
   for (const e of source) if (e.type === 'capture') group(e.work.id).captures.push(e);
@@ -684,7 +688,9 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     const labelRead = captures.find(c => c.work.dateLabel === work.dateLabel && c.assets.some(a => seesWork(c, a)));
     const dateSeenAt = labelRead ? labelRead.assets.filter(a => seesWork(labelRead, a)).map(a => a.capturedAt).sort((x, y) => time(x) - time(y))[0] : null;
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
-    return { work, dateSeenAt, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
+    // Ledger order, not equal timestamps, decides whether a review came after the user's decision.
+    const reviewAfterDecision = Boolean(review && decision && order.get(review) > order.get(decision));
+    return { work, dateSeenAt, reviewAfterDecision, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
       review, reviewBlocked, reviews, reviewGaps, decision,
       drafts: draftHistory.filter(e => !draftChecks.get(e.id)), draftHistory, draftGaps, integrityIssues: integrity.filter(x => x.workId === workId) };
