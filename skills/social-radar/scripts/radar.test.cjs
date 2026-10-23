@@ -15,6 +15,10 @@ function fixture(t) {
   fs.writeFileSync(path.join(root, 'materials/page.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFQAAAABJRU5ErkJggg==', 'base64'));
   append(root, round()); append(root, capture()); return root;
 }
+function freshCopy(root, from, to) {
+  // Distinct bytes: identical content counts as the same evidence.
+  fs.writeFileSync(path.join(root, to), Buffer.concat([fs.readFileSync(path.join(root, from)), Buffer.from(`\nSynthetic distinct copy: ${to}`)]));
+}
 function event(type, id, fields = {}) { return { type, id, recordedAt: '2026-10-21T12:00:00+08:00', ...fields }; }
 function round(id = 'r1', config = {}) { return event('round_started', `start-${id}`, { roundId: id, timezone: 'Asia/Taipei', profile: 'Synthetic test creator', config: { targets: { douyin: 0, xiaohongshu: 1 }, minNew: 1, minRecommended: 1, practicalSlots: 1, ...config } }); }
 function capture(id = 'capture1', overrides = {}) {
@@ -28,7 +32,7 @@ function obs(id, hhmmss, likes, precision = 'exact', raw = String(likes)) { retu
 function captureMetricEvidence(root, o) {
   // Each reading has its own saved visible-page snapshot, never a reused baseline.
   const file = `materials/metrics-${o.id}.json`;
-  fs.writeFileSync(path.join(root, file), JSON.stringify({ synthetic: true, sampledAt: o.sampledAt, metrics: o.metrics }));
+  fs.writeFileSync(path.join(root, file), JSON.stringify({ synthetic: true, observation: o.id, workId: o.workId, sampledAt: o.sampledAt, metrics: o.metrics }));
   const work = load(root).findLast(e => e.type === 'capture' && e.work.id === o.workId).work;
   append(root, capture(`capture-${o.id}`, { work, roundId: o.roundId, recordedAt: o.recordedAt, readKinds: [], practicalMethod: false,
     assets: [{ kind: 'metric_snapshot', path: file, sourceUrl: work.url, capturedAt: o.sampledAt,
@@ -298,7 +302,9 @@ test('registered asset paths belong to one work while same-work reuse remains re
   append(root, { ...original, id: 'same-work' });
   assert.equal(append(root, { ...original, id: 'same-work' }).appended, false);
   fs.copyFileSync(path.join(root, original.assets[0].path), path.join(root, 'materials/other-metrics.json'));
-  append(root, capture('other-own-copy', { work: other, readKinds: [], assets: [{ ...original.assets[0], path: 'materials/other-metrics.json', sourceUrl: other.url }] }));
+  assert.throws(() => append(root, capture('other-identical-copy', { work: other, readKinds: [], assets: [{ ...original.assets[0], path: 'materials/other-metrics.json', sourceUrl: other.url }] })), /another work/);
+  freshCopy(root, original.assets[0].path, 'materials/other-metrics.json');
+  append(root, capture('other-own-copy', { work: other, readKinds: [], assets: [{ ...original.assets[0], sha256: undefined, path: 'materials/other-metrics.json', sourceUrl: other.url }] }));
   append(root, { ...obs('other-point', '09:00:00', 17), workId: other.id, evidencePaths: ['materials/other-metrics.json'] });
   assert.equal(snapshot(load(root)).items.find(i => i.work.id === other.id).latest.likes.value, 17);
 });
@@ -427,7 +433,9 @@ test('later captures cannot transfer or relabel a registered file through a hard
   assert.throws(() => append(root, capture('relabeled-link', { readKinds: [], assets: [{ ...linked, capturedAt: '2026-10-21T09:20:00+08:00', metrics: { likes: { value: 90, raw: '90', precision: 'exact' } } }] })), /immutable/);
   assert.deepEqual(load(root), before);
   fs.copyFileSync(path.join(root, alias), path.join(root, 'materials/fresh-metrics.json'));
-  append(root, capture('separate-file', { work: other, readKinds: [], assets: [{ ...linked, path: 'materials/fresh-metrics.json', sourceUrl: other.url }] }));
+  assert.throws(() => append(root, capture('identical-file', { work: other, readKinds: [], assets: [{ ...linked, path: 'materials/fresh-metrics.json', sourceUrl: other.url }] })), /another work/);
+  freshCopy(root, alias, 'materials/fresh-metrics.json');
+  append(root, capture('separate-file', { work: other, readKinds: [], assets: [{ ...linked, sha256: undefined, path: 'materials/fresh-metrics.json', sourceUrl: other.url }] }));
 });
 
 test('legacy linked metric registrations stay history without supplying new readings', t => {
@@ -611,7 +619,7 @@ test('canonical work URLs must match both platform and native work ID', t => {
   }
   append(root, capture('xhs-alternate', { work: { ...capture().work, url: 'https://www.xiaohongshu.com/discovery/item/example?source=synthetic' } }));
   const work = { ...capture().work, id: 'douyin:77', platform: 'douyin', url: 'https://www.douyin.com/video/77' };
-  const assets = capture().assets.map((a, i) => { const file = `materials/douyin-${i}`; fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, sourceUrl: work.url }; });
+  const assets = capture().assets.map((a, i) => { const file = `materials/douyin-${i}`; freshCopy(root, a.path, file); return { ...a, path: file, sourceUrl: work.url }; });
   append(root, capture('douyin-valid', { work, assets }));
   assert.ok(load(root).some(e => e.work?.id === work.id));
 });
@@ -629,7 +637,7 @@ test('new save times cannot go backwards while replays and later-saved backfills
 test('legacy claim and comment links use only the work owned material set', t => {
   const root = fixture(t), work = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
   const assets = capture().assets.map((a, i) => {
-    const file = `materials/other-${i}`; fs.copyFileSync(path.join(root, a.path), path.join(root, file));
+    const file = `materials/other-${i}`; freshCopy(root, a.path, file);
     return { ...a, path: file, sourceUrl: work.url };
   });
   append(root, capture('other', { work, assets }));
@@ -685,7 +693,7 @@ test('unsupported historical reviews remain history without driving current reco
 
 test('work-bound assets must identify their work while source and profile evidence stay usable', t => {
   const root = fixture(t), work = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other', authorUrl: 'https://www.xiaohongshu.com/user/profile/synthetic-author' };
-  const assets = capture().assets.map((a, i) => { const file = `materials/bound-${i}`; fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  const assets = capture().assets.map((a, i) => { const file = `materials/bound-${i}`; freshCopy(root, a.path, file); return { ...a, path: file }; });
   for (const kind of ['caption', 'page_screenshot', 'video', 'clip', 'comments', 'original_image', 'platform_summary']) {
     const a = { ...assets[0], kind, ...(kind === 'clip' ? { startSeconds: 0, endSeconds: 1 } : {}) };
     assert.throws(() => append(root, capture('wrong-source', { work, readKinds: [], assets: [a] })), /Asset source.*work/);
@@ -909,10 +917,11 @@ test('draft aliases cannot overwrite a historical file under a different path sp
 test('indirect review and draft references verify all files in referenced captures', t => {
   const { root, draft } = selectedDraft(t), image = path.join(root, 'materials/page.png'), original = fs.readFileSync(image), before = load(root);
   fs.writeFileSync(image, 'Overwritten screenshot behind capture1');
-  assert.throws(() => append(root, review('review2')), /Registered asset changed/);
+  // Indirect references are judged on intact files: the changed screenshot no longer makes capture1 eligible.
+  assert.throws(() => append(root, review('review2')), /substantive eligible capture/);
   assert.deepEqual(load(root), before);
   // The draft references review1, which references capture1, rather than the image path.
-  assert.throws(() => append(root, draft), /Registered asset changed/);
+  assert.throws(() => append(root, draft), /no longer valid/);
   assert.deepEqual(load(root), before);
   fs.writeFileSync(image, original);
   append(root, draft); verifyFiles(root, load(root));
@@ -949,7 +958,7 @@ test('round completion verifies the captures used for its coverage claim', t => 
   const root = fixture(t), file = path.join(root, 'materials/page.png'), original = fs.readFileSync(file), before = load(root);
   const done = event('attempt', 'complete', { roundId: 'r1', attemptId: 'a1', status: 'completed', reason: 'Synthetic completion' });
   fs.writeFileSync(file, 'Changed counted screenshot');
-  assert.throws(() => append(root, done), /Registered asset changed/);
+  assert.throws(() => append(root, done), /missing or changed files/);
   assert.deepEqual(load(root), before);
   fs.writeFileSync(file, original); append(root, done);
   assert.equal(snapshot(load(root)).rounds[0].attempts.at(-1).status, 'completed');
@@ -996,7 +1005,7 @@ test('a work keeps its registered author profile while display names may be corr
 
 test('a confirmed publication date cannot postdate evidence saved by earlier captures of the work', t => {
   const root = fixture(t);
-  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/later-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, capturedAt: '2026-10-21T11:00:00+08:00' }; });
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/later-'); freshCopy(root, a.path, file); return { ...a, path: file, capturedAt: '2026-10-21T11:00:00+08:00' }; });
   const work = { ...capture().work, dateKind: 'published', dateLabel: 'Synthetic publication', publishedAt: '2026-10-21T10:00:00+08:00' };
   const before = load(root);
   assert.throws(() => append(root, capture('revised-date', { work, assets })), /earlier work capture evidence/);
@@ -1008,9 +1017,9 @@ test('a confirmed publication date cannot postdate evidence saved by earlier cap
 test('backfills into an earlier round count as previous reads for later rounds', t => {
   const root = fixture(t); append(root, round('r2'));
   const work = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
-  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/other-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, sourceUrl: work.url }; });
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/other-'); freshCopy(root, a.path, file); return { ...a, path: file, sourceUrl: work.url }; });
   append(root, capture('backfill-r1', { roundId: 'r1', work, assets }));
-  const fresh = assets.map(a => { const file = a.path.replace('materials/other-', 'materials/other-r2-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  const fresh = assets.map(a => { const file = a.path.replace('materials/other-', 'materials/other-r2-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
   append(root, capture('read-r2', { roundId: 'r2', work, assets: fresh }));
   const rounds = snapshot(load(root)).rounds;
   assert.equal(rounds[0].unique, 2); assert.equal(rounds[0].newWorks, 2);
@@ -1020,7 +1029,7 @@ test('backfills into an earlier round count as previous reads for later rounds',
 
 test('a lead later read directly keeps its discovery route for round coverage', t => {
   const root = fixture(t); append(root, round('r2', { minNew: 0 }));
-  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/r2-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/r2-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
   append(root, capture('lead', { roundId: 'r2', readKinds: [], route: 'recommendation', assets }));
   assert.equal(snapshot(load(root)).rounds[1].unique, 0);
   append(root, capture('direct-read', { roundId: 'r2', route: 'direct', assets }));
@@ -1154,7 +1163,7 @@ test('a completed revisit reopens when its completing reading is corrected away'
 test('draft registration uses the same current review as status when a newer review lost its files', t => {
   const root = fixture(t), workId = 'xiaohongshu:example';
   append(root, review());
-  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/second-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/second-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
   append(root, capture('capture2', { assets }));
   append(root, { ...review('review2'), captureIds: ['capture2'], evidencePaths: [assets[0].path], claims: [] });
   fs.rmSync(path.join(root, assets[1].path));
@@ -1162,7 +1171,7 @@ test('draft registration uses the same current review as status when a newer rev
   assert.equal(snapshot(load(root), undefined, root, require('./radar.cjs').integrityIssues(root, load(root))).items[0].review.id, 'review1');
   for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
   const draft = event('draft', 'draft1', { workId, selectionEventId: 'selected', reviewId: 'review2', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' });
-  assert.throws(() => append(root, draft), /current review revision|Missing\/empty/);
+  assert.throws(() => append(root, draft), /current review revision|no longer valid/);
   append(root, { ...draft, reviewId: 'review1' });
   assert.equal(load(root).at(-1).reviewId, 'review1');
 });
@@ -1201,7 +1210,7 @@ test('later rounds count a work only with page or video evidence saved in that r
   const root = fixture(t); append(root, round('r2', { minNew: 0 }));
   append(root, capture('reused-r1-files', { roundId: 'r2' }));
   assert.equal(snapshot(load(root)).rounds[1].unique, 0);
-  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/reread-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/reread-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
   append(root, capture('fresh-r2-files', { roundId: 'r2', assets }));
   const r = snapshot(load(root)).rounds[1];
   assert.equal(r.unique, 1); assert.equal(r.repeatReads, 0);
@@ -1212,7 +1221,7 @@ test('a metrics-only revisit capture does not decide the discovery route', t => 
   const metrics = { likes: { value: 30, raw: '30', precision: 'exact' } };
   fs.writeFileSync(path.join(root, 'materials/revisit.json'), JSON.stringify(metrics));
   append(root, capture('revisit-first', { roundId: 'r2', route: 'direct', readKinds: [], practicalMethod: false, assets: [{ kind: 'metric_snapshot', path: 'materials/revisit.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T10:00:00+08:00', coverage: 'Synthetic metrics-only revisit', metrics }] }));
-  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/route-'); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file }; });
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/route-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
   append(root, capture('recommended-read', { roundId: 'r2', route: 'recommendation', assets }));
   const r = snapshot(load(root)).rounds[1];
   assert.equal(r.unique, 1); assert.equal(r.recommended.xiaohongshu, 1);
@@ -1233,7 +1242,7 @@ test('corrected readings cannot start revisits and stay excluded if their correc
 test('the dashboard lists recent candidates first, folds older ones and separates selected works', t => {
   // Saved times stay in the past; the report time moves forward instead.
   const root = fixture(t), later = '2026-10-22T12:00:00+08:00', at = '2026-10-29T00:00:00+08:00';
-  const copyFor = (work, prefix) => capture().assets.map(a => { const file = a.path.replace('materials/', `materials/${prefix}-`); fs.copyFileSync(path.join(root, a.path), path.join(root, file)); return { ...a, path: file, sourceUrl: work.url }; });
+  const copyFor = (work, prefix) => capture().assets.map(a => { const file = a.path.replace('materials/', `materials/${prefix}-`); freshCopy(root, a.path, file); return { ...a, path: file, sourceUrl: work.url }; });
   append(root, review('old-review'));
   for (const name of ['second', 'third']) {
     const work = { ...capture().work, id: `xiaohongshu:${name}`, url: `https://www.xiaohongshu.com/explore/${name}`, title: `Synthetic ${name} title` }, assets = copyFor(work, name);
@@ -1268,10 +1277,10 @@ test('summary does not rehash work material for each historical draft', t => {
     for (const name of ['brief', 'script', 'evidence']) fs.writeFileSync(path.join(root, `${name}-${rev}.md`), `Synthetic ${name} ${rev}`);
     append(root, event('draft', `draft-${rev}`, { workId, selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: `brief-${rev}.md`, scriptPath: `script-${rev}.md`, evidencePath: `evidence-${rev}.md` }));
   }
-  const page = path.resolve(root, 'materials/page.png'), original = fs.readFileSync;
+  const page = path.resolve(root, 'materials/page.png'), original = fs.openSync;
   let reads = 0;
-  fs.readFileSync = function (file, ...rest) { if (path.resolve(String(file)).toLowerCase() === page.toLowerCase()) reads++; return original.call(this, file, ...rest); };
-  try { summary(snapshot(load(root), undefined, root)); } finally { fs.readFileSync = original; }
+  fs.openSync = function (file, ...rest) { if (path.resolve(String(file)).toLowerCase() === page.toLowerCase()) reads++; return original.call(this, file, ...rest); };
+  try { summary(snapshot(load(root), undefined, root)); } finally { fs.openSync = original; }
   assert.equal(reads, 0);
   assert.equal(snapshot(load(root), undefined, root).items[0].drafts.length, 3);
 });
@@ -1322,4 +1331,82 @@ test('summary keeps recent shortlist entries and the latest rounds only', t => {
   assert.deepEqual(later.rounds.map(r => r.roundId), ['r3', 'r4', 'r5', 'r6', 'r7']); assert.equal(later.roundCount, 7);
   assert.deepEqual(later.shortlist, []); assert.equal(later.olderShortlist, 1);
   assert.equal(summary(snapshot(load(root), '2026-10-22T00:00:00+08:00')).shortlist.length, 1);
+});
+
+test('a round completes from a replacement capture after the original screenshot is lost', t => {
+  const root = fixture(t), before = load(root);
+  fs.rmSync(path.join(root, 'materials/page.png'));
+  const done = event('attempt', 'complete', { roundId: 'r1', attemptId: 'a1', status: 'completed', reason: 'Synthetic completion' });
+  assert.throws(() => append(root, done), /missing or changed files/);
+  assert.deepEqual(load(root), before);
+  const assets = capture().assets.map(a => ({ ...a, path: a.path.replace('materials/', 'materials/replacement-') }));
+  for (const a of assets) fs.writeFileSync(path.join(root, a.path), `Synthetic replacement ${a.kind}`);
+  append(root, capture('replacement', { assets }));
+  append(root, done);
+  assert.equal(snapshot(load(root)).rounds[0].attempts.at(-1).status, 'completed');
+});
+
+test('a missing registered draft file is reported as missing without a dead link', t => {
+  const root = draftedFixture(t);
+  fs.rmSync(path.join(root, 'script.md'));
+  const html = render(checkedSnapshot(root), root, path.join(root, 'reports'));
+  assert.match(html, /初稿文件缺失（1 份）/); assert.match(html, /初稿文件缺失，请重新登记新修订/);
+  assert.ok(!html.includes('href="../script.md"')); assert.match(html, /1 个初稿文件缺失或无法读取/); assert.ok(!html.includes('在登记后被修改'));
+});
+
+test('byte-identical copies cannot relabel metrics, move evidence to another work or turn drafts into sources', t => {
+  const root = fixture(t); saveObservation(root, obs('m1', '09:00:00', 17));
+  const original = load(root).find(e => e.id === 'capture-m1').assets[0], before = load(root);
+  fs.copyFileSync(path.join(root, original.path), path.join(root, 'materials/m2.json'));
+  const relabelled = { ...original, path: 'materials/m2.json', capturedAt: '2026-10-21T09:40:00+08:00', metrics: { likes: { value: 400, raw: '400', precision: 'exact' } } };
+  delete relabelled.sha256;
+  assert.throws(() => append(root, capture('relabel', { readKinds: [], assets: [relabelled] })), /different time and reading/);
+  assert.deepEqual(load(root), before);
+  append(root, capture('same-reading-later', { readKinds: [], assets: [{ ...relabelled, metrics: original.metrics }] }));
+  const other = { ...capture().work, id: 'xiaohongshu:other', url: 'https://www.xiaohongshu.com/explore/other' };
+  fs.copyFileSync(path.join(root, 'materials/page.png'), path.join(root, 'materials/other-page.png'));
+  fs.writeFileSync(path.join(root, 'materials/other-caption.md'), 'Synthetic caption of the other work');
+  const otherAssets = [{ ...capture().assets[0], path: 'materials/other-caption.md', sourceUrl: other.url }, { ...capture().assets[1], path: 'materials/other-page.png', sourceUrl: other.url }];
+  assert.throws(() => append(root, capture('copied-page', { work: other, assets: otherAssets })), /another work/);
+  append(root, review());
+  append(root, event('decision', 'selected', { workId: 'xiaohongshu:example', decision: 'selected', userRequest: 'Synthetic user: select this', reason: 'Useful' }));
+  for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  append(root, event('draft', 'draft1', { workId: 'xiaohongshu:example', selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' }));
+  fs.copyFileSync(path.join(root, 'evidence.md'), path.join(root, 'materials/primary-check.md'));
+  assert.throws(() => append(root, capture('draft-as-source', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'research_note', path: 'materials/primary-check.md', sourceUrl: 'https://x.com/example/status/1' }] })), /draft content/);
+  for (const file of ['brief2.md', 'script2.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  fs.copyFileSync(path.join(root, 'materials/caption.md'), path.join(root, 'evidence2.md'));
+  append(root, event('decision', 'selected-again', { workId: 'xiaohongshu:example', decision: 'selected', userRequest: 'Synthetic user: select again', reason: 'Useful' }));
+  assert.throws(() => append(root, event('draft', 'draft2', { workId: 'xiaohongshu:example', selectionEventId: 'selected-again', reviewId: 'review1', status: 'draft', briefPath: 'brief2.md', scriptPath: 'script2.md', evidencePath: 'evidence2.md' })), /captured source content/);
+});
+
+test('a lost unreferenced file does not block drafting or completing the round', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  fs.writeFileSync(path.join(root, 'materials/comments.json'), 'Synthetic comments');
+  append(root, capture('with-comments', { assets: [...capture().assets, { ...capture().assets[0], kind: 'comments', path: 'materials/comments.json', coverage: 'Synthetic comments' }] }));
+  append(root, { ...review(), captureIds: ['with-comments'] });
+  append(root, event('decision', 'selected', { workId, decision: 'selected', userRequest: 'Synthetic user: select this', reason: 'Useful' }));
+  fs.rmSync(path.join(root, 'materials/comments.json'));
+  for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  append(root, event('draft', 'draft1', { workId, selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' }));
+  append(root, event('attempt', 'complete', { roundId: 'r1', attemptId: 'a1', status: 'completed', reason: 'Synthetic completion' }));
+  assert.equal(load(root).at(-1).status, 'completed');
+});
+
+test('a verified claim must cite an independent source rather than the caption alone', t => {
+  const root = fixture(t), base = review('verified');
+  assert.throws(() => append(root, { ...base, claims: [{ text: 'Author says income tripled', status: 'verified', evidencePaths: ['materials/caption.md'] }] }), /independent source/);
+  fs.writeFileSync(path.join(root, 'materials/check.md'), 'Synthetic primary-source check');
+  append(root, capture('check', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'research_note', path: 'materials/check.md', sourceUrl: 'https://example.org/paper' }] }));
+  append(root, { ...base, claims: [{ text: 'Checked against the paper', status: 'verified', evidencePaths: ['materials/check.md'] }] });
+});
+
+test('summary answers for a store that does not exist yet and reports paused platforms', t => {
+  const parent = fs.realpathSync(os.tmpdir()), missing = path.join(parent, `autody-radar-missing-${process.pid}-${Date.now()}`);
+  const run = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'summary', '--store', missing], { encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr); assert.equal(JSON.parse(run.stdout).eventCount, 0); assert.ok(!fs.existsSync(missing));
+  const root = fixture(t);
+  append(root, event('attempt', 'xhs-pause', { roundId: 'r1', attemptId: 'a1', status: 'paused', platform: 'xiaohongshu', reason: 'CAPTCHA' }));
+  append(root, event('attempt', 'dy-run', { roundId: 'r1', attemptId: 'a2', status: 'running', platform: 'douyin', reason: 'Continue Douyin' }));
+  assert.deepEqual(summary(snapshot(load(root))).rounds[0].pausedPlatforms, ['xiaohongshu']);
 });
