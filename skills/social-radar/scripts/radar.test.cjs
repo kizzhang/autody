@@ -1094,7 +1094,8 @@ test('changed or missing registered files are reported and excluded without disa
   assert.equal(state.rounds[0].unique, 0); assert.equal(item.review, null); assert.equal(item.latest.likes.value, 17);
   const brief = run('summary'), quick = JSON.parse(brief.stdout); assert.equal(brief.status, 0, brief.stderr); assert.equal(quick.integrityChecked, 'presence'); assert.deepEqual(quick.integrityIssues.map(x => x.path), ['materials/page.png']);
   const rendered = run('render'); assert.equal(rendered.status, 0, rendered.stderr);
-  assert.match(fs.readFileSync(path.join(root, 'reports/report.html'), 'utf8'), /2 个已登记文件被改动或缺失/);
+  const html = fs.readFileSync(path.join(root, 'reports/report.html'), 'utf8');
+  assert.match(html, /1 个已登记素材被改动或缺失/); assert.match(html, /1 个初稿文件在登记后被修改/);
   assert.throws(() => verifyFiles(root, load(root)), /Missing\/empty|Registered draft changed/);
   saveObservation(root, obs('o2', '09:30:00', 30));
   assert.equal(snapshot(load(root)).items[0].latest.likes.value, 30);
@@ -1246,4 +1247,79 @@ test('the dashboard lists recent candidates first, folds older ones and separate
   assert.ok(recent.includes('Synthetic second title')); assert.ok(!recent.includes('Synthetic third title')); assert.ok(!recent.includes('explore/example'));
   assert.ok(older.includes('较早的候选（1）')); assert.ok(older.includes('explore/example'));
   assert.ok(chosen.includes('Synthetic third title'));
+});
+
+test('a revisit task can be cancelled after its baseline evidence is lost', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'task1', { roundId: 'r1', workId, taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task);
+  fs.rmSync(path.join(root, 'materials/metrics-baseline.json'));
+  assert.throws(() => append(root, { ...task, id: 'task1-done', status: 'done' }), /Missing\/empty|No due-time/);
+  append(root, { ...task, id: 'task1-cancel', status: 'cancelled', reason: 'Baseline evidence lost' });
+  assert.equal(snapshot(load(root), '2026-10-21T10:00:00+08:00').tasks[0].status, 'cancelled');
+});
+
+test('summary does not rehash work material for each historical draft', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  append(root, review());
+  append(root, event('decision', 'selected', { workId, decision: 'selected', userRequest: 'Synthetic user: select this', reason: 'Useful' }));
+  for (const rev of ['a', 'b', 'c']) {
+    for (const name of ['brief', 'script', 'evidence']) fs.writeFileSync(path.join(root, `${name}-${rev}.md`), `Synthetic ${name} ${rev}`);
+    append(root, event('draft', `draft-${rev}`, { workId, selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: `brief-${rev}.md`, scriptPath: `script-${rev}.md`, evidencePath: `evidence-${rev}.md` }));
+  }
+  const page = path.resolve(root, 'materials/page.png'), original = fs.readFileSync;
+  let reads = 0;
+  fs.readFileSync = function (file, ...rest) { if (path.resolve(String(file)).toLowerCase() === page.toLowerCase()) reads++; return original.call(this, file, ...rest); };
+  try { summary(snapshot(load(root), undefined, root)); } finally { fs.readFileSync = original; }
+  assert.equal(reads, 0);
+  assert.equal(snapshot(load(root), undefined, root).items[0].drafts.length, 3);
+});
+
+function draftedFixture(t) {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  append(root, review());
+  append(root, event('decision', 'selected', { workId, decision: 'selected', userRequest: 'Synthetic user: select this', reason: 'Useful' }));
+  for (const file of ['brief.md', 'script.md', 'evidence.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  append(root, event('draft', 'draft1', { workId, selectionEventId: 'selected', reviewId: 'review1', status: 'draft', briefPath: 'brief.md', scriptPath: 'script.md', evidencePath: 'evidence.md' }));
+  return root;
+}
+const checkedSnapshot = root => snapshot(load(root), undefined, root, require('./radar.cjs').integrityIssues(root, load(root)));
+
+test('an edited registered draft stays linked and labelled instead of reading as unwritten', t => {
+  const root = draftedFixture(t);
+  fs.writeFileSync(path.join(root, 'script.md'), 'Synthetic draft edited by the user');
+  const html = render(checkedSnapshot(root), root, path.join(root, 'reports'));
+  assert.match(html, /1 份初稿（其中 1 份文件已修改/); assert.match(html, /script\.md/);
+  assert.match(html, /1 个初稿文件在登记后被修改/); assert.ok(!html.includes('个已登记素材被改动'));
+});
+
+test('a draft excluded because its review lost support says so', t => {
+  const root = draftedFixture(t);
+  fs.writeFileSync(path.join(root, 'materials/caption.md'), 'Synthetic caption changed after registration');
+  assert.match(checkedSnapshot(root).items[0].draftGaps[0].reason, /Draft review review1 is no longer valid/);
+});
+
+test('decreasing counts read as decreases in cards and stay numeric in CSV', t => {
+  assert.equal(csvCell(-5), '"-5"'); assert.equal(csvCell('-5'), '"\'-5"');
+  const root = fixture(t); saveObservation(root, obs('a', '09:00:00', 20)); saveObservation(root, obs('b', '09:30:00', 15)); append(root, review());
+  const html = render(snapshot(load(root), undefined, root), root, path.join(root, 'reports'));
+  assert.match(html, /减少 5 赞/); assert.ok(!html.includes('新增 -5'));
+});
+
+test('the watchlist flags a newer shortlist review after a watch decision', t => {
+  const root = fixture(t), workId = 'xiaohongshu:example';
+  append(root, event('decision', 'watch', { workId, decision: 'watch', userRequest: 'Synthetic user: keep watching', reason: 'Wait' }));
+  append(root, { ...review('later-review'), recordedAt: '2026-10-21T13:00:00+08:00' });
+  const html = render(snapshot(load(root), undefined, root), root, path.join(root, 'reports'));
+  assert.match(html.split('<section id="watch">')[1].split('</section>')[0], /有新推荐审读/);
+});
+
+test('summary keeps recent shortlist entries and the latest rounds only', t => {
+  const root = fixture(t); append(root, review());
+  for (const id of ['r2', 'r3', 'r4', 'r5', 'r6', 'r7']) append(root, round(id));
+  const later = summary(snapshot(load(root), '2026-11-01T00:00:00+08:00'));
+  assert.deepEqual(later.rounds.map(r => r.roundId), ['r3', 'r4', 'r5', 'r6', 'r7']); assert.equal(later.roundCount, 7);
+  assert.deepEqual(later.shortlist, []); assert.equal(later.olderShortlist, 1);
+  assert.equal(summary(snapshot(load(root), '2026-10-22T00:00:00+08:00')).shortlist.length, 1);
 });

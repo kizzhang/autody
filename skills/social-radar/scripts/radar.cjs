@@ -404,10 +404,15 @@ function validate(root, e, prior, resolve = fileResolver(root), internals = lazy
   } else if (e.type === 'draft') {
     requireWork(); const selection = prior.findLast(x => x.type === 'decision' && x.workId === e.workId);
     check(selection && selection.decision === 'selected' && selection.id === e.selectionEventId, 'Draft requires the current explicit user selection');
-    const view = root ? withoutBrokenAssets(root, prior, e.workId) : prior;
+    const view = root && !resolve.filtered ? withoutBrokenAssets(root, prior, e.workId) : prior;
     const viewResolve = view === prior ? resolve : Object.assign(file => resolve(file), { ledger: view });
     const currentReview = view.findLast((x, i) => x.type === 'review' && x.workId === e.workId && !eventIssue(root, x, view.slice(0, i), viewResolve, internals));
-    check(currentReview && currentReview.id === e.reviewId, 'Draft must reference the current review revision');
+    if (!currentReview || currentReview.id !== e.reviewId) {
+      // Say why a draft fails when the review it cites has since lost its support.
+      const cited = view.findIndex(x => x.type === 'review' && x.id === e.reviewId && x.workId === e.workId);
+      const issue = cited >= 0 ? eventIssue(root, view[cited], view.slice(0, cited), viewResolve, internals) : null;
+      check(false, issue ? `Draft review ${e.reviewId} is no longer valid: ${issue}` : 'Draft must reference the current review revision');
+    }
     check(e.status === 'draft', 'Generated script remains draft');
     if (e.hashes === undefined) e.hashes = {};
     check(e.hashes && typeof e.hashes === 'object' && !Array.isArray(e.hashes), 'Draft hashes must be a plain object');
@@ -458,7 +463,7 @@ function referencedPaths(input, events, resolve = assetKey) {
     add(e.evidencePaths); add(e.assets?.map(a => a.path));
     for (const c of [...(e.claims || []), ...(e.comments || [])]) add(c.evidencePaths);
     add([e.briefPath, e.scriptPath, e.evidencePath]);
-    const ids = [...(Array.isArray(e.captureIds) ? e.captureIds : []), e.baselineObservationId, e.reviewId, e.selectionEventId];
+    const ids = [...(Array.isArray(e.captureIds) ? e.captureIds : []), e.type === 'task' && e.status === 'cancelled' ? undefined : e.baselineObservationId, e.reviewId, e.selectionEventId];
     for (const id of ids) if (byId.has(id)) pending.push(byId.get(id));
     if (e.type === 'attempt' && e.status === 'completed') {
       const registered = registeredAssets(events, resolve);
@@ -558,7 +563,7 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
   if (broken.size) events = events.map(e => e.type === 'capture' && e.assets.some(a => broken.has(assetKey(a.path))) ? { ...e, assets: e.assets.filter(a => !broken.has(assetKey(a.path))) } : e);
   const works = new Map(), rounds = events.filter(e => e.type === 'round_started');
   const resolve = root ? fileResolver(root) : file => assetKey(file);
-  resolve.ledger = events;
+  resolve.ledger = events; resolve.filtered = true;
   const observationChecks = new Map(), reviewChecks = new Map(), draftChecks = new Map();
   const internals = root ? lazyInternals(root) : undefined;
   for (let i = 0; i < events.length; i++) if (events[i].type === 'observation') {
@@ -611,9 +616,11 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
 }
 function summary(state) {
   // Compact view for an agent resuming work; status and snapshot.json keep the full history.
-  const priority = state.items.filter(i => i.review?.recommendation === 'shortlist' && !['watch', 'rejected', 'selected'].includes(i.decision?.decision)).sort((a, b) => time(b.review.recordedAt) - time(a.review.recordedAt));
+  const candidates = state.items.filter(i => i.review?.recommendation === 'shortlist' && !['watch', 'rejected', 'selected'].includes(i.decision?.decision)).sort((a, b) => time(b.review.recordedAt) - time(a.review.recordedAt));
+  const recentSince = time(state.generatedAt) - 7 * 86400000, priority = candidates.filter(i => time(i.review.recordedAt) >= recentSince);
   return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
-    rounds: state.rounds.map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
+    roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
+    rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
     pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed })),
     shortlist: priority.map(i => ({ workId: i.work.id, title: i.work.title, angle: i.review.angle, reviewId: i.review.id })),
     decisions: state.items.filter(i => i.decision).map(i => ({ workId: i.work.id, decision: i.decision.decision, recordedAt: i.decision.recordedAt })),
