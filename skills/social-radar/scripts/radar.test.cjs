@@ -1688,3 +1688,57 @@ test('duplicate media within one capture is rejected, summary carries the creato
   saveObservation(root, obs('slow', '09:00:00', 10)); saveObservation(root, obs('quick', '09:30:00', 200)); append(root, review());
   assert.match(render(snapshot(load(root), undefined, root), root, path.join(root, 'reports')), /快增（工作阈值）/);
 });
+
+test('a later profile-only capture does not move the anchor of a relative date label', t => {
+  const root = fixture(t), authorUrl = 'https://www.xiaohongshu.com/user/profile/synthetic-author', metrics = { followers: { value: 4, raw: '4', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/profile-later.json'), JSON.stringify({ synthetic: 'profile reading', metrics }));
+  append(root, { ...capture('profile-later', { work: { ...capture().work, authorUrl }, readKinds: [], assets: [{ kind: 'metric_snapshot', path: 'materials/profile-later.json', sourceUrl: authorUrl, capturedAt: '2026-10-22T11:00:00+08:00', coverage: 'Synthetic profile follower reading', metrics }] }), recordedAt: '2026-10-22T12:00:00+08:00' });
+  append(root, { ...review(), recordedAt: '2026-10-22T12:00:00+08:00' });
+  const state = snapshot(load(root), '2026-10-23T00:00:00+08:00', root);
+  assert.equal(state.items[0].dateSeenAt, '2026-10-21T09:00:00+08:00');
+  assert.match(render(state, root, path.join(root, 'reports')), /日期：昨天（采集于 2026\/10\/21）/);
+});
+
+test('a work whose only review lost support is marked blocked in snapshot and CSV', t => {
+  const root = fixture(t); append(root, review());
+  fs.rmSync(path.join(root, 'materials/page.png'));
+  const state = checkedSnapshot(root);
+  assert.equal(state.items[0].review, null); assert.equal(state.items[0].reviewBlocked, true);
+  assert.match(fs.readFileSync(writeReport(state, root, path.join(root, 'reports')).csv, 'utf8'), /latest review unsupported/);
+  assert.match(render(state, root, path.join(root, 'reports')), /审读的依据已失效，需补齐素材并重新审读/);
+});
+
+test('a drop inside the growth window is a decrease, never fast or accelerating growth', t => {
+  const peak = growth([obs('a', '09:00:00', 10), obs('b', '09:30:00', 200), obs('c', '09:31:00', 150)]);
+  assert.equal(peak.status, 'count_decreased'); assert.equal(peak.fast, false); assert.equal(peak.lowLikeFast, false); assert.equal(peak.delta, null);
+  const fourPoints = growth([obs('a', '09:00:00', 10), obs('b', '09:20:00', 20), obs('c', '09:40:00', 200), obs('d', '09:41:00', 150)]);
+  assert.equal(fourPoints.status, 'count_decreased'); assert.equal(fourPoints.accelerating, false);
+  assert.equal(growth([obs('a', '09:00:00', 10), obs('b', '09:20:00', 30), obs('c', '09:25:00', 20), obs('d', '09:45:00', 200)]).accelerating, false);
+  const root = fixture(t); for (const [id, at, likes] of [['a', '09:00:00', 10], ['b', '09:30:00', 200], ['c', '09:31:00', 150]]) saveObservation(root, obs(id, at, likes)); append(root, review());
+  const html = render(snapshot(load(root), undefined, root), root, path.join(root, 'reports'));
+  assert.match(html, /计数下降，待核对/); assert.ok(!html.includes('快增'));
+});
+
+test('append rejects event files that are not UTF-8', t => {
+  const root = fixture(t), dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'autody-radar-input-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const event = JSON.stringify({ ...round('encoded'), profile: 'PLACEHOLDER' });
+  const [before, after] = event.split('PLACEHOLDER');
+  const gbk = path.join(dir, 'gbk.json'), utf16 = path.join(dir, 'utf16.json');
+  fs.writeFileSync(gbk, Buffer.concat([Buffer.from(before), Buffer.from([0xca, 0xbe, 0xc0, 0xfd]), Buffer.from(after)]));
+  fs.writeFileSync(utf16, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(event, 'utf16le')]));
+  const run = file => spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'append', '--store', root, '--input', file], { encoding: 'utf8' });
+  const legacy = run(gbk); assert.equal(legacy.status, 1); assert.match(legacy.stderr, /valid UTF-8/);
+  const wide = run(utf16); assert.equal(wide.status, 1); assert.match(wide.stderr, /UTF-16/);
+  assert.ok(!load(root).some(e => e.id === 'start-encoded'));
+});
+
+test('a revisit whose baseline evidence is lost is flagged and no longer due', t => {
+  const root = fixture(t); saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task); saveObservation(root, obs('due', '09:20:00', 20)); append(root, { ...task, id: 'task1-done', status: 'done' });
+  fs.rmSync(path.join(root, 'materials/metrics-baseline.json'));
+  const state = snapshot(load(root), '2026-10-21T10:00:00+08:00', root, require('./radar.cjs').integrityIssues(root, load(root))), [flagged] = state.tasks;
+  assert.equal(flagged.reopened, true); assert.equal(flagged.baselineEvidenceLost, true); assert.equal(flagged.due, false);
+  assert.equal(summary(state).pendingTasks[0].baselineEvidenceLost, true);
+});

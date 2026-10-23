@@ -616,7 +616,8 @@ function growth(observations, c = DEFAULTS) {
   if (points.slice(points.indexOf(a)).some(p => p.metrics.likes.precision !== 'exact')) return { ...result, status: 'rounded_counts' };
   const minutes = (time(b.sampledAt) - time(a.sampledAt)) / 60000, delta = b.metrics.likes.value - a.metrics.likes.value;
   result.delta = delta; result.minutes = minutes;
-  if (delta < 0) return { ...result, status: 'count_decreased' };
+  // A drop between any two readings in the window is a decrease to check, never net growth; the delta is kept only for a net fall.
+  if (points.slice(points.indexOf(a)).some((p, k, w) => k > 0 && p.metrics.likes.value < w[k - 1].metrics.likes.value)) return { ...result, delta: delta < 0 ? delta : null, status: 'count_decreased' };
   if (startIndex < 0) return { ...result, status: 'interval_too_short' };
   result.perHour = delta / (minutes / 60);
   result.relative = a.metrics.likes.value > 0 ? delta / a.metrics.likes.value : null;
@@ -628,7 +629,8 @@ function growth(observations, c = DEFAULTS) {
   const previousIndex = delta >= c.minNewLikes ? points.findLastIndex(p => olderBy(a, p)) : -1;
   if (previousIndex >= 0) {
     const p = points[previousIndex], previousMinutes = (time(a.sampledAt) - time(p.sampledAt)) / 60000;
-    if (points.slice(previousIndex, startIndex + 1).every(x => x.metrics.likes.precision === 'exact') && previousMinutes <= c.shortWindowHours * 60) {
+    const previousWindow = points.slice(previousIndex, startIndex + 1);
+    if (previousWindow.every((x, k) => x.metrics.likes.precision === 'exact' && (k === 0 || x.metrics.likes.value >= previousWindow[k - 1].metrics.likes.value)) && previousMinutes <= c.shortWindowHours * 60) {
       const previousSpeed = (a.metrics.likes.value - p.metrics.likes.value) / (previousMinutes / 60);
       result.accelerating = previousSpeed > 0 && result.perHour >= previousSpeed * c.accelerationRatio;
     }
@@ -676,23 +678,34 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     const reviewGaps = reviews.filter(e => reviewChecks.get(e.id)).map(e => ({ reviewId: e.id, recordedAt: e.recordedAt, reason: reviewChecks.get(e.id) }));
     const review = reviews.findLast(e => !reviewChecks.get(e.id)) || null;
     // When the newest review has lost support, an older recommendation is not promoted in its place.
-    const reviewBlocked = Boolean(review && reviews.at(-1) !== review);
+    const reviewBlocked = reviews.length > 0 && reviews.at(-1) !== review;
+    // A relative date label is anchored to when the work page or caption showing it was first read.
+    const seesWork = (c, a) => ['page_screenshot', 'caption'].includes(a.kind) && workBound(a, c.work);
+    const labelRead = captures.find(c => c.work.dateLabel === work.dateLabel && c.assets.some(a => seesWork(c, a)));
+    const dateSeenAt = labelRead ? labelRead.assets.filter(a => seesWork(labelRead, a)).map(a => a.capturedAt).sort((x, y) => time(x) - time(y))[0] : null;
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
-    return { work, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
+    return { work, dateSeenAt, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
       review, reviewBlocked, reviews, reviewGaps, decision,
       drafts: draftHistory.filter(e => !draftChecks.get(e.id)), draftHistory, draftGaps, integrityIssues: integrity.filter(x => x.workId === workId) };
   });
   // Pending work on a rejected topic stays in history but is no longer due.
   const rejected = new Set(items.filter(i => i.decision?.decision === 'rejected').map(i => i.work.id));
-  const baselineStands = t => { const b = latestCorrection(groups.get(t.workId)?.observations || [], t.baselineObservationId); return Boolean(b && !observationChecks.get(b.id) && b.metrics.likes && b.metrics.likes.precision !== 'unavailable'); };
+  const baselineState = t => {
+    const b = latestCorrection(groups.get(t.workId)?.observations || [], t.baselineObservationId);
+    if (!b || observationChecks.get(b.id)) return 'evidence_lost';
+    return b.metrics.likes && b.metrics.likes.precision !== 'unavailable' ? 'ok' : 'unavailable';
+  };
+  const baselineStands = t => baselineState(t) === 'ok';
   const revisitDone = t => baselineStands(t) && (groups.get(t.workId)?.observations || []).some(o => !observationChecks.get(o.id) && !superseded.has(o.id) && o.metrics.likes && o.metrics.likes.precision !== 'unavailable' && time(o.sampledAt) >= time(t.dueAt));
   return { generatedAt: now, eventCount: source.length, integrityIssues: integrity, items,
     rounds: rounds.map(r => ({ ...r, ...roundStats(events, r, resolve), attempts: events.filter(e => e.type === 'attempt' && e.roundId === r.roundId) })),
     tasks: [...taskMap.values()].map(t => {
       const reopened = t.kind === 'revisit' && t.status === 'done' && !revisitDone(t), status = reopened ? 'pending' : t.status;
       const suppressed = status === 'pending' && rejected.has(t.workId);
-      return { ...t, status, ...(reopened ? { recordedStatus: 'done', reopened: true } : {}), ...(t.kind === 'revisit' && !baselineStands(t) ? { baselineUnavailable: true } : {}), suppressed, due: status === 'pending' && !suppressed && (t.dueAt == null || time(t.dueAt) <= time(now)) };
+      // A revisit whose baseline is unavailable or lost cannot be completed, so it is flagged instead of due.
+      const baseline = t.kind === 'revisit' ? baselineState(t) : 'ok';
+      return { ...t, status, ...(reopened ? { recordedStatus: 'done', reopened: true } : {}), ...(baseline === 'unavailable' ? { baselineUnavailable: true } : {}), ...(baseline === 'evidence_lost' ? { baselineEvidenceLost: true } : {}), suppressed, due: status === 'pending' && !suppressed && baseline === 'ok' && (t.dueAt == null || time(t.dueAt) <= time(now)) };
     }) };
 }
 function pausedPlatforms(attempts) {
@@ -708,10 +721,16 @@ function summary(state) {
   return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, profile: state.rounds.at(-1)?.profile ?? null, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
     rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, pausedPlatforms: pausedPlatforms(r.attempts), lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
-    pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened, baselineUnavailable }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}), ...(baselineUnavailable ? { baselineUnavailable } : {}) })),
+    pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened, baselineUnavailable, baselineEvidenceLost }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}), ...(baselineUnavailable ? { baselineUnavailable } : {}), ...(baselineEvidenceLost ? { baselineEvidenceLost } : {}) })),
     shortlist: priority.map(i => ({ workId: i.work.id, title: i.work.title, angle: i.review.angle, reviewId: i.review.id })),
     decisions: state.items.filter(i => i.decision).map(i => ({ workId: i.work.id, decision: i.decision.decision, recordedAt: i.decision.recordedAt })),
     gaps: state.items.filter(i => i.evidenceGaps.length || i.reviewGaps.length || i.draftGaps.length || i.integrityIssues.length).map(i => ({ workId: i.work.id, evidenceGaps: i.evidenceGaps.length, reviewGaps: i.reviewGaps.length, draftGaps: i.draftGaps.length, integrityIssues: i.integrityIssues.length })) };
+}
+function readUtf8(file) {
+  // Reject UTF-16 and legacy code pages instead of saving garbled text into the append-only ledger.
+  const bytes = fs.readFileSync(file);
+  check(!(bytes[0] === 0xff && bytes[1] === 0xfe) && !(bytes[0] === 0xfe && bytes[1] === 0xff), 'Input must be UTF-8; this file is UTF-16');
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { throw new Error('Input must be valid UTF-8; re-save the event JSON as UTF-8'); }
 }
 function main(argv) {
   const command = argv[0], opts = {};
@@ -719,7 +738,7 @@ function main(argv) {
   check(opts.store, 'Usage: radar.cjs append|summary|status|render --store <directory> [--input event.json] [--out report-directory] [--now ISO-time]');
   check(['append', 'summary', 'status', 'render'].includes(command), 'Unknown command');
   if (command === 'render') check(opts.out, '--out required');
-  if (command === 'append') { check(opts.input, '--input required'); return append(opts.store, JSON.parse(fs.readFileSync(opts.input, 'utf8').replace(/^\uFEFF/, ''))); }
+  if (command === 'append') { check(opts.input, '--input required'); return append(opts.store, JSON.parse(readUtf8(opts.input))); }
   const events = load(opts.store), issues = integrityIssues(opts.store, events, { hashes: command !== 'summary' }), state = snapshot(events, opts.now, opts.store, issues);
   if (issues.length) process.stderr.write(`Warning: ${issues.length} registered file(s) are missing or changed and are excluded from derived results; see integrityIssues.\n`);
   if (command === 'render') { check(opts.out, '--out required'); return require('./render-radar.cjs').writeReport(state, opts.store, opts.out); }
