@@ -1471,3 +1471,85 @@ test('exact replays succeed even after referenced files change', t => {
   assert.deepEqual(load(root), saved);
   assert.throws(() => append(root, { ...withoutHashes, hashes: { briefPath: '0'.repeat(64) } }));
 });
+
+test('a missing draft file is reported as missing even when its review also lost support', t => {
+  const root = draftedFixture(t);
+  fs.rmSync(path.join(root, 'materials/page.png')); fs.rmSync(path.join(root, 'script.md'));
+  const state = checkedSnapshot(root), html = render(state, root, path.join(root, 'reports'));
+  assert.match(html, /初稿文件缺失（1 份）/); assert.ok(!html.includes('href="../script.md"'));
+  assert.ok(!/file:[^"]*script.md/.test(fs.readFileSync(writeReport(state, root, path.join(root, 'reports')).csv, 'utf8')));
+});
+
+test('a blocked newest review keeps the older verdict out of the watchlist and CSV', t => {
+  const root = fixture(t); append(root, { ...review('old-watch'), recommendation: 'watch', angle: 'OLD_WATCH_ANGLE' });
+  fs.writeFileSync(path.join(root, 'materials/comments.md'), 'Synthetic comments');
+  append(root, capture('with-comments', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'comments', path: 'materials/comments.md', coverage: 'Synthetic comments' }] }));
+  append(root, { ...review('new-archive'), recommendation: 'archive', evidencePaths: ['materials/comments.md'], claims: [] });
+  fs.rmSync(path.join(root, 'materials/comments.md'));
+  const state = checkedSnapshot(root), html = render(state, root, path.join(root, 'reports'));
+  assert.ok(!html.split('<section id="watch">')[1].split('</section>')[0].includes('<tr data-search'));
+  assert.match(html, /最新审读的依据已失效/);
+  const csv = fs.readFileSync(writeReport(state, root, path.join(root, 'reports')).csv, 'utf8');
+  assert.match(csv, /latest review unsupported/); assert.ok(!csv.includes('OLD_WATCH_ANGLE'));
+});
+
+test('summary treats a platform-less pause as pausing both platforms and keeps reopened tasks visible', t => {
+  const root = fixture(t);
+  append(root, event('attempt', 'all-paused', { roundId: 'r1', attemptId: 'a1', status: 'paused', reason: 'Login verification on both platforms' }));
+  assert.deepEqual(summary(snapshot(load(root))).rounds[0].pausedPlatforms, ['douyin', 'xiaohongshu']);
+  append(root, event('attempt', 'dy-resume', { roundId: 'r1', attemptId: 'a2', status: 'running', platform: 'douyin', reason: 'Douyin verified' }));
+  assert.deepEqual(summary(snapshot(load(root))).rounds[0].pausedPlatforms, ['xiaohongshu']);
+  saveObservation(root, obs('baseline', '09:00:00', 17));
+  const task = event('task', 'task1', { roundId: 'r1', workId: 'xiaohongshu:example', taskId: 'revisit', kind: 'revisit', status: 'pending', reason: 'Observe', baselineObservationId: 'baseline', dueAt: '2026-10-21T09:20:00+08:00' });
+  append(root, task); saveObservation(root, obs('due', '09:20:00', 20)); append(root, { ...task, id: 'task1-done', status: 'done' });
+  saveObservation(root, { ...obs('due-fix', '09:20:00', null, 'unavailable', ''), correctsObservationId: 'due' });
+  assert.equal(summary(snapshot(load(root), '2026-10-21T10:00:00+08:00')).pendingTasks[0].reopened, true);
+});
+
+test('CSV gaps come from the latest substantive capture', t => {
+  const root = fixture(t);
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/complete-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
+  append(root, capture('complete', { gaps: [], assets }));
+  const csv = fs.readFileSync(writeReport(snapshot(load(root), undefined, root), root, path.join(root, 'reports')).csv, 'utf8');
+  assert.ok(!csv.includes('video unavailable'));
+});
+
+test('render reports a missing --out before hashing the store', t => {
+  const root = fixture(t), run = spawnSync(process.execPath, [path.join(__dirname, 'radar.cjs'), 'render', '--store', root], { encoding: 'utf8' });
+  assert.equal(run.status, 1); assert.match(run.stderr, /--out required/);
+});
+
+test('documented validation rules reject their counterexamples', t => {
+  const root = draftedFixture(t), workId = 'xiaohongshu:example', before = load(root);
+  for (const file of ['brief2.md', 'script2.md', 'evidence2.md']) fs.writeFileSync(path.join(root, file), `Synthetic ${file}`);
+  assert.throws(() => append(root, event('draft', 'published', { workId, selectionEventId: 'selected', reviewId: 'review1', status: 'published', briefPath: 'brief2.md', scriptPath: 'script2.md', evidencePath: 'evidence2.md' })), /remains draft/);
+  assert.throws(() => append(root, event('decision', 'silent', { workId, decision: 'selected', reason: 'Model guess' })), /actual user/);
+  const authorUrl = 'https://www.xiaohongshu.com/user/profile/synthetic-author';
+  fs.writeFileSync(path.join(root, 'materials/profile-likes.png'), 'Synthetic profile screenshot with likes');
+  assert.throws(() => append(root, capture('profile-likes', { work: { ...capture().work, authorUrl }, readKinds: [], assets: [{ ...capture().assets[1], path: 'materials/profile-likes.png', sourceUrl: authorUrl, metrics: { likes: { value: 5, raw: '5', precision: 'exact' } } }] })), /Asset source must identify/);
+  assert.throws(() => append(root, capture('future-asset', { assets: [{ ...capture().assets[0], capturedAt: '2026-10-21T12:00:01+08:00' }] })), /after event time/);
+  assert.deepEqual(load(root), before);
+  assert.equal(csvCell('\tTab'), '"\'\tTab"'); assert.equal(csvCell('\rReturn'), '"\'\rReturn"');
+});
+
+test('eligibility needs a caption and metrics-only captures never count as recommendation discovery', t => {
+  const root = fixture(t); append(root, round('r2', { minNew: 0 }));
+  fs.writeFileSync(path.join(root, 'materials/no-caption.png'), 'Synthetic page without a saved caption');
+  append(root, capture('no-caption', { roundId: 'r2', route: 'search', readKinds: ['image_text'], assets: [{ ...capture().assets[1], path: 'materials/no-caption.png' }] }));
+  assert.equal(snapshot(load(root)).rounds[1].unique, 0);
+  const metrics = { likes: { value: 30, raw: '30', precision: 'exact' } };
+  fs.writeFileSync(path.join(root, 'materials/recommended-metrics.json'), JSON.stringify({ synthetic: 'recommended metrics', metrics }));
+  append(root, capture('metrics-from-feed', { roundId: 'r2', route: 'recommendation', readKinds: [], practicalMethod: false, assets: [{ kind: 'metric_snapshot', path: 'materials/recommended-metrics.json', sourceUrl: capture().work.url, capturedAt: '2026-10-21T10:00:00+08:00', coverage: 'Synthetic metrics only', metrics }] }));
+  const assets = capture().assets.map(a => { const file = a.path.replace('materials/', 'materials/direct-'); freshCopy(root, a.path, file); return { ...a, path: file }; });
+  append(root, capture('direct-read', { roundId: 'r2', route: 'direct', assets }));
+  const r = snapshot(load(root)).rounds[1];
+  assert.equal(r.unique, 1); assert.equal(r.recommended.xiaohongshu, 0);
+});
+
+test('the low-follower flag includes the ceiling and excludes the next count', t => {
+  for (const [count, expected] of [[5000, true], [5001, false]]) {
+    const root = fixture(t);
+    saveObservation(root, event('observation', `followers-${count}`, { roundId: 'r1', workId: 'xiaohongshu:example', sampledAt: '2026-10-21T09:00:00+08:00', metrics: { followers: { value: count, raw: String(count), precision: 'exact' } } }));
+    assert.equal(snapshot(load(root)).items[0].lowFollower, expected);
+  }
+});

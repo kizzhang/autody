@@ -675,7 +675,7 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
 function pausedPlatforms(attempts) {
   // The latest platform-specific state wins; an attempt without a platform resumes or settles every platform.
   const state = {};
-  for (const a of attempts) { if (a.platform) state[a.platform] = a.status; else if (a.status !== 'paused') for (const k of Object.keys(state)) state[k] = a.status; }
+  for (const a of attempts) { if (a.platform) state[a.platform] = a.status; else for (const k of ['douyin', 'xiaohongshu']) state[k] = a.status; }
   return Object.keys(state).filter(k => state[k] === 'paused');
 }
 function summary(state) {
@@ -685,7 +685,7 @@ function summary(state) {
   return { generatedAt: state.generatedAt, eventCount: state.eventCount, works: state.items.length, integrityChecked: 'presence', integrityIssues: state.integrityIssues,
     roundCount: state.rounds.length, olderShortlist: candidates.length - priority.length,
     rounds: state.rounds.slice(-5).map(r => ({ roundId: r.roundId, timezone: r.timezone, targets: r.config.targets, unique: r.unique, platformCounts: r.platformCounts, newWorks: r.newWorks, recommended: r.recommended, practical: r.practical, repeatReads: r.repeatReads, countComplete: r.countComplete, coverageComplete: r.coverageComplete, pausedPlatforms: pausedPlatforms(r.attempts), lastAttempt: r.attempts.length ? (({ attemptId, status, platform, reason, recordedAt }) => ({ attemptId, status, platform, reason, recordedAt }))(r.attempts.at(-1)) : null })),
-    pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed })),
+    pendingTasks: state.tasks.filter(t => t.status === 'pending').map(({ taskId, workId, kind, reason, dueAt, due, suppressed, reopened }) => ({ taskId, workId, kind, reason, dueAt, due, suppressed, ...(reopened ? { reopened } : {}) })),
     shortlist: priority.map(i => ({ workId: i.work.id, title: i.work.title, angle: i.review.angle, reviewId: i.review.id })),
     decisions: state.items.filter(i => i.decision).map(i => ({ workId: i.work.id, decision: i.decision.decision, recordedAt: i.decision.recordedAt })),
     gaps: state.items.filter(i => i.evidenceGaps.length || i.reviewGaps.length || i.draftGaps.length || i.integrityIssues.length).map(i => ({ workId: i.work.id, evidenceGaps: i.evidenceGaps.length, reviewGaps: i.reviewGaps.length, draftGaps: i.draftGaps.length, integrityIssues: i.integrityIssues.length })) };
@@ -695,6 +695,7 @@ function main(argv) {
   for (let i = 1; i < argv.length; i += 2) { check(argv[i].startsWith('--') && argv[i + 1], 'Use --name value options'); check(['--store', '--input', '--out', '--now'].includes(argv[i]), `Unknown option: ${argv[i]}`); opts[argv[i].slice(2)] = argv[i + 1]; }
   check(opts.store, 'Usage: radar.cjs append|summary|status|render --store <directory> [--input event.json] [--out report-directory] [--now ISO-time]');
   check(['append', 'summary', 'status', 'render'].includes(command), 'Unknown command');
+  if (command === 'render') check(opts.out, '--out required');
   if (command === 'append') { check(opts.input, '--input required'); return append(opts.store, JSON.parse(fs.readFileSync(opts.input, 'utf8').replace(/^\uFEFF/, ''))); }
   const events = load(opts.store), issues = integrityIssues(opts.store, events, { hashes: command !== 'summary' }), state = snapshot(events, opts.now, opts.store, issues);
   if (issues.length) process.stderr.write(`Warning: ${issues.length} registered file(s) are missing or changed and are excluded from derived results; see integrityIssues.\n`);
