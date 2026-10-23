@@ -149,14 +149,14 @@ function writeReport(state, store, out, events) {
     // Gaps from the latest substantive capture; earlier captures' gaps may since have been filled.
     const latestRead = [...i.captures].reverse().find(c => c.readKinds?.length) || i.captures.at(-1);
     const earlier = [...new Set(i.captures.filter(c => c !== latestRead).flatMap(c => gapText(c.gaps)))].filter(g => !gapText(latestRead?.gaps).includes(g));
-    const gaps = [...new Set([...gapText(latestRead?.gaps), ...gapText(i.review?.gaps), ...(i.evidenceGaps || []).map(g => `${g.observationId}: ${g.reason}`), ...(i.reviewGaps || []).map(g => `${g.reviewId}: ${g.reason}`), ...(i.draftGaps || []).map(g => `${g.draftId}: ${g.reason}`), ...(i.integrityIssues || []).map(x => `${x.path}: ${x.reason}`)])];
+    const gaps = [...new Set([...gapText(latestRead?.gaps), ...(i.reviewBlocked ? [] : gapText(i.review?.gaps)), ...(i.evidenceGaps || []).map(g => `${g.observationId}: ${g.reason}`), ...(i.reviewGaps || []).map(g => `${g.reviewId}: ${g.reason}`), ...(i.draftGaps || []).map(g => `${g.draftId}: ${g.reason}`), ...(i.integrityIssues || []).map(x => `${x.path}: ${x.reason}`)])];
     rows.push([i.work.id, i.work.title, i.work.author, i.work.url, i.work.dateKind, i.work.dateLabel, i.work.publishedAt, i.dateSeenAt,
       ...metricNames.flatMap(k => [i.latest[k]?.raw, i.latest[k]?.sampledAt]),
       i.growth.status, i.growth.delta, i.growth.perHour, i.reviewBlocked ? 'latest review unsupported' : i.review?.recommendation, i.decision?.decision, i.reviewBlocked ? '' : i.review?.angle, gaps.join('; '), earlier.join('; '),
       `${pathToFileURL(path.resolve(htmlPath)).href}#material-${encodeURIComponent(i.work.id)}`,
       fileUrls(['caption']), fileUrls(['page_screenshot', 'original_image', 'frame', 'source_image']),
       fileUrls(['video', 'clip']), fileUrls(['original_subtitles', 'transcript_candidate', 'platform_summary', 'image_text', 'comments', 'source_comments']),
-      (i.review?.sourceRefs || []).map(s => s.url).join('; '),
+      (i.reviewBlocked ? [] : i.review?.sourceRefs || []).map(s => s.url).join('; '),
       draftsListed(i).filter(d => draftState(i, d) !== 'missing').flatMap(d => [d.briefPath, d.scriptPath, d.evidencePath]).map(p => pathToFileURL(path.resolve(store, p)).href).join('; ')]);
   }
   fs.writeFileSync(path.join(out, 'tracking.csv'), `\uFEFF${rows.map(r => r.map(csvCell).join(',')).join('\r\n')}\r\n`);

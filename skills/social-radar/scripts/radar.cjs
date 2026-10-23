@@ -664,7 +664,8 @@ function growth(observations, c = DEFAULTS) {
   result.delta = delta; result.minutes = minutes;
   // A drop between any two readings in the window is a decrease to check, never net growth; the delta is kept only for a net fall.
   // A one- or two-like wobble is noise; a fall of at least minNewLikes between readings is reported instead of growth.
-  const dropped = window => window.some((p, k) => k > 0 && window[k - 1].metrics.likes.value - p.metrics.likes.value >= c.minNewLikes);
+  // Falls are measured from the highest reading so far, so several small steps down still add up.
+  const dropped = window => { let peak = -Infinity; return window.some(p => { const value = p.metrics.likes.value, fall = peak - value; peak = Math.max(peak, value); return fall > 0 && fall >= c.minNewLikes; }); };
   if (delta < 0 || dropped(points.slice(points.indexOf(a)))) return { ...result, delta: delta < 0 ? delta : null, status: 'count_decreased' };
   if (startIndex < 0) return { ...result, status: 'interval_too_short' };
   result.perHour = delta / (minutes / 60);
@@ -685,7 +686,9 @@ function growth(observations, c = DEFAULTS) {
   }
   return result;
 }
-function snapshot(events, now = new Date().toISOString(), root, integrity = []) {
+function snapshot(events, now = new Date().toISOString(), root, integrity) {
+  // Programmatic callers that pass the store but no integrity result still get the full file check.
+  if (integrity === undefined) integrity = root ? integrityIssues(root, events) : [];
   time(now); const source = events;
   // Changed or missing registered files keep their ownership and read history but no longer support derived results.
   const broken = new Set(integrity.filter(x => x.kind === 'asset' && typeof x.path === 'string').map(x => assetKey(x.path)));
@@ -761,7 +764,9 @@ function snapshot(events, now = new Date().toISOString(), root, integrity = []) 
     return b.metrics.likes && b.metrics.likes.precision !== 'unavailable' ? 'ok' : 'unavailable';
   };
   const baselineStands = t => baselineState(t) === 'ok';
-  const revisitDone = t => baselineStands(t) && (groups.get(t.workId)?.observations || []).some(o => !observationChecks.get(o.id) && !superseded.has(o.id) && o.metrics.likes && o.metrics.likes.precision !== 'unavailable' && time(o.sampledAt) >= time(t.dueAt));
+  // A finished revisit reopens when its baseline was corrected to unavailable or its completing reading no longer
+  // stands; lost baseline files only flag it, because the revisit itself already happened.
+  const revisitDone = t => baselineState(t) !== 'unavailable' && (groups.get(t.workId)?.observations || []).some(o => !observationChecks.get(o.id) && !superseded.has(o.id) && o.metrics.likes && o.metrics.likes.precision !== 'unavailable' && time(o.sampledAt) >= time(t.dueAt));
   return { generatedAt: now, eventCount: source.length, integrityIssues: integrity, items,
     rounds: rounds.map(r => ({ ...r, ...roundStats(events, r, resolve), attempts: events.filter(e => e.type === 'attempt' && e.roundId === r.roundId) })),
     tasks: [...taskMap.values()].map(t => {

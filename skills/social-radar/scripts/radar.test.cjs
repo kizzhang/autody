@@ -1283,7 +1283,7 @@ test('summary does not rehash work material for each historical draft', t => {
   const page = path.resolve(root, 'materials/page.png'), original = fs.openSync;
   let reads = 0;
   fs.openSync = function (file, ...rest) { if (path.resolve(String(file)).toLowerCase() === page.toLowerCase()) reads++; return original.call(this, file, ...rest); };
-  try { summary(snapshot(load(root), undefined, root)); } finally { fs.openSync = original; }
+  try { summary(snapshot(load(root), undefined, root, require('./radar.cjs').integrityIssues(root, load(root), { hashes: false }))); } finally { fs.openSync = original; }
   assert.equal(reads, 0);
   assert.equal(snapshot(load(root), undefined, root).items[0].drafts.length, 3);
 });
@@ -1739,8 +1739,9 @@ test('a revisit whose baseline evidence is lost is flagged and no longer due', t
   append(root, task); saveObservation(root, obs('due', '09:20:00', 20)); append(root, { ...task, id: 'task1-done', status: 'done' });
   fs.rmSync(path.join(root, 'materials/metrics-baseline.json'));
   const state = snapshot(load(root), '2026-10-21T10:00:00+08:00', root, require('./radar.cjs').integrityIssues(root, load(root))), [flagged] = state.tasks;
-  assert.equal(flagged.reopened, true); assert.equal(flagged.baselineEvidenceLost, true); assert.equal(flagged.due, false);
-  assert.equal(summary(state).pendingTasks[0].baselineEvidenceLost, true);
+  // The revisit already happened, so it stays done and is only flagged.
+  assert.equal(flagged.status, 'done'); assert.equal(flagged.reopened, undefined); assert.equal(flagged.baselineEvidenceLost, true); assert.equal(flagged.due, false);
+  assert.deepEqual(summary(state).pendingTasks, []);
 });
 
 test('gaps must be strings, and malformed historical gaps do not break exports', t => {
@@ -2035,4 +2036,32 @@ test('documented bindings hold: draft selection, clip seconds, task identity and
   const low = fixture(t); append(low, round('r2', { lowFollowerCeiling: 10 }));
   saveObservation(low, event('observation', 'followers', { roundId: 'r2', workId, sampledAt: '2026-10-21T09:00:00+08:00', metrics: { followers: { value: 4000, raw: '4000', precision: 'exact' } } }));
   assert.equal(snapshot(load(low)).items[0].lowFollower, false);
+});
+
+test('a programmatic snapshot with a store path checks file integrity itself', t => {
+  const root = draftedFixture(t);
+  fs.writeFileSync(path.join(root, 'materials/caption.md'), 'Synthetic caption changed after registration');
+  const state = snapshot(load(root), undefined, root);
+  assert.ok(state.integrityIssues.some(x => x.path === 'materials/caption.md'));
+  assert.equal(state.items[0].reviewBlocked, true); assert.equal(state.items[0].drafts.length, 0);
+});
+
+test('a flat reading is not a decrease when minNewLikes is zero', () => {
+  const g = growth([obs('a', '09:00:00', 10), obs('b', '09:10:00', 10), obs('c', '09:20:00', 20)], { ...DEFAULTS, minNewLikes: 0 });
+  assert.equal(g.status, 'short_window'); assert.equal(g.delta, 10); assert.equal(g.perHour, 30);
+});
+
+test('several small falls after a peak add up to a decrease', () => {
+  const g = growth([obs('a', '09:00:00', 100), obs('b', '09:05:00', 200), obs('c', '09:10:00', 195), obs('d', '09:15:00', 190), obs('e', '09:20:00', 185)]);
+  assert.equal(g.status, 'count_decreased'); assert.equal(g.fast, false);
+});
+
+test('the CSV leaves out an unsupported newest review s gaps and sources', t => {
+  const root = fixture(t); append(root, { ...review('old'), gaps: ['OLD_REVIEW_GAP'], sourceRefs: [{ url: 'https://x.com/old/status/1', status: 'account_clue', note: 'Old clue' }] });
+  fs.writeFileSync(path.join(root, 'materials/new-comments.md'), 'Synthetic comments');
+  append(root, capture('new-comments', { readKinds: [], assets: [{ ...capture().assets[0], kind: 'comments', path: 'materials/new-comments.md', coverage: 'Synthetic comments' }] }));
+  append(root, { ...review('new'), recommendation: 'archive', evidencePaths: ['materials/new-comments.md'], claims: [] });
+  fs.rmSync(path.join(root, 'materials/new-comments.md'));
+  const csv = fs.readFileSync(writeReport(checkedSnapshot(root), root, path.join(root, 'reports')).csv, 'utf8');
+  assert.ok(!csv.includes('OLD_REVIEW_GAP')); assert.ok(!csv.includes('x.com/old'));
 });
