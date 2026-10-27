@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const packageRoot = path.resolve(__dirname, "..");
-const skillNames = ["douyin-analysis", "kaishi", "gengxin", "buchong", "tijian", "baogao", "html", "xiaohongshu-analysis"];
+const skillNames = ["autody", "douyin-analysis", "kaishi", "gengxin", "buchong", "tijian", "baogao", "html", "xiaohongshu-analysis", "social-radar"];
 
 function skillSource(skillName) {
   return path.join(packageRoot, "skills", skillName);
@@ -23,17 +23,21 @@ Usage:
   autody install [--force] [--codex-home <path>]
   autody doctor [--package-only]
   autody skill-path [skill]
+  autody research --topic <topic> --root <project-output-root> [--per-platform <count>]
   autody --version
 
 Commands:
   install     Install the Autody Codex skills into ~/.codex/skills.
   doctor      Check package files and local runtime hints.
   skill-path  Print a packaged skill path.
+  research    Prepare/resume a topic task; the Codex agent executes its Chrome actions.
 
 Safety:
-  Autody is for first-party or explicitly authorized Douyin/Xiaohongshu creator data only.
+  Use $autody with a topic to search both platforms, review evidence and deliver a cited report.
+  Creator analytics require first-party or explicitly authorized data; $social-radar researches public content.
   Collection is Chrome Extension-first. Use /kaishi, /gengxin, /buchong, /tijian, /baogao, or /html in Codex after install.
   For Xiaohongshu note links, use $xiaohongshu-analysis with the homepage Diandian AI workflow.
+  Use $social-radar for public topic discovery, evidence, timed revisits and selected-topic script drafts.
 `;
 }
 
@@ -61,6 +65,9 @@ function getCodexHome(opts) {
 
 function assertPackageShape() {
   const required = [
+    "skills/autody/references/topic-workflow.md",
+    "skills/autody/references/account-orchestration.md",
+    "skills/autody/scripts/research.cjs",
     "AGENTS.md",
     "LICENSE",
     "RELEASE_NOTES.md",
@@ -78,6 +85,11 @@ function assertPackageShape() {
     "skills/douyin-analysis/scripts/merge_content_outputs.cjs",
     "skills/douyin-analysis/scripts/render_lumina_report.cjs",
     "skills/xiaohongshu-analysis/references/diandian-workflow.md",
+    "skills/social-radar/references/collection.md",
+    "skills/social-radar/references/data-contract.md",
+    "skills/social-radar/references/reading-and-drafting.md",
+    "skills/social-radar/scripts/radar.cjs",
+    "skills/social-radar/scripts/render-radar.cjs",
   ];
   for (const skillName of skillNames.filter((name) => name !== "douyin-analysis")) {
     required.push(`skills/${skillName}/SKILL.md`);
@@ -109,7 +121,7 @@ function install(opts) {
     fs.cpSync(skillSource(skillName), dest, { recursive: true });
     console.log(`Installed ${skillName} to ${dest}`);
   }
-  console.log("Ask Codex: run /kaishi for first baseline, /gengxin to update, /buchong to backfill, /tijian to audit, /baogao to analyze, or /html for Lumina HTML. Use $xiaohongshu-analysis for Xiaohongshu links via Diandian AI.");
+  console.log('Ask Codex: 使用 $autody 调研「你的 topic」，自动搜索小红书和抖音，交付带来源的报告和选题。 Existing account commands remain available; Autody chains them for end-to-end account reviews.');
 }
 
 function doctor(opts) {
@@ -137,6 +149,8 @@ function main() {
       install(opts);
     } else if (command === "doctor") {
       doctor(opts);
+    } else if (command === "research") {
+      console.log(JSON.stringify(require("../skills/autody/scripts/research.cjs").main(["start", ...argv.slice(1)]), null, 2));
     } else if (command === "skill-path") {
       const requestedSkill = opts._[0] || "douyin-analysis";
       if (!skillNames.includes(requestedSkill)) {

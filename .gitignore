@@ -2,6 +2,7 @@
 .auth/
 .cheat-cache/
 outputs/
+.local/
 media/
 cookies*.txt
 *cookie*.txt

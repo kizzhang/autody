@@ -34,3 +34,5 @@ Before backfilling, read:
 7. Reported resolved gaps and remaining unresolved `dataGap` items.
 
 Do not discover new videos; use `/gengxin` for updates. Do not render HTML; use `/html`.
+
+For a broader authorized account-review request, the agent routes to these sibling stages itself and continues to the requested report. Do not hand a command checklist back to the user.

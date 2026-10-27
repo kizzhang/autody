@@ -1,175 +1,121 @@
-<p align="center">
-  <img src="assets/logo.png" alt="Autody logo" width="220">
-</p>
+<p align="center"><img src="assets/logo.png" alt="Autody logo" width="180"></p>
 
-# Autody: 抖音分析 + 小红书点点提取
+# Autody：输入一个 topic，自动做双平台调研
 
-Autody 是一组给 Codex 使用的创作者分析 skills，通过 Codex Chrome Extension 操作你已经登录的 Chrome 会话。
+给 Codex 一个主题，Autody 会在你已登录的 Chrome 中搜索小红书和抖音，打开相关作品、阅读原始内容与评论、补齐重要缺口，交付带来源的调研报告和内容选题。你不需要先找链接，也不需要逐个调用 Skills。
 
-| 平台 | 入口 | 当前支持 |
-| --- | --- | --- |
-| 抖音 | `/kaishi`、`/gengxin`、`/buchong`、`/tijian`、`/baogao`、`/html` | 创作者后台底账、逐字稿、深度指标、评论和 Lumina HTML 报告 |
-| 小红书（预发布） | `$xiaohongshu-analysis` | 将笔记链接交给首页点点，提取视频口播候选稿，核对原页正文与可见互动数，导出 JSON、CSV 和文本 |
+```text
+使用 $autody 调研「AI 编程如何改变产品经理」，自动跑小红书和抖音，
+比较不同观点、受众问题和内容机会，最后给我带来源的报告。
+```
 
-小红书有独立的 Skill 和数据口径。现有六个短命令与指标、评分、报告脚本仍用于抖音。
+![Autody：一个主题，双平台搜索、精读、补采和报告自动串联](assets/hero.svg)
 
-![Autody：抖音深度复盘与小红书点点提取，两条独立处理流程](assets/hero.png)
+这是由当前 Codex 会话执行的 Skill 工作流。浏览器操作和研究判断由 agent 完成，本地脚本保存进度、校验证据并生成报告。安装后，在 Codex 中发出上面的请求即可启动；单独运行 CLI 不会启动无人值守浏览器服务。
 
-## 只分析自己的账号
+## 安装与更新
 
-Autody 只面向你本人拥有或被授权管理的抖音、小红书账号与内容数据。请勿用本项目分析、抓取或规避访问任何他人的非授权数据。若使用者将本项目用于分析他人视频、账号或未授权内容，由使用者自行承担全部法律、合规与平台责任。
-
-## 30 秒上手
-
-安装工具需要 Node.js 18 或以上；浏览器流程需要 Codex Desktop、Chrome 与 Codex Chrome Extension。抖音推荐 Mac 环境；小红书点点流程已在 Windows Chrome 登录会话中完成单条视频实测。
-
-从 GitHub 安装：
+需要 Node.js 18+、支持 Chrome 操作的 Codex 环境和 Codex Chrome Extension。浏览器采用 **Chrome Extension-first**，复用现有登录会话。
 
 ```bash
-git clone https://github.com/kizzhang/autody.git
+git clone --branch codex/social-radar https://github.com/kizzhang/autody.git
 cd autody
 node bin/autody.js install
 ```
 
-安装器会复制全部 8 个 Skill。已有旧版时，先备份自己修改过的 Skill，再在仓库目录运行 `git pull --ff-only` 和 `node bin/autody.js install --force`；`--force` 会替换已有同名 Skill 目录。
+一次安装全部 **10 个 Skills**。从分享 ZIP 使用时，解压后进入包含 `bin/`、`skills/` 的 Autody 目录，执行同一条安装命令。
 
-也可以手动复制 skill：
-
-```bash
-mkdir -p ~/.codex/skills
-cp -R skills/{douyin-analysis,kaishi,gengxin,buchong,tijian,baogao,html,xiaohongshu-analysis} ~/.codex/skills/
-```
-
-需要小红书扩展时，优先使用包含 `skills/xiaohongshu-analysis` 的 GitHub 版本。npm 的 `latest` 不一定包含预发布扩展；仅在确认所需版本已发布后使用：
+升级已有版本：先备份自己修改过的同名 Skill，再在仓库运行：
 
 ```bash
-npx autody@latest install --force
+git pull --ff-only
+node bin/autody.js install --force
+node bin/autody.js doctor
 ```
 
-![Autody 快速上手：统一安装，按平台选择 Skill 入口](assets/quickstart.svg)
+本次版本为 GitHub 预发布 `0.0.5-topic.1`，位于 [PR #10](https://github.com/kizzhang/autody/pull/10) 的 `codex/social-radar` 分支；上面的安装命令直接取得该版本。npm `latest` 不一定包含它；本次更新没有执行 npm 发布。
 
-## 小红书：链接交给首页点点
+![安装、输入主题、收到报告：三个使用步骤](assets/quickstart.svg)
 
-安装后，把你本人或获授权管理的笔记链接交给 Codex：
+## 输入主题以后，会自动做什么
+
+1. 建立或恢复同一份主题任务，推导搜索词。默认每个平台精读 6 篇；可以直接说“先各读 3 篇”。
+2. 在小红书、抖音的可见搜索界面执行检索，保存结果页和发现的链接。结果卡片只算线索。
+3. 打开相关作品，保存原文、图文页面、可用视频文本与评论；记录相关性、阅读范围和缺口。无关内容不凑数。
+4. 审读证据，自动补采重要遗漏，保留相反观点。需要视频文本时复用点点／豆包提取流程；AI 候选稿与已核对原文分别标记。
+5. 汇总双平台发现、受众问题和可创作的角度，输出 HTML、Markdown、JSON 和证据 CSV。
+
+中断后说“继续这个主题”，会沿用原任务和已读材料。需要重新调研时说“为这个主题开新一轮”。单个平台遇到登录或验证码时保存断点，继续另一平台；本人完成验证后恢复。样本不足会交付明确标记的部分报告，不会冒充双平台完成。
+
+![Skills 编排：主题入口驱动采集、审读、补采和交付；账号复盘保留独立指标流程](assets/pipeline.svg)
+
+完成判定同时检查检索证据、双平台相关样本、有效审读、待补采任务和报告引用。只凑满数量不会显示完成；证据或报告文件丢失、修改后，状态会要求重新处理。
+
+## 输出与续跑
+
+资料保存在用户项目的输出目录，遵循工作区归档规则，位于源码及安装目录之外。
 
 ```text
-使用 $xiaohongshu-analysis 处理这些小红书笔记链接：<链接>
-通过首页点点提取口播，核对原页标题、作者、正文与可见互动数，导出 JSON、CSV 和文本；未逐句核对的口播保留未验证标记。
+topic-主题-稳定编号/
+  task.json                  # 当前阶段、搜索计划、相关性、阻塞和交付记录
+  events/                    # 只追加的采集、审读、补采历史
+  searches/                  # 实际搜索结果证据
+  materials/                 # 原文、截图、评论及提取候选稿
+  deliveries/每次交付编号/
+    research.html            # 双平台调研发现与内容机会
+    research.md
+    research.json
+    evidence/report.html     # 可筛选的素材与证据视图
+    evidence/tracking.csv
 ```
 
-Agent 会打开原笔记和首页侧栏的「点点 ai」，一次发送一条链接，等回复完成后保存；发现缺句时针对缺段追问。标题、作者、正文、互动数以原页面为准，点点返回的口播单独保存。
+![主题报告、素材证据与账号报告的输出对照](assets/outputs.svg)
 
-默认输出到工作目录下的 `outputs/xiaohongshu_analysis_YYYY-MM-DD/`（工作区另有归档规则时遵循工作区规则）：
+需要写稿，可以一次说“调研后选出最适合我的两个角度并写口播初稿”。这个指令已包含选题授权，agent 会继续写稿，无需再次等待选择。仅请求调研时，交付发现和选题；发布内容需另行明确请求。
 
-```text
-xiaohongshu_works.json
-xiaohongshu_works.csv
-transcripts/
-evidence/
-```
+## 三种任务，统一入口
 
-每条记录保留 `platform`、`noteId`、来源、提取时间、口播状态和 `dataGaps`。例如点赞仅显示 `1万` 时保存原始文字，精确值留空；原页不展示的播放、曝光、完播率等指标也留空。
+| 需求 | 说法／入口 | 自动衔接 |
+| --- | --- | --- |
+| 已有 topic | `$autody 调研……` | 搜索双平台 → 采集 → 相关性判断 → 审读／补采 → 调研报告 |
+| 暂无 topic，找方向 | `$social-radar 找适合我的选题` | 推荐流发现 → 素材与评论 → 观察池／到期复看 → 选题与获授权初稿 |
+| 复盘自己的账号 | `$autody 复盘我的抖音账号并给报告` | 建档或更新 → 体检 → 按缺口补采 → 最新分析 → Lumina HTML |
 
-验证范围：2026-10-07 已实测一条 6 分 30 秒视频及两轮点点回复，完成口播候选稿和 JSON/CSV/TXT 保存。首轮有缺句，第二轮补充后仍未逐句校验，因此状态保留 `ai_extracted_unverified`。批量采集、图文 OCR、小红书创作者后台和口播逐字准确性尚未验证。
+主题调研不套用开放发现模式的“每平台 25 条”、推荐流或实用 AI 题材配额。开放发现的短时增长必须有相隔足够时间的真实观测，单个赞数不能证明增长。定时运行使用宿主调度器，只有明确要求时间、时区和资料库后才设置；安装不会创建定时任务。
 
-详见 [小红书 Skill](skills/xiaohongshu-analysis/SKILL.md) 与 [点点提示词及数据口径](skills/xiaohongshu-analysis/references/diandian-workflow.md)。
+账号复盘仅处理你本人或明确获授权的后台数据。抖音后台的播放、留存、完播率等与公开内容研究分开；公开赞数不会换算成后台指标。**小红书创作者后台分析尚未实现。**
 
-## 两条处理路径
+## 现有 Skills 怎么串起来
 
-![Autody 流程：抖音经豆包和分析生成报告，小红书经点点和原页核对导出文本](assets/pipeline.svg)
+| Skill | 在整体流程中的职责 |
+| --- | --- |
+| [autody](skills/autody/SKILL.md) | 总入口、任务状态、双平台编排与最终交付 |
+| [social-radar](skills/social-radar/SKILL.md) | 公开素材事件库、审读、补采、复看、证据与初稿 |
+| [xiaohongshu-analysis](skills/xiaohongshu-analysis/SKILL.md) | 原笔记核对、点点视频文本提取；也可单独处理已知链接 |
+| [douyin-analysis](skills/douyin-analysis/SKILL.md) | 抖音后台数据口径、豆包提取与账号分析脚本 |
+| [/kaishi](skills/kaishi/SKILL.md)、[/gengxin](skills/gengxin/SKILL.md) | 首次建档或增量刷新 |
+| [/tijian](skills/tijian/SKILL.md)、[/buchong](skills/buchong/SKILL.md) | 本地审计、按缺口补采 |
+| [/baogao](skills/baogao/SKILL.md)、[/html](skills/html/SKILL.md) | 重算最新分析、渲染 Lumina 账号报告 |
 
-## 抖音：Codex 命令入口
+单独调用短命令时保留它原有的范围，例如 `/kaishi` 只负责建档。请求完整账号报告时，总入口会接着运行后续阶段。公开主题材料使用独立的调研报告，不进入抖音后台评分脚本。
 
-```text
-/kaishi
-/gengxin
-/buchong
-/tijian
-/baogao
-/html
-```
+## 实测范围
 
-Autody 会要求 agent：
+2026-10-27 在 Windows Chrome 登录会话中，以“AI 编程如何改变产品经理”为主题，执行双平台搜索和各 3 篇小样本审读，再生成同一份引用报告。小红书包含逐页图文、完整正文和评论；抖音采用详情页完整文案及可见评论。两次小红书登录／短信验证由本人完成，之后继续原任务，无需用户提供作品链接。
 
-- 优先用 Codex Chrome Extension 接管你已经登录的 `creator.douyin.com` Chrome tab。
-- `/kaishi` 做第一次全量建档，只产底账和审计，不顺手生成报告。
-- `/gengxin` 找新作品并刷新过期指标。
-- `/buchong` 按 `content_gap_audit*.json` 只补缺口。
-- `/tijian` 只做本地数据体检，不打开浏览器。
-- `/baogao` 每次基于最新数据重新分析，输出新报告结论。
-- `/html` 只用 Lumina 视觉系统，把最新数据/报告渲染成 HTML；旧 HTML 只当视觉参考，不复用旧结论。
-- 先审计缺口，再只补缺失或过期字段。
-- 每条作品完成后立刻写入 progress，断了可以继续。
-- 发给豆包提取 transcript 时按人类节奏逐条处理：复用一个正常豆包窗口，不并发、不秒发，等结果完成并保存后再下一条；上下文污染或失败时才新开会话。
-- Chrome 页面拿不到的字段标记为 `dataGap`，不再启动第二套浏览器采集器。
-- 低播放但被隐藏/限流的样本只做文案诊断，不参与曝光归因。
-- HTML 报告必须有可读结构：气泡图、因子地图、关键样本复盘、逐条表格和下一批建议。
+实测不代表所有视频已完整转录，也不代表 50 条批量流程或全天无人值守已验收。抖音一次 AI 侧栏未返回内容，报告保留了口播缺口；作者自述的开发速度等只作为观点材料。详细记录见 [实测说明](docs/validation/2026-10-27-topic-research.md)。此前 2026-10-07 的单条小红书点点试验保留 `ai_extracted_unverified` 状态，未核验的候选稿不会变成已验证逐字稿。
 
-## 抖音会抓哪些数据
-
-基础数据：
-
-- 作品编号、发布时间、标题文案、类型、公开视频链接。
-- 播放、点赞、评论、转发、收藏。
-- transcript 或图文文字，含来源和状态。
-
-深度数据：
-
-- 平均播放时长、完播率、5 秒留存。
-- 涨粉、脱粉、主页访问、封面点击率。
-- Top 评论、评论点赞数、回复数。
-
-## 抖音会输出什么
-
-默认输出到 `outputs/douyin_analysis_YYYY-MM-DD/`：
-
-```text
-douyin_works_final.json
-transcript_progress.json
-deep_metrics_progress.json
-content_gap_audit.json
-douyin_deep_works_final.json
-douyin_deep_works_final.csv
-douyin_deep_transcripts_final.md
-report.html
-report_lumina_payload.json
-report_lumina.html
-```
-
-## 输出对照
-
-![Autody 输出：抖音底账与报告、小红书候选口播与证据分开保存](assets/outputs.svg)
-
-## Agent 入口
-
-- 小红书点点提取：[skills/xiaohongshu-analysis/SKILL.md](skills/xiaohongshu-analysis/SKILL.md)
-- `/kaishi` 开始建档：[skills/kaishi/SKILL.md](skills/kaishi/SKILL.md)
-- `/gengxin` 更新：[skills/gengxin/SKILL.md](skills/gengxin/SKILL.md)
-- `/buchong` 补充：[skills/buchong/SKILL.md](skills/buchong/SKILL.md)
-- `/tijian` 体检：[skills/tijian/SKILL.md](skills/tijian/SKILL.md)
-- `/baogao` 报告：[skills/baogao/SKILL.md](skills/baogao/SKILL.md)
-- `/html` Lumina HTML：[skills/html/SKILL.md](skills/html/SKILL.md)
-- 抖音共享底层 skill：[skills/douyin-analysis/SKILL.md](skills/douyin-analysis/SKILL.md)
-- Chrome Extension 工作流：[skills/douyin-analysis/references/chrome-extension-workflow.md](skills/douyin-analysis/references/chrome-extension-workflow.md)
-- 报告设计规则：[skills/douyin-analysis/references/report-design.md](skills/douyin-analysis/references/report-design.md)
-- Lumina HTML 工作流：[skills/douyin-analysis/references/lumina-html-workflow.md](skills/douyin-analysis/references/lumina-html-workflow.md)
-- 数据流程参考：[skills/douyin-analysis/references/douyin-workflow.md](skills/douyin-analysis/references/douyin-workflow.md)
-- 人类快速提示：[AGENTS.md](AGENTS.md)
-
-CLI 只负责安装和检查 skill：
+## 开发与本地检查
 
 ```bash
-autody install --force
-autody doctor
-autody skill-path [skill]
+npm test
+npm run pack:dry
+node bin/autody.js doctor --package-only
+node bin/autody.js research --topic "你的主题" --root "项目输出目录"
 ```
 
-## 安全与合规
+最后一条命令准备或恢复任务并返回下一步动作；浏览器步骤由当前 agent 执行。内部接口见 [主题工作流](skills/autody/references/topic-workflow.md)、[账号编排](skills/autody/references/account-orchestration.md)、[事件数据契约](skills/social-radar/references/data-contract.md)。
 
-本项目不会要求导出或读取浏览器 cookie 文件、密码、localStorage 或会话数据库。`.cheat-cache/`、cookies、raw private dumps 永远不要提交到 GitHub。
-
-Chrome Extension-first 路径只操作正常 Chrome 标签页和页面可见数据；如果 Chrome 页面没有暴露某个字段，就在输出中明确记录缺口。
-
-## License
+原始图片、视频、评论和会话页面只保存在本地研究资料中，分享包只含工具、说明和示意配图。不要提交 cookies、密码、浏览器存储、`.cheat-cache/` 或私有账号数据；页面没有提供的字段明确留缺口。
 
 MIT License. See [LICENSE](LICENSE).

@@ -33,6 +33,8 @@ Before analyzing, read:
 
 Do not render HTML in `/baogao`; call `/html` next for Lumina rendering.
 
+For an end-to-end report request, the agent calls that next stage in the same task. Do not stop at the analysis JSON and ask the user to run `/html`.
+
 ## Command
 
 ```bash

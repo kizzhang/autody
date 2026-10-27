@@ -5,6 +5,8 @@ description: Use when the user invokes /html or asks to render an existing Autod
 
 # HTML
 
+This renderer is for Douyin own-account reports. Public topic research is orchestrated by `../autody/SKILL.md` and uses its cross-platform renderer. When a broader account-report request needs collection or backfill, the coordinator executes the required sibling stages and then returns here without another user command.
+
 Use this command-like skill for `/html` / `Lumina HTML`.
 
 `/html` turns an existing Autody run folder into a Lumina HTML page. It is a rendering workflow, not a collection workflow. Regenerate the report analysis from the latest data every run.

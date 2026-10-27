@@ -43,6 +43,8 @@ Follow those shared safety, provenance, schema, and resume rules. If a field is 
 
 Do not create HTML dashboards, strategy reports, topic roadmaps, or next-batch recommendations in `/kaishi`. Use `/baogao` for report analysis and `/html` for Lumina HTML rendering after a baseline exists.
 
+This is a stage boundary. When the user requested an end-to-end account report through `autody`, the agent continues to audit/backfill, report and rendering itself; do not ask the user to invoke the next command. A request strictly for `/kaishi` still ends at the baseline.
+
 ## Commands
 
 Audit:

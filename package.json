@@ -1,7 +1,7 @@
 {
   "name": "autody",
-  "version": "0.0.4-xhs.1",
-  "description": "Codex skills for authorized Douyin analytics and Xiaohongshu note extraction via Diandian AI.",
+  "version": "0.0.5-topic.1",
+  "description": "One-topic Xiaohongshu and Douyin research with resumable evidence workflows and creator analytics.",
   "license": "MIT",
   "author": "Zhiyu Zhang",
   "homepage": "https://github.com/kizzhang/autody#readme",
@@ -36,10 +36,11 @@
     "assets/",
     "bin/",
     "scripts/",
-    "skills/"
+    "skills/",
+    "docs/"
   ],
   "scripts": {
-    "validate": "node bin/autody.js doctor --package-only && node --check skills/douyin-analysis/scripts/audit_content_gaps.cjs && node --check skills/douyin-analysis/scripts/merge_content_outputs.cjs && node --check skills/douyin-analysis/scripts/render_lumina_report.cjs && node --check skills/douyin-analysis/scripts/normalize_douyin_tabs.cjs && node --check skills/douyin-analysis/scripts/build_report_analysis.cjs && node --test skills/douyin-analysis/scripts/normalize_douyin_tabs.test.cjs && node --test skills/douyin-analysis/scripts/merge_content_outputs.native-tabs.test.cjs && node --test skills/douyin-analysis/scripts/audit_content_gaps.native-tabs.test.cjs && node --test skills/douyin-analysis/scripts/build_report_analysis.test.cjs && node scripts/validate_chrome_extension_policy.cjs",
+    "validate": "node bin/autody.js doctor --package-only && node --check skills/douyin-analysis/scripts/audit_content_gaps.cjs && node --check skills/douyin-analysis/scripts/merge_content_outputs.cjs && node --check skills/douyin-analysis/scripts/render_lumina_report.cjs && node --check skills/douyin-analysis/scripts/normalize_douyin_tabs.cjs && node --check skills/douyin-analysis/scripts/build_report_analysis.cjs && node --test skills/douyin-analysis/scripts/normalize_douyin_tabs.test.cjs && node --test skills/douyin-analysis/scripts/merge_content_outputs.native-tabs.test.cjs && node --test skills/douyin-analysis/scripts/audit_content_gaps.native-tabs.test.cjs && node --test skills/douyin-analysis/scripts/build_report_analysis.test.cjs && node scripts/validate_chrome_extension_policy.cjs && node --check skills/social-radar/scripts/radar.cjs && node --check skills/social-radar/scripts/render-radar.cjs && node --test skills/social-radar/scripts/radar.test.cjs && node --check skills/autody/scripts/research.cjs && node --test skills/autody/scripts/research.test.cjs",
     "pack:dry": "npm pack --dry-run",
     "test": "npm run validate && node --test scripts/install_skills.test.cjs"
   },

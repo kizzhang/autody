@@ -5,6 +5,8 @@ description: Extract the user's own or authorized Xiaohongshu note content throu
 
 # Xiaohongshu / 小红书点点提取
 
+If the user gives a topic rather than note links, use `../autody/SKILL.md` to discover and research both platforms automatically. Do not ask them to supply links. During that public-research workflow, the coordinator may reuse `references/diandian-workflow.md` to extract the already discovered public note; it keeps the public radar records and does not inherit a private analytics workflow.
+
 Use Chrome Extension-first in the existing logged-in browser. Open the homepage sidebar's **点点 ai** (`https://www.xiaohongshu.com/ai_chat`) and submit one authorized note link at a time. Work from supplied links, or the signed-in account's own visible notes when a demonstration is requested. A signed-in session is not permission to read unrelated accounts' private dashboards. Do not inspect cookies, browser storage, hidden responses, or credentials.
 
 ## Collect and verify

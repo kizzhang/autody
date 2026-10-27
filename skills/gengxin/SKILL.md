@@ -44,3 +44,5 @@ Before collecting data, read:
 11. Reported new item count, refreshed item count, output paths, and remaining `dataGap` items.
 
 Do not rebuild the whole account unless the user asks for `/kaishi`. Do not render HTML; use `/html` after update.
+
+When called as a stage of an end-to-end account report, return the updated baseline to the Autody coordinator and continue the requested audit/report/render stages in the same task. Do not require another user command.
