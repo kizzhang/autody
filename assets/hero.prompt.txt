@@ -1,0 +1,13 @@
+Autody README hero — 2026-10-27
+Tool: built-in imagegen
+Reference: assets/hero.png at commit 84d8579ecc537a1f714cfa31459c99e1c59578f6
+
+Redesign the attached old Autody README illustration into the NEW topic-first workflow. This is a replacement/edit; use the old image only for its elegant visual language: ivory paper, deep burgundy, recognizable glossy platform app icons, confident legible Chinese typography, thin directional arrows. Preserve that visual quality but entirely replace the old two-lane content. Wide landscape 2:1 composition, high resolution, clean GitHub README product infographic. Generous space, large icons, very few words. No ornamental extra badges.
+At top, centered heading exactly: "Autody" in burgundy followed by "一个主题，双平台自动调研" in black, Chinese title large and exceptionally legible. Small subline exactly: "从选题灵感，到带来源的调研报告".
+Main visual reads LEFT TO RIGHT with unambiguous burgundy arrows. Four stations:
+1. Left: a beautiful white prompt bubble, a small burgundy search/magnifying glass icon, only text "输入 topic". Under bubble small example "AI 编程 × 产品经理".
+2. Left-middle: TWO vertically stacked recognizable app tiles, top red Xiaohongshu logo with correct white "小红书", bottom black Douyin logo with cyan/red musical note. One short caption underneath this pair: "自动搜索".
+3. Right-middle: a large white rounded tile containing a stylized magnifying glass over two source documents with a green verification checkmark, tiny speech bubbles indicating comments. Caption underneath "精读与核对". Branches from BOTH app tiles merge with arrows into this station. This depicts agent research.
+4. Right: an attractive report/document illustration, visibly a structured research deliverable rather than fake analytics metrics. A page with small source-link markers, a tiny idea/lightbulb and no dense placeholder text. Large readable heading on report "调研报告"; three short item labels on report ONLY "关键发现", "受众问题", "内容机会". A visible slim arrow from research station to this report.
+At bottom center one quiet line "搜索 → 精读 → 补采 → 交付" with clear spacing.
+All four stations are balanced, not a grid of cards. Arrows visually explain automatic orchestration including platform branch and merge. No people, no robot, no metrics, no bars or donuts as the hero content, no code, no URLs, no '预发布' badge, no disclaimers, no English other than Autody, topic, AI. Exact Chinese text must be correct. Ivory background #fffdf8, burgundy #821e1a with black, platform authentic red/cyan accents, green only for check. Slight tactile depth and subtle shadows matching the reference, professional quiet composition.

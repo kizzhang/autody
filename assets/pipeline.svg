@@ -1,40 +1,47 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="700" viewBox="0 0 1440 700" role="img" aria-label="Autody Skills 自动编排流程">
-<title>Autody Skills 自动编排流程</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="540" viewBox="0 0 1320 540" role="img" aria-label="Autody Skills 自动接续流程">
+<title>Autody Skills 自动接续流程</title>
 <defs>
-<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-<path d="M0 0L10 5L0 10z" fill="#749080"/>
-</marker>
+<filter id="shadow" x="-30%" y="-30%" width="170%" height="180%">
+<feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#552923" flood-opacity=".09"/>
+</filter>
 </defs>
-<rect width="1440" height="700" fill="#f4f2e9"/>
-<g font-family="'Microsoft YaHei','PingFang SC',Arial,sans-serif">
-<text x="54" y="65" font-size="37" fill="#203d35" font-weight="700">一个总入口，衔接已有能力</text>
-<text x="54" y="105" font-size="23" fill="#607466" font-weight="400">主题研究与本人账号复盘，各自保持正确的数据口径。</text>
-<rect x="54" y="155" width="260" height="125" rx="18" fill="#193c35"/>
-<text x="82" y="200" font-size="32" fill="#dce9bd" font-weight="700">$autody</text>
-<text x="82" y="242" font-size="22" fill="#fff" font-weight="400">主题 / 完整任务</text>
-<path d="M330 216L382 216" stroke="#749080" stroke-width="3" marker-end="url(#a)"/>
-<rect x="399" y="155" width="302" height="220" rx="18" fill="#fff"/>
-<text x="423" y="204" font-size="27" fill="#203d35" font-weight="600">搜索与采集</text>
-<text x="423" y="258" font-size="22" fill="#46624f" font-weight="400">小红书 + 抖音</text>
-<text x="423" y="306" font-size="19" fill="#64776a" font-weight="400">原页 / 点点 / 豆包</text>
-<text x="423" y="346" font-size="17" fill="#71816f" font-weight="400">每个阶段保存进度</text>
-<rect x="742" y="155" width="302" height="220" rx="18" fill="#fff"/>
-<text x="766" y="204" font-size="27" fill="#203d35" font-weight="600">审读与补采</text>
-<text x="766" y="258" font-size="22" fill="#46624f" font-weight="400">social-radar</text>
-<text x="766" y="306" font-size="19" fill="#64776a" font-weight="400">相关性 / 评论 / 缺口</text>
-<text x="766" y="346" font-size="17" fill="#71816f" font-weight="400">每个阶段保存进度</text>
-<rect x="1084" y="155" width="302" height="220" rx="18" fill="#fff"/>
-<text x="1108" y="204" font-size="27" fill="#203d35" font-weight="600">报告与选题</text>
-<text x="1108" y="258" font-size="22" fill="#46624f" font-weight="400">research finish</text>
-<text x="1108" y="306" font-size="19" fill="#64776a" font-weight="400">引用 / 导出 / 验证</text>
-<text x="1108" y="346" font-size="17" fill="#71816f" font-weight="400">每个阶段保存进度</text>
-<path d="M709 216L733 216" stroke="#749080" stroke-width="3" marker-end="url(#a)"/>
-<path d="M1050 216L1076 216" stroke="#749080" stroke-width="3" marker-end="url(#a)"/>
-<path d="M894 389V423H549V389" fill="none" stroke="#749080" stroke-width="3" marker-end="url(#a)"/>
-<text x="629" y="451" font-size="20" fill="#49634e" font-weight="400">材料不足：定向补采</text>
-<rect x="54" y="490" width="1332" height="165" rx="18" fill="#e1e7d6"/>
-<text x="80" y="535" font-size="26" fill="#203d35" font-weight="600">本人抖音账号复盘</text>
-<text x="80" y="578" font-size="27" fill="#203d35" font-weight="400">建档 / 更新 → 体检 → 补缺 → 最新分析 → Lumina HTML</text>
-<text x="80" y="621" font-size="20" fill="#61745f" font-weight="400">短命令仍可单独使用；完整任务由总入口继续执行后续阶段。</text>
+<rect width="1320" height="540" rx="22" fill="#fffdf8"/>
+<g font-family="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
+<text x="64" y="66" font-size="34" fill="#821e1a" text-anchor="start" font-weight="700">autody 负责推进整轮调研</text>
+<g transform="translate(118 135) scale(1.5)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="27" cy="27" r="18"/>
+<path d="m41 41 17 17"/>
+</g>
+<g transform="translate(448 135) scale(1.5)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6 12c13-4 20-1 26 4 6-5 13-8 26-4v40c-13-4-20-1-26 4-6-5-13-8-26-4z" fill="#fff"/>
+<path d="M32 16v40M14 24l10 2M14 34l10 2M40 26l10-2M40 36l10-2"/>
+</g>
+<g transform="translate(778 135) scale(1.5)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M32 5 54 14v19c0 13-12 22-22 27C22 55 10 46 10 33V14z" fill="#fff"/>
+<path d="m21 32 8 8 16-18" stroke="#348165" stroke-width="5"/>
+</g>
+<g transform="translate(1108 135) scale(1.5)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M15 4h27l12 12v44H15z" fill="#fff"/>
+<path d="M42 4v14h12M24 29h21M24 39h21M24 49h13"/>
+</g>
+<path d="M253 182H375" fill="none" stroke="#821e1a" stroke-width="2.5"/>
+<path d="m368 175 8 7-8 7" fill="none" stroke="#821e1a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M583 182H705" fill="none" stroke="#821e1a" stroke-width="2.5"/>
+<path d="m698 175 8 7-8 7" fill="none" stroke="#821e1a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M913 182H1035" fill="none" stroke="#821e1a" stroke-width="2.5"/>
+<path d="m1028 175 8 7-8 7" fill="none" stroke="#821e1a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="166" y="285" font-size="30" fill="#25211e" text-anchor="middle" font-weight="700">双平台搜索</text>
+<text x="496" y="285" font-size="30" fill="#25211e" text-anchor="middle" font-weight="700">精读作品</text>
+<text x="826" y="285" font-size="30" fill="#25211e" text-anchor="middle" font-weight="700">审读核对</text>
+<text x="1156" y="285" font-size="30" fill="#25211e" text-anchor="middle" font-weight="700">引用报告</text>
+<text x="166" y="321" font-size="21" fill="#766c65" text-anchor="middle" font-weight="500">小红书 + 抖音</text>
+<text x="496" y="321" font-size="21" fill="#766c65" text-anchor="middle" font-weight="500">原文 + 评论</text>
+<text x="826" y="321" font-size="21" fill="#766c65" text-anchor="middle" font-weight="500">相关性 + 不同观点</text>
+<text x="1156" y="321" font-size="21" fill="#766c65" text-anchor="middle" font-weight="500">发现 + 选题</text>
+<path d="M826 345v30a16 16 0 0 1-16 16H512a16 16 0 0 1-16-16v-20m-7 9 7-9 7 9" fill="none" stroke="#348165" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="660" y="371" font-size="21" fill="#348165" text-anchor="middle" font-weight="500">发现缺口，自动补采</text>
+<path d="M64 435h1192" stroke="#e9dbd2"/>
+<text x="64" y="477" font-size="22" fill="#821e1a" text-anchor="start" font-weight="500">social-radar 记录材料与审读</text>
+<text x="1256" y="477" font-size="22" fill="#766c65" text-anchor="end" font-weight="500">需要视频文本时，调用点点 / 豆包提取</text>
 </g>
 </svg>

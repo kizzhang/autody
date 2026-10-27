@@ -1,5 +1,11 @@
 # unreleased
 
+README visual refresh:
+
+- Restores the burgundy visual identity and recognizable platform icons. The new hero shows one topic branching into Xiaohongshu and Douyin, then converging on a cited research report.
+- Shortens the README around the first prompt, research outputs and follow-up requests. Installation details, resuming and Skill orchestration now have linked guides in `docs/`.
+- Updates installation to use `main` after the topic workflow merged in PR #10. Documentation policy checks follow the new guide locations.
+
 Topic orchestration preview `0.0.5-topic.1` (GitHub only; no npm publication):
 
 - Adds `autody` as the one-topic entry point: search both platforms, read and assess relevant sources, review/backfill, synthesize a cited report. The agent executes Chrome actions; the CLI prepares/resumes local tasks.
