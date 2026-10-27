@@ -33,4 +33,4 @@ node ~/.codex/skills/douyin-analysis/scripts/audit_content_gaps.cjs \
   --out outputs/douyin_analysis_YYYY-MM-DD/content_gap_audit.json
 ```
 
-If `/tijian` finds gaps, suggest `/buchong`. If the user wants HTML after audit, suggest `/html`.
+For a strict audit-only request, report gaps without collecting. For an end-to-end account-review request, continue to `/buchong` for actionable gaps and then the requested report/render stages yourself; no additional user command is needed.

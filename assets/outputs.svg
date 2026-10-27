@@ -1,28 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="618" viewBox="0 0 1200 618" role="img" aria-labelledby="title desc">
-  <title id="title">Autody 抖音与小红书输出对照</title>
-  <desc id="desc">抖音提供数据底账、逐字稿与Lumina报告。小红书提供笔记底账、未验证口播候选稿和提取证据。</desc>
-  <rect width="1200" height="618" rx="24" fill="#fcf9f4" />
-  <text x="56" y="42" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="15" font-weight="600" fill="#821e1a">AUTODY / OUTPUTS</text>
-  <text x="56" y="91" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="36" font-weight="700" fill="#292421">产物分平台，来源可追溯</text>
-  <text x="56" y="130" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="20" font-weight="400" fill="#776960">结构化数据便于继续处理，可读文本便于逐条核对。</text>
-  <rect x="56" y="172" width="520" height="324" rx="18" fill="#ffffff" stroke="#e3d3c9" />
-  <text x="84" y="219" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="29" font-weight="700" fill="#821e1a">抖音</text>
-  <text x="84" y="266" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="22" font-weight="700" fill="#821e1a">JSON + CSV</text>
-  <text x="84" y="295" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">作品、可见指标、评论与文本来源</text>
-  <text x="84" y="341" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="22" font-weight="700" fill="#821e1a">Markdown</text>
-  <text x="84" y="370" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">逐字稿与内容汇总</text>
-  <text x="84" y="416" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="22" font-weight="700" fill="#821e1a">Lumina HTML</text>
-  <text x="84" y="445" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">基于最新底账生成可读分析报告</text>
-  <rect x="624" y="172" width="520" height="324" rx="18" fill="#e8f5ee" stroke="#e3d3c9" />
-  <text x="652" y="219" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="29" font-weight="700" fill="#286d58">小红书</text>
-  <text x="652" y="266" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="22" font-weight="700" fill="#286d58">JSON + CSV</text>
-  <text x="652" y="295" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">笔记、原页信息与可见互动数</text>
-  <text x="652" y="341" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="22" font-weight="700" fill="#286d58">口播文本</text>
-  <text x="652" y="370" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">候选稿，保留完整性与验证状态</text>
-  <text x="652" y="416" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="22" font-weight="700" fill="#286d58">提取证据</text>
-  <text x="652" y="445" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">原始回复、截图与缺失项记录</text>
-  <rect x="1022" y="192" width="94" height="30" rx="15" fill="#e8f5ee" stroke="#286d58" />
-  <text x="1037" y="213" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="16" font-weight="600" fill="#286d58">预发布</text>
-  <path d="M56 535H1144" fill="none" stroke="#e3d3c9" />
-  <text x="56" y="577" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif" font-size="19" font-weight="400" fill="#776960">小红书仅显示“1万”时保留原始文字；不可见的指标留空，不填零。</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="408" viewBox="0 0 1440 408" role="img" aria-label="Autody 输出对照">
+<title>Autody 输出对照</title>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+<path d="M0 0L10 5L0 10z" fill="#749080"/>
+</marker>
+</defs>
+<rect width="1440" height="408" fill="#f4f2e9"/>
+<g font-family="'Microsoft YaHei','PingFang SC',Arial,sans-serif">
+<text x="54" y="65" font-size="37" fill="#203d35" font-weight="700">研究结束，留下可复用的成果</text>
+<text x="54" y="105" font-size="23" fill="#607466" font-weight="400">结论有引用，材料有覆盖记录，下一轮可以继续。</text>
+<rect x="54" y="149" width="430" height="222" rx="18" fill="#fff"/>
+<text x="80" y="199" font-size="29" fill="#203d35" font-weight="600">主题调研报告</text>
+<text x="80" y="246" font-size="20" fill="#607466" font-weight="400">research.html / .md / .json</text>
+<text x="80" y="289" font-size="20" fill="#607466" font-weight="400">双平台发现与不同观点</text>
+<text x="80" y="332" font-size="20" fill="#607466" font-weight="400">受众问题与内容选题</text>
+<rect x="505" y="149" width="430" height="222" rx="18" fill="#fff"/>
+<text x="531" y="199" font-size="29" fill="#203d35" font-weight="600">素材与证据</text>
+<text x="531" y="246" font-size="20" fill="#607466" font-weight="400">原文、图文页、评论</text>
+<text x="531" y="289" font-size="20" fill="#607466" font-weight="400">有效审读与待补采任务</text>
+<text x="531" y="332" font-size="20" fill="#607466" font-weight="400">证据看板与 CSV</text>
+<rect x="956" y="149" width="430" height="222" rx="18" fill="#fff"/>
+<text x="982" y="199" font-size="29" fill="#203d35" font-weight="600">本人账号复盘</text>
+<text x="982" y="246" font-size="20" fill="#607466" font-weight="400">独立保存后台指标</text>
+<text x="982" y="289" font-size="20" fill="#607466" font-weight="400">最新分析与 Lumina 报告</text>
+<text x="982" y="332" font-size="20" fill="#607466" font-weight="400">公开研究不推算播放、留存</text>
+</g>
 </svg>

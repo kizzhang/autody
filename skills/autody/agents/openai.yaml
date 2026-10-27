@@ -1,0 +1,6 @@
+interface:
+  display_name: "Autody 主题调研"
+  short_description: "给一个主题，自动搜索小红书和抖音、精读补缺，交付有来源的调研报告与选题"
+  default_prompt: "使用 $autody 调研这个 topic，自动搜索小红书和抖音，整理受众问题、不同观点和内容机会，交付带来源的报告。"
+policy:
+  allow_implicit_invocation: true

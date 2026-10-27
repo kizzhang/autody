@@ -1,11 +1,20 @@
 # unreleased
 
-Public topic radar (GitHub preview; no npm release in this change):
+Topic orchestration preview `0.0.5-topic.1` (GitHub only; no npm publication):
+
+- Adds `autody` as the one-topic entry point: search both platforms, read and assess relevant sources, review/backfill, synthesize a cited report. The agent executes Chrome actions; the CLI prepares/resumes local tasks.
+- Installs ten skills and connects the existing account stages for end-to-end requests while preserving explicitly requested command boundaries and separate platform metrics.
+- Adds stable topic stores, explicit new rounds, per-platform blockers, partial delivery, and HTML/Markdown/JSON plus evidence CSV. Completion requires intact searches, relevant current-round reads, supported reviews, closed due tasks and citations from both platforms.
+- Adds orchestration and installer regression tests for resumed tasks, coverage, relevance, review gates, file loss, report integrity and safe HTML rendering.
+- On 2026-10-27, ran a Windows Chrome topic pilot with three Xiaohongshu works and three Douyin works. Human login/SMS verification was required on Xiaohongshu. Original captions/images/comments were read; this is not validation of full video transcription, 50-item collection or unattended scheduling. See `docs/validation/2026-10-27-topic-research.md`.
+- Rewrites the README and workflow illustrations around topic input and automatic stage continuation.
+
+Earlier public topic radar implementation (included in this preview):
 
 - Adds `social-radar` for public Douyin/Xiaohongshu discovery, preserved originals/comments, X provenance, timed revisits and user-selected spoken-script drafts.
 - Includes a local append-only event ledger, file hashes, resumable rounds, due/backfill tasks, growth checks and a searchable HTML/JSON/Excel-readable CSV report. Reports prepare agent instructions; they do not mutate the ledger in-browser.
-- Extends the installer to nine skills and keeps own-account analytics separate from public research. Scheduling remains host-managed and requires a user request.
-- Local synthetic tests cover recording/replay, interrupted rounds, exact/rounded counts, timing boundaries, source integrity, selection-gated drafts and rendering. Live multi-platform collection, media capture and full transcript accuracy remain unverified for this new module.
+- Originally extended the installer to nine skills; the topic coordinator brings the total to ten. Own-account analytics remain separate from public research. Scheduling remains host-managed and requires a user request.
+- Local synthetic tests cover recording/replay, interrupted rounds, exact/rounded counts, timing boundaries, source integrity, selection-gated drafts and rendering. The new topic pilot covers a small live dual-platform sample; full transcript accuracy and a 50-item discovery run remain unverified.
 - Review hardening binds each observation to fresh metric-bearing evidence and immutable capture metadata, excludes unsupported legacy readings from derived growth, rejects impossible calendar dates, keeps public titles out of copied commands, honors watch/reject decisions, and requires new drafts to use the latest review revision. Captures of one work keep a consistent author profile and publication chronology, earlier-round backfills count as previous reads, and a lead keeps its discovery route for round coverage. Missing or edited registered files are reported and excluded instead of disabling status/render, a compact `summary` command supports resuming, mistaken metric readings can be corrected by a linked observation, future save times are rejected, profile screenshots cannot stand in for work pages, and captured page content is treated as data rather than instructions.
 
 Xiaohongshu prerelease `0.0.4-xhs.1`:

@@ -5,6 +5,8 @@ description: Use when analyzing the user's own Douyin creator account or authori
 
 # Douyin Analysis
 
+For a topic or public cross-platform research, use `../autody/SKILL.md`. For a requested end-to-end review of the user's account, its coordinator chains collection, audit/backfill, report and rendering in the same task. The account-data boundaries below remain in force.
+
 Use this skill only for the user's own Douyin creator account, their own videos, or creator data they are explicitly authorized to manage. If the task involves another person's account, private dashboard, or unauthorized data, do not proceed.
 
 This skill is Chrome Extension-first. Use the Codex Chrome Extension / Chrome plugin to work inside the user's already logged-in Chrome session. Do not start a separate browser profile or use a second browser collector. If Chrome pages do not expose a required field, record a `dataGap` note instead of guessing.

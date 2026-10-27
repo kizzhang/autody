@@ -805,7 +805,7 @@ function snapshot(events, now = new Date().toISOString(), root, integrity) {
     const draftGaps = draftHistory.filter(e => draftChecks.get(e.id)).map(e => ({ draftId: e.id, recordedAt: e.recordedAt, reason: draftChecks.get(e.id) }));
     // Ledger order, not equal timestamps, decides whether a review came after the user's decision.
     const reviewAfterDecision = Boolean(review && decision && order.get(review) > order.get(decision));
-    return { work: shownWork, dateSeenAt, reviewAfterDecision, captures, assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
+    return { work: shownWork, dateSeenAt, reviewAfterDecision, captures, eligibleCaptureIds: captures.filter(c => eligible(c, registry, resolve)).map(c => c.id), assets: assetsFor(events, workId, resolve), latest, evidenceGaps, correctedObservations, growth: growth(observations, metricConfig('likes')),
       lowFollower: latest.followers?.precision === 'exact' ? latest.followers.value <= metricConfig('followers').lowFollowerCeiling : null,
       review, reviewBlocked, reviews, reviewGaps, decision,
       drafts: draftHistory.filter(e => !draftChecks.get(e.id)), draftHistory, draftGaps, integrityIssues: integrity.filter(x => x.workId === workId) };

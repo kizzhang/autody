@@ -26,7 +26,7 @@ Use `summary`, `opportunity`, `angle`, `recommendation`, `evidencePaths`, `captu
 
 ## After the user chooses a topic
 
-Only a real user selection creates `decision: selected`; a model's shortlist is not selection. Preserve the user's request in `userRequest`. Read the selected review and its evidence before drafting. If material new evidence changes the angle, show the change rather than silently using an old selection for a different topic.
+Only a real user instruction authorizes `decision: selected`; a model's shortlist alone is not selection. An explicit instruction to research and draft an already named topic, or to choose the best angles and draft them, also authorizes the relevant selections. Preserve the actual instruction in `userRequest` and explain the delegated choice in `reason`; do not fabricate a quote or ask for a redundant selection. Read the selected review and its evidence before drafting. If material new evidence changes the angle beyond that request, show the change rather than silently using old authorization for a different topic.
 
 Create three files under `drafts/<work-key>/<revision>/`, where `<work-key>` is `<platform>-<native-id>`:
 

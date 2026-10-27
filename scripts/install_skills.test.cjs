@@ -7,7 +7,7 @@ const test = require("node:test");
 
 const packageRoot = path.resolve(__dirname, "..");
 const legacySkills = ["douyin-analysis", "kaishi", "gengxin", "buchong", "tijian", "baogao", "html"];
-const allSkills = [...legacySkills, "xiaohongshu-analysis", "social-radar"];
+const allSkills = [...legacySkills, "xiaohongshu-analysis", "social-radar", "autody"];
 
 function temporaryDirectory(t) {
   const parent = fs.realpathSync(os.tmpdir());
@@ -42,7 +42,7 @@ function assertTreeMatches(source, destination) {
   }
 }
 
-test("install includes complete Xiaohongshu and radar skills alongside all Douyin skills", (t) => {
+test("install includes complete Autody coordinator and all platform skills", (t) => {
   const home = path.join(temporaryDirectory(t), "codex-home");
   const result = cli(["install", "--codex-home", home]);
   assert.equal(result.status, 0, result.stderr);
@@ -59,6 +59,15 @@ test("install includes complete Xiaohongshu and radar skills alongside all Douyi
   const defaultLocation = cli(["skill-path"]);
   assert.equal(defaultLocation.status, 0, defaultLocation.stderr);
   assert.equal(defaultLocation.stdout.trim(), path.join(packageRoot, "skills", "douyin-analysis"));
+});
+
+test("research CLI initializes and resumes a topic without starting a browser", (t) => {
+  const root = temporaryDirectory(t), args = ["research", "--topic", "Synthetic CLI topic", "--root", root, "--per-platform", "1"];
+  const first = cli(args); assert.equal(first.status, 0, first.stderr);
+  const state = JSON.parse(first.stdout); assert.deepEqual(state.targets, { douyin: 1, xiaohongshu: 1 });
+  const resumed = cli(args); assert.equal(resumed.status, 0, resumed.stderr);
+  assert.equal(JSON.parse(resumed.stdout).roundId, state.roundId);
+  assert.ok(state.actions.some(a => a.platform === "xiaohongshu" && a.stage === "search"));
 });
 
 test("upgrading a seven-skill installation requires force and preserves unrelated skills", (t) => {
@@ -91,7 +100,7 @@ test("upgrading a seven-skill installation requires force and preserves unrelate
   assert.equal(fs.readFileSync(path.join(unrelated, "SKILL.md"), "utf8"), "keep this");
 });
 
-for (const reference of ["skills/xiaohongshu-analysis/references/diandian-workflow.md", "skills/social-radar/scripts/radar.cjs", "skills/social-radar/scripts/render-radar.cjs"]) {
+for (const reference of ["skills/xiaohongshu-analysis/references/diandian-workflow.md", "skills/social-radar/scripts/radar.cjs", "skills/social-radar/scripts/render-radar.cjs", "skills/autody/scripts/research.cjs"]) {
 test(`doctor and install reject a package missing ${reference}`, (t) => {
   const root = temporaryDirectory(t);
   const fixture = path.join(root, "incomplete-package");
