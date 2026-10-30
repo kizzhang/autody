@@ -1,31 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="408" viewBox="0 0 1440 408" role="img" aria-label="Autody 快速上手">
-<title>Autody 快速上手</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="350" viewBox="0 0 1200 350" role="img" aria-label="安装、输入主题、收到报告">
+<title>安装、输入主题、收到报告</title>
 <defs>
-<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-<path d="M0 0L10 5L0 10z" fill="#749080"/>
-</marker>
+<filter id="shadow" x="-30%" y="-30%" width="170%" height="180%">
+<feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#552923" flood-opacity=".09"/>
+</filter>
 </defs>
-<rect width="1440" height="408" fill="#f4f2e9"/>
-<g font-family="'Microsoft YaHei','PingFang SC',Arial,sans-serif">
-<text x="54" y="65" font-size="38" fill="#203d35" font-weight="700">从一句话开始</text>
-<text x="54" y="105" font-size="23" fill="#607466" font-weight="400">安装一次，后续把主题交给 Autody。</text>
-<rect x="54" y="149" width="430" height="222" rx="18" fill="#fff"/>
-<rect x="78" y="174" width="46" height="44" rx="12" fill="#d9e7bf"/>
-<text x="92" y="205" font-size="26" fill="#203d35" font-weight="700">1</text>
-<text x="142" y="206" font-size="27" fill="#203d35" font-weight="600">安装全部 Skills</text>
-<text x="79" y="266" font-size="21" fill="#203d35" font-weight="400">node bin/autody.js install</text>
-<text x="79" y="322" font-size="20" fill="#6c7d70" font-weight="400">10 个 Skills 一次安装</text>
-<rect x="505" y="149" width="430" height="222" rx="18" fill="#fff"/>
-<rect x="529" y="174" width="46" height="44" rx="12" fill="#d9e7bf"/>
-<text x="543" y="205" font-size="26" fill="#203d35" font-weight="700">2</text>
-<text x="593" y="206" font-size="27" fill="#203d35" font-weight="600">给一个 topic</text>
-<text x="530" y="266" font-size="24" fill="#203d35" font-weight="400">$autody 调研「你的主题」</text>
-<text x="530" y="322" font-size="20" fill="#6c7d70" font-weight="400">Agent 自动执行双平台流程</text>
-<rect x="956" y="149" width="430" height="222" rx="18" fill="#fff"/>
-<rect x="980" y="174" width="46" height="44" rx="12" fill="#d9e7bf"/>
-<text x="994" y="205" font-size="26" fill="#203d35" font-weight="700">3</text>
-<text x="1044" y="206" font-size="27" fill="#203d35" font-weight="600">收到研究成果</text>
-<text x="981" y="266" font-size="24" fill="#203d35" font-weight="400">报告 + 选题 + 来源</text>
-<text x="981" y="322" font-size="20" fill="#6c7d70" font-weight="400">遇到中断，继续同一份任务</text>
+<rect width="1200" height="350" rx="22" fill="#fffdf8"/>
+<g font-family="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
+<g transform="translate(140 53) scale(1.5)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<rect x="4" y="9" width="56" height="46" rx="7" fill="#fff"/>
+<path d="M4 21h56m-46 9 8 7-8 7m17 0h14"/>
+<circle cx="12" cy="15" r="1"/>
+<circle cx="19" cy="15" r="1"/>
+</g>
+<g transform="translate(550 53) scale(1.5)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M9 8h46a5 5 0 0 1 5 5v29a5 5 0 0 1-5 5H26L11 59V47H9a5 5 0 0 1-5-5V13a5 5 0 0 1 5-5z" fill="#fff"/>
+<path d="M16 23h30M16 33h20"/>
+</g>
+<g transform="translate(960 53) scale(1.5)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M15 4h27l12 12v44H15z" fill="#fff"/>
+<path d="M42 4v14h12M24 29h21M24 39h21M24 49h13"/>
+</g>
+<path d="M310 106H461" fill="none" stroke="#821e1a" stroke-width="2.5"/>
+<path d="m454 99 8 7-8 7" fill="none" stroke="#821e1a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M720 106H871" fill="none" stroke="#821e1a" stroke-width="2.5"/>
+<path d="m864 99 8 7-8 7" fill="none" stroke="#821e1a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="190" y="220" font-size="30" fill="#821e1a" text-anchor="middle" font-weight="700">1  安装 Skills</text>
+<text x="600" y="220" font-size="30" fill="#821e1a" text-anchor="middle" font-weight="700">2  输入主题</text>
+<text x="1010" y="220" font-size="30" fill="#821e1a" text-anchor="middle" font-weight="700">3  打开报告</text>
+<text x="190" y="268" font-size="22" fill="#25211e" text-anchor="middle" font-weight="500">一次装好 10 个 Skills</text>
+<text x="600" y="268" font-size="22" fill="#25211e" text-anchor="middle" font-weight="500">在 Codex 中交给 Autody</text>
+<text x="1010" y="268" font-size="22" fill="#25211e" text-anchor="middle" font-weight="500">查看发现、来源与选题</text>
 </g>
 </svg>

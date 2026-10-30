@@ -1,28 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="408" viewBox="0 0 1440 408" role="img" aria-label="Autody 输出对照">
-<title>Autody 输出对照</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="调研报告、素材库和内容选题">
+<title>调研报告、素材库和内容选题</title>
 <defs>
-<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-<path d="M0 0L10 5L0 10z" fill="#749080"/>
-</marker>
+<filter id="shadow" x="-30%" y="-30%" width="170%" height="180%">
+<feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#552923" flood-opacity=".09"/>
+</filter>
 </defs>
-<rect width="1440" height="408" fill="#f4f2e9"/>
-<g font-family="'Microsoft YaHei','PingFang SC',Arial,sans-serif">
-<text x="54" y="65" font-size="37" fill="#203d35" font-weight="700">研究结束，留下可复用的成果</text>
-<text x="54" y="105" font-size="23" fill="#607466" font-weight="400">结论有引用，材料有覆盖记录，下一轮可以继续。</text>
-<rect x="54" y="149" width="430" height="222" rx="18" fill="#fff"/>
-<text x="80" y="199" font-size="29" fill="#203d35" font-weight="600">主题调研报告</text>
-<text x="80" y="246" font-size="20" fill="#607466" font-weight="400">research.html / .md / .json</text>
-<text x="80" y="289" font-size="20" fill="#607466" font-weight="400">双平台发现与不同观点</text>
-<text x="80" y="332" font-size="20" fill="#607466" font-weight="400">受众问题与内容选题</text>
-<rect x="505" y="149" width="430" height="222" rx="18" fill="#fff"/>
-<text x="531" y="199" font-size="29" fill="#203d35" font-weight="600">素材与证据</text>
-<text x="531" y="246" font-size="20" fill="#607466" font-weight="400">原文、图文页、评论</text>
-<text x="531" y="289" font-size="20" fill="#607466" font-weight="400">有效审读与待补采任务</text>
-<text x="531" y="332" font-size="20" fill="#607466" font-weight="400">证据看板与 CSV</text>
-<rect x="956" y="149" width="430" height="222" rx="18" fill="#fff"/>
-<text x="982" y="199" font-size="29" fill="#203d35" font-weight="600">本人账号复盘</text>
-<text x="982" y="246" font-size="20" fill="#607466" font-weight="400">独立保存后台指标</text>
-<text x="982" y="289" font-size="20" fill="#607466" font-weight="400">最新分析与 Lumina 报告</text>
-<text x="982" y="332" font-size="20" fill="#607466" font-weight="400">公开研究不推算播放、留存</text>
+<rect width="1200" height="360" rx="22" fill="#fffdf8"/>
+<g font-family="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
+<path d="M400 60v240M800 60v240" stroke="#e9dbd2"/>
+<g filter="url(#shadow)">
+<rect x="130" y="43" width="135" height="152" rx="12" fill="#f1e3dd" transform="rotate(-7 198 119)"/>
+</g>
+<g transform="translate(108 43) scale(2.5)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M15 4h27l12 12v44H15z" fill="#fff"/>
+<path d="M42 4v14h12M24 29h21M24 39h21M24 49h13"/>
+</g>
+<g transform="translate(550 66) scale(1.65)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M4 18V9h23l7 8h25v39H4z" fill="#ead6bd"/>
+<path d="M9 25h51l-7 32H3z" fill="#f9e9cf"/>
+<path d="m25 39 7 7 13-15" stroke="#348165"/>
+</g>
+<g transform="translate(952 57) scale(1.6)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M22 46v-7C4 25 14 5 32 5s28 20 10 34v7z" fill="#ffeac1"/>
+<path d="M22 53h20M27 60h10M32 29v15M25 25l7 6 7-6M4 5l6 6M54 11l6-6"/>
+</g>
+<text x="200" y="250" font-size="32" fill="#821e1a" text-anchor="middle" font-weight="700">调研报告</text>
+<text x="600" y="250" font-size="32" fill="#821e1a" text-anchor="middle" font-weight="700">素材库</text>
+<text x="1000" y="250" font-size="32" fill="#821e1a" text-anchor="middle" font-weight="700">内容选题</text>
+<text x="200" y="292" font-size="23" fill="#25211e" text-anchor="middle" font-weight="500">关键发现与观点对照</text>
+<text x="600" y="292" font-size="23" fill="#25211e" text-anchor="middle" font-weight="500">原文、评论与来源</text>
+<text x="1000" y="292" font-size="23" fill="#25211e" text-anchor="middle" font-weight="500">值得展开的创作角度</text>
+<text x="200" y="330" font-size="17" fill="#766c65" text-anchor="middle" font-weight="500">HTML / Markdown</text>
+<text x="600" y="330" font-size="17" fill="#766c65" text-anchor="middle" font-weight="500">本地资料 / JSON / CSV</text>
+<text x="1000" y="330" font-size="17" fill="#766c65" text-anchor="middle" font-weight="500">继续选题，接着写稿</text>
 </g>
 </svg>

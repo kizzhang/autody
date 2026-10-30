@@ -39,13 +39,16 @@ assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "coreM
 assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "dataGaps");
 assertIncludes("skills/douyin-analysis/references/douyin-native-tabs.md", "Do not inspect cookies");
 assertIncludes("skills/douyin-analysis/agents/openai.yaml", "Chrome Extension-first");
-assertIncludes("README.md", "Chrome Extension-first");
+assertIncludes("README.md", "Codex Chrome Extension");
+assertIncludes("README.md", "docs/usage.md");
+assertIncludes("docs/usage.md", "Chrome Extension-first");
 assertIncludes("AGENTS.md", "Chrome Extension-first");
 assertIncludes("bin/autody.js", "Chrome Extension-first");
 assertIncludes("bin/autody.js", "/kaishi");
 assertIncludes("bin/autody.js", "/html");
-assertIncludes("README.md", "/kaishi");
-assertIncludes("README.md", "/html");
+assertIncludes("README.md", "docs/workflow.md");
+assertIncludes("docs/workflow.md", "/kaishi");
+assertIncludes("docs/workflow.md", "/html");
 assertIncludes("AGENTS.md", "/kaishi");
 assertIncludes("AGENTS.md", "/html");
 assertIncludes("skills/kaishi/SKILL.md", "Chrome Extension-first");
@@ -96,6 +99,9 @@ const forbidden = [
 const checkedFiles = [
   "AGENTS.md",
   "README.md",
+  "docs/usage.md",
+  "docs/workflow.md",
+  "docs/development.md",
   "RELEASE_NOTES.md",
   "bin/autody.js",
   "package.json",

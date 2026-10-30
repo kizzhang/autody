@@ -1,44 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="680" viewBox="0 0 1440 680" role="img" aria-label="Autody 一个主题自动调研双平台">
-<title>Autody 一个主题自动调研双平台</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="530" viewBox="0 0 1320 530" role="img" aria-label="一个主题，双平台自动调研">
+<title>一个主题，双平台自动调研</title>
 <defs>
-<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-<path d="M0 0L10 5L0 10z" fill="#749080"/>
-</marker>
+<filter id="shadow" x="-30%" y="-30%" width="170%" height="180%">
+<feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#552923" flood-opacity=".09"/>
+</filter>
 </defs>
-<rect width="1440" height="680" fill="#f4f2e9"/>
-<g font-family="'Microsoft YaHei','PingFang SC',Arial,sans-serif">
-<rect x="0" y="0" width="1440" height="680" rx="0" fill="#193c35"/>
-<circle cx="1330" cy="80" r="230" fill="#244b3d"/>
-<circle cx="1400" cy="490" r="300" fill="#214337"/>
-<text x="64" y="68" font-size="20" fill="#c4ddab" font-weight="600">AUTODY  /  TOPIC RESEARCH</text>
-<text x="64" y="150" font-size="56" fill="#fff" font-weight="700">给一个主题，</text>
-<text x="64" y="223" font-size="56" fill="#fff" font-weight="700">调研自动接着做。</text>
-<text x="66" y="280" font-size="26" fill="#d9e6d2" font-weight="400">小红书 × 抖音 · 搜索、精读、补采、交付</text>
-<rect x="64" y="333" width="760" height="92" rx="18" fill="#fff"/>
-<text x="91" y="371" font-size="19" fill="#587567" font-weight="600">$autody</text>
-<text x="91" y="406" font-size="28" fill="#193c35" font-weight="600">调研「AI 编程如何改变产品经理」</text>
-<rect x="64" y="467" width="244" height="108" rx="18" fill="#2b5144"/>
-<text x="88" y="503" font-size="23" fill="#fff" font-weight="600">01  自动找内容</text>
-<text x="88" y="544" font-size="20" fill="#c9d9cc" font-weight="400">无需先提供链接</text>
-<rect x="322" y="467" width="244" height="108" rx="18" fill="#2b5144"/>
-<text x="346" y="503" font-size="23" fill="#fff" font-weight="600">02  逐篇留证据</text>
-<text x="346" y="544" font-size="20" fill="#c9d9cc" font-weight="400">原文、图文与评论</text>
-<rect x="580" y="467" width="244" height="108" rx="18" fill="#2b5144"/>
-<text x="604" y="503" font-size="23" fill="#fff" font-weight="600">03  得到可用报告</text>
-<text x="604" y="544" font-size="20" fill="#c9d9cc" font-weight="400">发现、分歧与选题</text>
-<rect x="898" y="114" width="478" height="466" rx="22" fill="#ecf0e0"/>
-<text x="929" y="159" font-size="17" fill="#597261" font-weight="600">RESEARCH DELIVERABLE</text>
-<text x="929" y="209" font-size="34" fill="#203d35" font-weight="700">主题调研报告</text>
-<rect x="928" y="241" width="190" height="48" rx="12" fill="#d5e5bd"/>
-<text x="948" y="272" font-size="17" fill="#294a3c" font-weight="600">小红书 / 原始内容</text>
-<rect x="1134" y="241" width="210" height="48" rx="12" fill="#d5e5bd"/>
-<text x="1153" y="272" font-size="17" fill="#294a3c" font-weight="600">抖音 / 原始内容</text>
-<text x="930" y="332" font-size="23" fill="#203d35" font-weight="600">有证据的发现</text>
-<text x="930" y="370" font-size="20" fill="#54695b" font-weight="400">不同观点 · 受众问题 · 实践边界</text>
-<path d="M930 399H1344" stroke="#cbd4c0"/>
-<text x="930" y="443" font-size="23" fill="#203d35" font-weight="600">下一批可以做什么</text>
-<text x="930" y="483" font-size="20" fill="#54695b" font-weight="400">原创角度与来源引用</text>
-<text x="930" y="542" font-size="17" fill="#203d35" font-weight="600">HTML  +  Markdown  +  JSON  +  CSV</text>
-<text x="66" y="631" font-size="19" fill="#c4d4c7" font-weight="400">进度持续保存  ·  中断后续跑  ·  登录验证由本人完成</text>
+<rect width="1320" height="530" rx="22" fill="#fffdf8"/>
+<g font-family="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
+<text x="64" y="81" font-size="59" fill="#821e1a" text-anchor="start" font-weight="700">Autody</text>
+<text x="335" y="81" font-size="39" fill="#25211e" text-anchor="start" font-weight="700">一个主题，双平台自动调研</text>
+<rect x="48" y="224" width="250" height="83" rx="41" fill="white" stroke="#e9dbd2"/>
+<g transform="translate(70 245) scale(0.65)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="27" cy="27" r="18"/>
+<path d="m41 41 17 17"/>
+</g>
+<text x="201" y="277" font-size="29" fill="#25211e" text-anchor="middle" font-weight="500">输入 topic</text>
+<path d="M298 266h32c15 0 15-10 15-22v-31q0-18 18-18h29m-9-7 9 7-9 7M330 266q15 0 15 18v31q0 18 18 18h29m-9-7 9 7-9 7" fill="none" stroke="#821e1a" stroke-width="2.5" stroke-linejoin="round"/>
+<rect x="405" y="140" width="105" height="105" rx="24" fill="#ff2748"/>
+<text x="457" y="201" font-size="25" fill="#fff" text-anchor="middle" font-weight="700">小红书</text>
+<rect x="405" y="280" width="105" height="105" rx="24" fill="#181818"/>
+<g transform="translate(432 293)" fill="none" stroke-width="10">
+<path d="M32 7v52c0 22-29 22-29 4 0-11 11-17 23-12M33 9c4 12 9 16 20 17" stroke="#23dce3"/>
+<path d="M38 10v52c0 22-29 22-29 4 0-11 11-17 23-12M39 12c4 12 9 16 20 17" stroke="#ff3355"/>
+<path d="M35 8v52c0 22-29 22-29 4 0-11 11-17 23-12M36 10c4 12 9 16 20 17" stroke="white" stroke-width="7"/>
+</g>
+<path d="M526 192h28q18 0 18 18v38q0 18 18 18h50m-9-7 9 7-9 7M526 332h28q18 0 18-18v-30q0-18 18-18" fill="none" stroke="#821e1a" stroke-width="2.5" stroke-linejoin="round"/>
+<g transform="translate(696 205) scale(1.65)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6 12c13-4 20-1 26 4 6-5 13-8 26-4v40c-13-4-20-1-26 4-6-5-13-8-26-4z" fill="#fff"/>
+<path d="M32 16v40M14 24l10 2M14 34l10 2M40 26l10-2M40 36l10-2"/>
+</g>
+<text x="750" y="383" font-size="30" fill="#25211e" text-anchor="middle" font-weight="500">精读与核对</text>
+<path d="M853 265H957" fill="none" stroke="#821e1a" stroke-width="2.5"/>
+<path d="m950 258 8 7-8 7" fill="none" stroke="#821e1a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(1058 197) scale(1.8)" fill="none" stroke="#821e1a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M15 4h27l12 12v44H15z" fill="#fff"/>
+<path d="M42 4v14h12M24 29h21M24 39h21M24 49h13"/>
+</g>
+<text x="1115" y="383" font-size="30" fill="#25211e" text-anchor="middle" font-weight="500">调研报告</text>
+<text x="457" y="432" font-size="27" fill="#25211e" text-anchor="middle" font-weight="500">自动搜索</text>
+<text x="660" y="496" font-size="24" fill="#766c65" text-anchor="middle" font-weight="500">搜索 → 精读 → 补采 → 交付</text>
 </g>
 </svg>

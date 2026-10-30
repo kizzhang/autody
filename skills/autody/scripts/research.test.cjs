@@ -31,6 +31,7 @@ function capture(f, platform, suffix = '1', kinds = ['caption_body']) {
     { kind: 'caption', path: `materials/${id}.md`, sourceUrl, capturedAt: stamp(), coverage: 'Synthetic caption' },
     { kind: 'page_screenshot', path: `materials/${id}.png`, sourceUrl, capturedAt: stamp(), coverage: 'Synthetic pixel fixture' },
   ] };
+  e.recordedAt = stamp(); // Commit after captures, including when the clock crosses a millisecond.
   radar.append(f.store, e); return e;
 }
 function assess(f, c, relevant = true) { return research.assess(f.store, { workId: c.work.id, captureId: c.id, relevant, reason: 'Synthetic topic relationship' }); }
